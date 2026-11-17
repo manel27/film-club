@@ -1,0 +1,42 @@
+# Dependencies and build output
+node_modules/
+dist/
+dist-ssr/
+*.local
+coverage/
+
+# Environment files (only .env.example is committed)
+.env
+.env.*
+!.env.example
+
+# Private project docs (kept local only; contain personal data)
+docs/
+
+# Data migration (private data, never committed)
+migration/raw/
+migration/out/
+migration/.env
+migration/overrides.yaml
+
+# Supabase local state and function secrets
+supabase/.temp/
+supabase/.branches/
+supabase/functions/.env
+
+# Test artifacts
+playwright-report/
+test-results/
+blob-report/
+playwright/.cache/
+
+# Logs and editor/OS files
+logs/
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
