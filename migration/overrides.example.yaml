@@ -1,0 +1,73 @@
+# Format of migration/overrides.yaml (the real file is git-ignored because it
+# holds real names). Every name, title and colour below is made up; this file
+# drives the tests against migration/tests/fixtures/sheet.html.
+#
+# All sections are optional. Unknown keys are rejected so typos fail loudly.
+
+# The roster: everyone who gets a placeholder profile. People listed here are
+# the only people imported.
+people:
+  # name:        display name (also the profile key in import.json)
+  # keywords:    bracket tags that mean this person in a title, e.g. "(A)".
+  #              The first one becomes profiles.sheet_keyword.
+  # column:      header of their score column, if they have one (defaults to
+  #              the name when a column with that header exists)
+  # colour:      #rrggbb; defaults to the colour of their column header
+  # alt_colours: other fills that also mean this person (optional)
+  # role:        admin | moderator | member (default) | viewer
+  - { name: Alpha, keywords: [A] }
+  - { name: Bravo, keywords: [Br, B] }
+  - { name: Dougal, keywords: [Dg] }
+  - { name: Manel, keywords: [M], role: admin }
+  # No column in the sheet: colour seen only on the titles they chose.
+  - { name: Dora, keywords: [D], colour: '#ee7711' }
+
+# The two system profiles (can't log in, not in rotation). Their
+# default names are "Cinema" and "Sheet archive"; list them to change one.
+system_profiles:
+  cinema: { name: Cinema, colour: '#33aa55' }
+  archive: { name: Sheet archive, colour: '#999999' }
+
+rules:
+  # Title fills that mean "cinema trip, nobody in particular" -> Cinema profile.
+  cinema_colours: ['#33aa55']
+  # Who gets an untagged Maratona film.
+  maratona_default: Manel
+  # Bracket tags that are labels, not people (kept in the film's "labels").
+  ignore_tags: ['Sequel']
+  # Known sheet mistakes: this tag on this fill really means this person.
+  tag_colour_fixes:
+    - tag: D
+      colour: '#999988'
+      person: Dougal
+      reason: 'D on grey is a sheet mistake for Dg'
+
+# Per-film corrections. "match" must hit exactly one sheet row; use any of
+# row (the sheet's row number), date (YYYY-MM-DD) and title (compared without
+# tags, case, accents or punctuation).
+# "set" may contain: title, year, kind (normal | democratico | cinema |
+# maratona), assigned, turn_holder (democratico only), date, exclude (true =
+# skip the row), easter_egg (true = keep scores above 10 and lock them),
+# present ({person: true|false}), scores ({person: number | null to remove}).
+films:
+  - match: { date: 2026-10-24, title: Hollow Kite }
+    set: { assigned: Manel, easter_egg: true }
+    reason: 'Easter egg: keep the 11s and lock them'
+  - match: { row: 11 }
+    set: { year: 2024 }
+    reason: 'A different film from the 2001 one'
+
+# Optional: counts the preview compares against (sanity section).
+expected:
+  rows: 11
+  score_cells: 19
+  present_cells: 15
+  notes: 2
+  links: 1
+  duplicates: 0
+  average_mismatches: 0
+expected_notes:
+  rows: '10 shown + 1 planned'
+
+# Optional: the date after which films count as planned (default: today).
+today: 2026-12-01
