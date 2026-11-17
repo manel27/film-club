@@ -11,7 +11,8 @@ them, who was there, scores and comments. It replaces a shared spreadsheet.
 
 ## Running locally
 
-Requirements: Node.js 20+ and npm.
+Requirements: Node.js 26 (see `.nvmrc`; `nvm use` picks it up) and npm. The minimum
+supported version is 22.22 (`engines` in `package.json`).
 
 ```bash
 npm ci
