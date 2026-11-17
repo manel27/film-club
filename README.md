@@ -21,17 +21,21 @@ npm run dev                  # http://localhost:5173/film-club/
 
 Useful scripts:
 
-| Command             | What it does                         |
-| ------------------- | ------------------------------------ |
-| `npm run dev`       | Start the dev server                 |
-| `npm run lint`      | ESLint                               |
-| `npm run typecheck` | TypeScript type check                |
-| `npm test`          | Unit tests (Vitest)                  |
-| `npm run build`     | Production build into `dist/`        |
-| `npm run e2e`       | End-to-end smoke tests (Playwright)  |
+| Command             | What it does                        |
+| ------------------- | ----------------------------------- |
+| `npm run dev`       | Start the dev server                |
+| `npm run lint`      | ESLint                              |
+| `npm run typecheck` | TypeScript type check               |
+| `npm test`          | Unit tests (Vitest)                 |
+| `npm run build`     | Production build into `dist/`       |
+| `npm run e2e`       | End-to-end smoke tests (Playwright) |
 
 For end-to-end tests, install the browser once with
-`npx playwright install --with-deps chromium`.
+`npx playwright install --with-deps chromium` (the `--with-deps` part needs sudo
+on Linux/WSL).
+
+Supabase configuration lives in `supabase/` (`npx supabase ...`; the CLI is a dev
+dependency).
 
 ## Secret scanning
 

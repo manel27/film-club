@@ -1,0 +1,7 @@
+dist
+coverage
+docs
+playwright-report
+test-results
+supabase
+package-lock.json
