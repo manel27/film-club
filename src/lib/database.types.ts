@@ -61,7 +61,21 @@ export type Database = {
             foreignKeyName: 'attendance_marked_by_fkey'
             columns: ['marked_by']
             isOneToOne: false
+            referencedRelation: 'profile_directory'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'attendance_marked_by_fkey'
+            columns: ['marked_by']
+            isOneToOne: false
             referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'attendance_profile_id_fkey'
+            columns: ['profile_id']
+            isOneToOne: false
+            referencedRelation: 'profile_directory'
             referencedColumns: ['id']
           },
           {
@@ -103,6 +117,13 @@ export type Database = {
           is_legacy?: boolean
         }
         Relationships: [
+          {
+            foreignKeyName: 'comments_author_id_fkey'
+            columns: ['author_id']
+            isOneToOne: false
+            referencedRelation: 'profile_directory'
+            referencedColumns: ['id']
+          },
           {
             foreignKeyName: 'comments_author_id_fkey'
             columns: ['author_id']
@@ -220,6 +241,13 @@ export type Database = {
             foreignKeyName: 'films_assigned_id_fkey'
             columns: ['assigned_id']
             isOneToOne: false
+            referencedRelation: 'profile_directory'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'films_assigned_id_fkey'
+            columns: ['assigned_id']
+            isOneToOne: false
             referencedRelation: 'profiles'
             referencedColumns: ['id']
           },
@@ -227,7 +255,21 @@ export type Database = {
             foreignKeyName: 'films_created_by_fkey'
             columns: ['created_by']
             isOneToOne: false
+            referencedRelation: 'profile_directory'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'films_created_by_fkey'
+            columns: ['created_by']
+            isOneToOne: false
             referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'films_turn_holder_id_fkey'
+            columns: ['turn_holder_id']
+            isOneToOne: false
+            referencedRelation: 'profile_directory'
             referencedColumns: ['id']
           },
           {
@@ -276,7 +318,21 @@ export type Database = {
             foreignKeyName: 'invites_created_by_fkey'
             columns: ['created_by']
             isOneToOne: false
+            referencedRelation: 'profile_directory'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'invites_created_by_fkey'
+            columns: ['created_by']
+            isOneToOne: false
             referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'invites_profile_id_fkey'
+            columns: ['profile_id']
+            isOneToOne: false
+            referencedRelation: 'profile_directory'
             referencedColumns: ['id']
           },
           {
@@ -393,7 +449,21 @@ export type Database = {
             foreignKeyName: 'rotation_adjustments_created_by_fkey'
             columns: ['created_by']
             isOneToOne: false
+            referencedRelation: 'profile_directory'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'rotation_adjustments_created_by_fkey'
+            columns: ['created_by']
+            isOneToOne: false
             referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'rotation_adjustments_profile_id_fkey'
+            columns: ['profile_id']
+            isOneToOne: false
+            referencedRelation: 'profile_directory'
             referencedColumns: ['id']
           },
           {
@@ -433,7 +503,21 @@ export type Database = {
             foreignKeyName: 'rotation_next_decided_by_fkey'
             columns: ['decided_by']
             isOneToOne: false
+            referencedRelation: 'profile_directory'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'rotation_next_decided_by_fkey'
+            columns: ['decided_by']
+            isOneToOne: false
             referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'rotation_next_profile_id_fkey'
+            columns: ['profile_id']
+            isOneToOne: false
+            referencedRelation: 'profile_directory'
             referencedColumns: ['id']
           },
           {
@@ -470,7 +554,21 @@ export type Database = {
             foreignKeyName: 'rotation_passes_created_by_fkey'
             columns: ['created_by']
             isOneToOne: false
+            referencedRelation: 'profile_directory'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'rotation_passes_created_by_fkey'
+            columns: ['created_by']
+            isOneToOne: false
             referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'rotation_passes_profile_id_fkey'
+            columns: ['profile_id']
+            isOneToOne: false
+            referencedRelation: 'profile_directory'
             referencedColumns: ['id']
           },
           {
@@ -513,6 +611,13 @@ export type Database = {
             foreignKeyName: 'scores_entered_by_fkey'
             columns: ['entered_by']
             isOneToOne: false
+            referencedRelation: 'profile_directory'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'scores_entered_by_fkey'
+            columns: ['entered_by']
+            isOneToOne: false
             referencedRelation: 'profiles'
             referencedColumns: ['id']
           },
@@ -528,6 +633,13 @@ export type Database = {
             columns: ['film_id']
             isOneToOne: false
             referencedRelation: 'films'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'scores_profile_id_fkey'
+            columns: ['profile_id']
+            isOneToOne: false
+            referencedRelation: 'profile_directory'
             referencedColumns: ['id']
           },
           {
@@ -564,6 +676,13 @@ export type Database = {
             foreignKeyName: 'user_settings_profile_id_fkey'
             columns: ['profile_id']
             isOneToOne: true
+            referencedRelation: 'profile_directory'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'user_settings_profile_id_fkey'
+            columns: ['profile_id']
+            isOneToOne: true
             referencedRelation: 'profiles'
             referencedColumns: ['id']
           },
@@ -580,6 +699,46 @@ export type Database = {
           score_count: number | null
         }
         ComputedFields: never
+        Relationships: []
+      }
+      profile_directory: {
+        Row: {
+          claimed_at: string | null
+          colour: string | null
+          created_at: string
+          display_name: string
+          id: string
+          is_claimed: boolean | null
+          is_system: boolean
+          role: Database['public']['Enums']['profile_role']
+          sheet_keyword: string | null
+          updated_at: string
+        }
+        ComputedFields: never
+        Insert: {
+          claimed_at?: string | null
+          colour?: string | null
+          created_at?: string | null
+          display_name?: string | null
+          id?: string | null
+          is_claimed?: boolean | null
+          is_system?: boolean | null
+          role?: Database['public']['Enums']['profile_role'] | null
+          sheet_keyword?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          claimed_at?: string | null
+          colour?: string | null
+          created_at?: string | null
+          display_name?: string | null
+          id?: string | null
+          is_claimed?: boolean | null
+          is_system?: boolean | null
+          role?: Database['public']['Enums']['profile_role'] | null
+          sheet_keyword?: string | null
+          updated_at?: string | null
+        }
         Relationships: []
       }
     }
