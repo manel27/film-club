@@ -46,15 +46,17 @@ def _text_colour(bg: str) -> str:
 
 
 def _md(value: Any) -> str:
-    text = "" if value is None else str(value)
-    return text.replace("\\", "\\\\").replace("|", "\\|").replace("\n", " ").replace("<", "&lt;")
+    """Sheet text for a Markdown table cell: raw HTML escaped (so a note
+    can't inject markup), pipes and backslashes escaped, one line."""
+    text = html.escape("" if value is None else str(value), quote=False)
+    return text.replace("\\", "\\\\").replace("|", "\\|").replace("\r", " ").replace("\n", " ")
 
 
 def summarise(data: dict[str, Any]) -> dict[str, Any]:
     """Per-person totals and other derived figures used by both formats."""
-    films = {f["legacy_sheet_row"]: f for f in data["films"]}
+    films = {f["legacy_key"]: f for f in data["films"]}
     totals: dict[str, Counter] = defaultdict(Counter)
-    present_by_film: dict[int, set[str]] = defaultdict(set)
+    present_by_film: dict[str, set[str]] = defaultdict(set)
     for a in data["attendance"]:
         totals[a["profile"]]["present"] += 1
         present_by_film[a["film"]].add(a["profile"])
@@ -75,10 +77,10 @@ def summarise(data: dict[str, Any]) -> dict[str, Any]:
         avg = score_sum[p["display_name"]] / t["scored_counted"] if t["scored_counted"] else None
         people.append({**p, **{k: t[k] for k in ("chosen", "present", "scored", "scored_absent")}, "avg": avg})
 
-    scores_by_film: dict[int, list[tuple[str, str]]] = defaultdict(list)
+    scores_by_film: dict[str, list[tuple[str, str]]] = defaultdict(list)
     for s in data["scores"]:
         scores_by_film[s["film"]].append((s["profile"], s["score"]))
-    comments_by_film: dict[int, list[str]] = defaultdict(list)
+    comments_by_film: dict[str, list[str]] = defaultdict(list)
     for c in data["comments"]:
         comments_by_film[c["film"]].append(c["body"])
 
@@ -197,7 +199,8 @@ def render_html(data: dict[str, Any]) -> str:
     w("<h1>Film Club: migration preview</h1>")
     w(
         f"<p class='muted'>Source {_e(data['source'].get('name'))} · sha256 "
-        f"{_e(str(data['source'].get('sha256', ''))[:12])}… · planned films are those after {_e(data['today'])}. "
+        f"{_e(str(data['source'].get('sha256', ''))[:12])}… · <b>as of {_e(data['today'])}</b> "
+        "(films after this date are planned). "
         "Nothing has been imported yet.</p>"
     )
     w(
@@ -288,7 +291,8 @@ def render_html(data: dict[str, Any]) -> str:
         w("<th>Date</th><th>Title</th><th>Kind</th><th>Assigned</th><th>Present</th><th>Scores</th></tr></thead><tbody>")
         for f in films:
             ref = f["legacy_sheet_row"]
-            present = s["present_by_film"].get(ref, set())
+            key = f["legacy_key"]
+            present = s["present_by_film"].get(key, set())
             title = _e(f["title"])
             url = f.get("source_url") or ""
             if url.startswith(("https://", "http://")):
@@ -302,12 +306,12 @@ def render_html(data: dict[str, Any]) -> str:
                 extra.append("<span class='kind'>planned</span>")
             if f["is_easter_egg"]:
                 extra.append("<span class='lock'>🔒 easter egg, scores locked</span>")
-            notes = "".join(f"<div class='note'>💬 {_e(b)}</div>" for b in s["comments_by_film"].get(ref, []))
+            notes = "".join(f"<div class='note'>💬 {_e(b)}</div>" for b in s["comments_by_film"].get(key, []))
             chips = "".join(_chip(n, colours) for n in sorted(present)) or "<span class='muted'>—</span>"
             score_chips = "".join(
                 f"<span class='chip score{'' if n in present else ' absent'}'>{_swatch(colours.get(n))}"
                 f"{_e(n)} <b>{_e(v)}</b></span>"
-                for n, v in s["scores_by_film"].get(ref, [])
+                for n, v in s["scores_by_film"].get(key, [])
             ) or "<span class='muted'>—</span>"
             day = f" #{f['day_order']}" if f["day_order"] and f["day_order"] > 1 else ""
             w(
@@ -351,7 +355,7 @@ def render_markdown(data: dict[str, Any]) -> str:
     L += ["# Film Club: migration preview", ""]
     L += [
         f"Source `{_md(data['source'].get('name'))}` (sha256 `{str(data['source'].get('sha256', ''))[:12]}…`). "
-        f"Planned films are those after {data['today']}. Nothing has been imported yet.",
+        f"**As of {_md(data['today'])}** (films after this date are planned). Nothing has been imported yet.",
         "",
     ]
     L += [
@@ -369,7 +373,7 @@ def render_markdown(data: dict[str, Any]) -> str:
     for row in s["sanity"]:
         status = "" if row["ok"] is None else ("match" if row["ok"] else "**differs**")
         exp = row["expected"] if row["expected"] is not None else "—"
-        L.append(f"| {_md(row['label'])} | {row['actual']} | {exp} | {status} | {_md(row['note'])} |")
+        L.append(f"| {_md(row['label'])} | {_md(row['actual'])} | {_md(exp)} | {status} | {_md(row['note'])} |")
     kinds = ", ".join(f"{KIND_LABELS[k]} {v}" for k, v in c["kinds"].items())
     L += [f"| Films by kind | {kinds} | | | |", ""]
 
@@ -391,14 +395,15 @@ def render_markdown(data: dict[str, Any]) -> str:
         L += ["### Overrides applied", "", "| Row | Date | Title | Set | Reason |", "|---|---|---|---|---|"]
         for o in data["overrides_applied"]:
             sets = ", ".join(f"{k} = {v}" for k, v in o["set"].items())
-            L.append(f"| {o['row']} | {o['date']} | {_md(o['title'])} | {_md(sets)} | {_md(o['reason'])} |")
+            L.append(f"| {_md(o['row'])} | {_md(o['date'])} | {_md(o['title'])} | {_md(sets)} | {_md(o['reason'])} |")
         L += [""]
 
     L += [f"## Films ({len(data['films'])})", "", "Newest first. Scores marked `*` were given without being present.", ""]
     L += ["| Row | Date | Title | Kind | Assigned | Present | Scores | Notes |", "|---|---|---|---|---|---|---|---|"]
     for f in reversed(data["films"]):
         ref = f["legacy_sheet_row"]
-        present = s["present_by_film"].get(ref, set())
+        key = f["legacy_key"]
+        present = s["present_by_film"].get(key, set())
         title = f["title"] + (f" ({f['year_hint']})" if f["year_hint"] else "")
         if f["labels"]:
             title += f" [{', '.join(f['labels'])}]"
@@ -406,10 +411,10 @@ def render_markdown(data: dict[str, Any]) -> str:
             title += " — planned"
         if f["is_easter_egg"]:
             title += " — easter egg, scores locked"
-        scores = ", ".join(f"{n} {v}{'' if n in present else '*'}" for n, v in s["scores_by_film"].get(ref, []))
-        notes = " / ".join(s["comments_by_film"].get(ref, []))
+        scores = ", ".join(f"{n} {v}{'' if n in present else '*'}" for n, v in s["scores_by_film"].get(key, []))
+        notes = " / ".join(s["comments_by_film"].get(key, []))
         L.append(
-            f"| {ref} | {f['screened_on']} | {_md(title)} | {KIND_LABELS[f['kind']]} | {_md(f['assigned'])} | "
+            f"| {ref} | {_md(f['screened_on'])} | {_md(title)} | {KIND_LABELS[f['kind']]} | {_md(f['assigned'])} | "
             f"{_md(', '.join(sorted(present)))} | {_md(scores)} | {_md(notes)} |"
         )
     L += ["", f"## Observations ({len(data['observations'])})", ""]
