@@ -13,6 +13,8 @@
     "verbatimModuleSyntax": true,
     "moduleDetection": "force",
     "noEmit": true,
+    "allowJs": true,
+    "checkJs": true,
 
     /* Linting */
     "strict": true,
@@ -26,6 +28,7 @@
     "vitest.config.ts",
     "playwright.config.ts",
     "eslint.config.js",
-    "e2e"
+    "e2e",
+    "scripts/**/*.mjs"
   ]
 }

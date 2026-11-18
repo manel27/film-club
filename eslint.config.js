@@ -7,7 +7,15 @@ import globals from 'globals'
 import tseslint from 'typescript-eslint'
 
 export default defineConfig([
-  globalIgnores(['dist', 'coverage', 'playwright-report', 'test-results', 'supabase', 'docs']),
+  globalIgnores([
+    'dist',
+    'dist-e2e',
+    'coverage',
+    'playwright-report',
+    'test-results',
+    'supabase',
+    'docs',
+  ]),
   {
     files: ['**/*.{ts,tsx}'],
     extends: [
@@ -24,6 +32,11 @@ export default defineConfig([
   {
     files: ['*.config.{js,ts}', 'e2e/**/*.ts'],
     languageOptions: { globals: globals.node },
+  },
+  {
+    files: ['scripts/**/*.mjs'],
+    extends: [js.configs.recommended],
+    languageOptions: { ecmaVersion: 2023, sourceType: 'module', globals: globals.node },
   },
   prettier,
 ])
