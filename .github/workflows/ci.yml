@@ -53,6 +53,7 @@ jobs:
   build:
     name: Lint, test, build, e2e
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     env:
       VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
       VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
@@ -69,7 +70,17 @@ jobs:
       - run: npm run format:check
       - run: npm run typecheck
       - run: npm test
+      # The real build, with the project's public URL and publishable key.
       - run: npm run build
+      # E2E runs against a throwaway LOCAL Supabase stack (synthetic seed,
+      # its own dev keys from `supabase status`), never the hosted project.
+      # Playwright builds a separate copy of the app into dist-e2e/ pointed
+      # at it. Output is discarded: it only lists local URLs and demo keys.
+      - name: Start local Supabase (for e2e)
+        run: >-
+          npx supabase start
+          -x realtime,storage-api,imgproxy,mailpit,studio,edge-runtime,logflare,vector,supavisor
+          > /dev/null
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
       - name: Playwright e2e
@@ -81,6 +92,17 @@ jobs:
           name: playwright-report
           path: playwright-report/
           retention-days: 7
+      - name: Upload e2e screenshots (synthetic data only)
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-screenshots
+          path: test-results/screenshots/
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Stop local Supabase
+        if: always()
+        run: npx supabase stop --no-backup
 
   database:
     name: Database (migrations, pgTAP, types)
