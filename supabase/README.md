@@ -90,7 +90,9 @@ npm run db:reset   # drop the local database, re-apply all migrations, re-seed
 - **`profiles.auth_user_id` is never visible to browsers** (column grants), so
   `select *` on `profiles` is refused: read people from the
   **`profile_directory`** view (same columns minus `auth_user_id`), or name
-  the columns. Updates must not use `returning *` (supabase-js: pass explicit
+  the columns. The logged-in user's own profile comes from the
+  **`my_profile()`** RPC (one `profile_directory` row, or none when the login
+  isn't linked to a profile). Updates must not use `returning *` (supabase-js: pass explicit
   columns to `.select()`).
 - **TRUNCATE** is revoked from browsers and the secret key, and blocked for
   everyone on `films`/`scores` while any film's scores are locked.
