@@ -759,6 +759,27 @@ export type Database = {
           tmdb_id: number
         }[]
       }
+      my_profile: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          claimed_at: string | null
+          colour: string | null
+          created_at: string
+          display_name: string
+          id: string
+          is_claimed: boolean | null
+          is_system: boolean
+          role: Database['public']['Enums']['profile_role']
+          sheet_keyword: string | null
+          updated_at: string
+        }[]
+        SetofOptions: {
+          from: '*'
+          to: 'profile_directory'
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
     }
     Enums: {
       film_kind: 'normal' | 'democratico' | 'cinema' | 'maratona'
