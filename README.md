@@ -58,7 +58,8 @@ profile sees "Your account isn't linked yet".
 `scripts/create-admin.mjs` creates Manel's login and makes it the admin. It
 creates (or finds) the auth user with the email already confirmed, then links
 it to the existing **Manel** placeholder profile (from the history import) and
-sets the role to admin. If there is no Manel profile yet, it creates one.
+sets the role to admin. If there is no Manel profile yet (the import hasn't
+run), pass `--create-profile` and it creates one; without that flag it stops.
 
 1. Put the project URL and **secret** key in an env file that git ignores, for
    example `admin.env.local` (any `*.local` file is ignored) or a file outside
@@ -69,8 +70,10 @@ sets the role to admin. If there is no Manel profile yet, it creates one.
    SUPABASE_SECRET_KEY=...                   # local: "Secret key" from `npx supabase status`
    ```
 
-   The script refuses an env file inside the repository that git would
-   commit, and never prints the key.
+   The script never prints the key. It resolves symlinks and refuses an env
+   file inside any git working tree (including a worktree) unless git confirms
+   that the file is ignored there; if git can't check, it refuses. Plain
+   `http://` is only accepted for a local stack.
 
 2. Run it and type the password at the hidden prompt (twice):
 
@@ -78,16 +81,20 @@ sets the role to admin. If there is no Manel profile yet, it creates one.
    node scripts/create-admin.mjs --env admin.env.local --email you@example.com
    ```
 
-   Options: `--name` (profile to link, default `Manel`), `--colour '#rrggbb'`
-   (only used if the profile has to be created), `--reset-password` (set a new
-   password on an existing login). There is no password option on purpose: it
-   would end up in your shell history.
+   Options: `--name` (profile to link, default `Manel`; matched exactly,
+   ignoring case and surrounding spaces, no wildcards), `--create-profile`
+   (create the profile if there is none with that name), `--colour '#rrggbb'`
+   (only with `--create-profile`), `--reset-password` (set a new password on an
+   existing login). There is no password option on purpose: it would end up in
+   your shell history. It must run in an interactive terminal (piped input is
+   refused).
 
 Running it again changes nothing. It refuses, without changing anything, if the
 profile is already claimed by a different login, if the email is already
 linked to another profile, or if the name is a system profile (Cinema, Sheet
-archive). If linking fails after it created a new login, it deletes that login
-again.
+archive), or if more than one profile has that name. If linking fails after it
+created a new login, it deletes that login again (and tells you to delete it by
+hand in the dashboard if even that fails).
 
 - **Local first.** On the local stack, run `npm run db:reset` afterwards before
   `npm run db:test`: the pgTAP tests expect the seed exactly as it is.

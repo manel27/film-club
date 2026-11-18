@@ -6,9 +6,26 @@ export default defineConfig((configEnv) =>
     viteConfig(configEnv),
     defineConfig({
       test: {
-        environment: 'jsdom',
-        include: ['src/**/*.test.{ts,tsx}', 'scripts/**/*.test.mjs'],
-        setupFiles: ['./src/test/setup.ts'],
+        projects: [
+          {
+            extends: true,
+            test: {
+              name: 'app',
+              environment: 'jsdom',
+              include: ['src/**/*.test.{ts,tsx}'],
+              setupFiles: ['./src/test/setup.ts'],
+            },
+          },
+          {
+            // Node scripts (e.g. the admin bootstrap) run in plain Node.
+            extends: true,
+            test: {
+              name: 'scripts',
+              environment: 'node',
+              include: ['scripts/**/*.test.mjs'],
+            },
+          },
+        ],
       },
     }),
   ),

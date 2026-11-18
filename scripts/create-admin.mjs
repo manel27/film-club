@@ -14,22 +14,22 @@
 // already claimed by a different login.
 
 import { execFileSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync, realpathSync } from 'node:fs'
 import path from 'node:path'
-import { fileURLToPath, pathToFileURL } from 'node:url'
+import { pathToFileURL } from 'node:url'
 import { parseArgs, parseEnv } from 'node:util'
 import { createClient } from '@supabase/supabase-js'
 
 const DEFAULT_NAME = 'Manel'
 const MIN_PASSWORD_LENGTH = 8
-const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
 const USAGE = `Usage: node scripts/create-admin.mjs --env <file> --email <email> [options]
 
   --env <file>        git-ignored env file with SUPABASE_URL and SUPABASE_SECRET_KEY
   --email <email>     the admin's login email
-  --name <name>       profile to link (default: ${DEFAULT_NAME})
-  --colour <#rrggbb>  colour, only used if the profile has to be created
+  --name <name>       profile to link (default: ${DEFAULT_NAME}; exact name, case-insensitive)
+  --create-profile    create the profile if there is none with that name yet
+  --colour <#rrggbb>  colour, only used with --create-profile
   --reset-password    set a new password on an existing login
   --help              show this help
 
@@ -43,8 +43,15 @@ export class BootstrapError extends Error {}
 // ---------------------------------------------------------------------------
 
 /**
+ * @typedef {{
+ *   help: false, envFile: string, email: string, name: string,
+ *   colour: string | null, createProfile: boolean, resetPassword: boolean,
+ * }} CliArgs
+ */
+
+/**
  * @param {string[]} argv
- * @returns {{ help: true } | { help: false, envFile: string, email: string, name: string, colour: string | null, resetPassword: boolean }}
+ * @returns {{ help: true } | CliArgs}
  */
 export function parseCliArgs(argv) {
   let values
@@ -58,6 +65,7 @@ export function parseCliArgs(argv) {
         email: { type: 'string' },
         name: { type: 'string', default: DEFAULT_NAME },
         colour: { type: 'string' },
+        'create-profile': { type: 'boolean', default: false },
         'reset-password': { type: 'boolean', default: false },
         password: { type: 'string' },
         help: { type: 'boolean', default: false },
@@ -86,12 +94,16 @@ export function parseCliArgs(argv) {
   if (colour !== null && !/^#[0-9a-f]{6}$/.test(colour)) {
     throw new BootstrapError('--colour must look like #rrggbb.')
   }
+  if (colour !== null && !values['create-profile']) {
+    throw new BootstrapError('--colour is only used together with --create-profile.')
+  }
   return {
     help: false,
     envFile: values.env,
     email,
     name,
     colour,
+    createProfile: values['create-profile'],
     resetPassword: values['reset-password'],
   }
 }
@@ -116,8 +128,11 @@ export function readAdminEnv(text) {
   } catch {
     throw new BootstrapError('SUPABASE_URL is not a valid URL.')
   }
-  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
-    throw new BootstrapError('SUPABASE_URL must be an http(s) URL.')
+  const isLocal = isLocalHost(parsed.hostname)
+  if (parsed.protocol !== 'https:' && !(parsed.protocol === 'http:' && isLocal)) {
+    throw new BootstrapError(
+      'SUPABASE_URL must be https (plain http is only allowed for a local stack).',
+    )
   }
   if (secretKey.startsWith('sb_publishable_')) {
     throw new BootstrapError(
@@ -127,12 +142,111 @@ export function readAdminEnv(text) {
   if (!secretKey.startsWith('sb_secret_') && !secretKey.startsWith('eyJ')) {
     throw new BootstrapError('SUPABASE_SECRET_KEY does not look like a Supabase secret key.')
   }
-  return { url: parsed.origin, secretKey, isLocal: isLocalHost(parsed.hostname) }
+  return { url: parsed.origin, secretKey, isLocal }
 }
 
-/** @param {string} hostname */
+/**
+ * @param {string} hostname  as given by URL#hostname (IPv6 keeps its brackets)
+ */
 export function isLocalHost(hostname) {
-  return ['localhost', '127.0.0.1', '[::1]', '::1'].includes(hostname)
+  return ['localhost', '127.0.0.1', '[::1]'].includes(hostname)
+}
+
+/**
+ * Same rule as the database's unique index: lower(btrim(display_name)).
+ * @param {string} name
+ */
+function normaliseName(name) {
+  return name.trim().toLowerCase()
+}
+
+/**
+ * True when `child` is `parent` itself or inside it (`..env` is inside).
+ * @param {string} parent
+ * @param {string} child
+ */
+export function isInside(parent, child) {
+  const relative = path.relative(parent, child)
+  if (relative === '') return true
+  if (relative === '..' || relative.startsWith(`..${path.sep}`)) return false
+  return !path.isAbsolute(relative)
+}
+
+// ---------------------------------------------------------------------------
+// Env file safety: never read secrets from a file git would commit.
+// ---------------------------------------------------------------------------
+
+/**
+ * @typedef {(args: string[], cwd: string) => { status: number, stdout: string }} RunGit
+ * @type {RunGit}
+ */
+function runGit(args, cwd) {
+  try {
+    const stdout = execFileSync('git', args, {
+      cwd,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    })
+    return { status: 0, stdout }
+  } catch (error) {
+    const { status } = /** @type {{ status?: number | null }} */ (error)
+    // status is null/undefined when git couldn't be run at all (e.g. not installed).
+    return { status: typeof status === 'number' ? status : -1, stdout: '' }
+  }
+}
+
+/** @param {string} dir */
+function nearestGitDir(dir) {
+  for (let current = dir; ; current = path.dirname(current)) {
+    if (existsSync(path.join(current, '.git'))) return current
+    if (path.dirname(current) === current) return null
+  }
+}
+
+/**
+ * Refuses an env file that git would commit. Symlinks are resolved first.
+ * Fails closed: if the file is inside a git working tree (any `.git` above
+ * it, including a worktree's), git must positively confirm that the file is
+ * ignored by the repository that actually contains it. A file outside every
+ * repository is fine (that's the recommended place).
+ *
+ * @param {string} file
+ * @param {RunGit} [git]
+ * @returns {string} the resolved path to read
+ */
+export function assertEnvFileIgnored(file, git = runGit) {
+  let real
+  try {
+    real = realpathSync(file)
+  } catch {
+    throw new BootstrapError(`Could not read the env file ${file}.`)
+  }
+  const dir = path.dirname(real)
+  if (!nearestGitDir(dir)) return real
+
+  const top = git(['rev-parse', '--show-toplevel'], dir)
+  if (top.status !== 0 || !top.stdout.trim()) {
+    throw new BootstrapError(
+      `${file} is inside a git working tree, but git could not check it. ` +
+        'Move the env file outside the repository.',
+    )
+  }
+  const root = realpathSync(top.stdout.trim())
+  if (!isInside(root, real)) {
+    throw new BootstrapError(`Could not work out which repository contains ${file}.`)
+  }
+  // Without --no-index: a tracked file is never "ignored", so it is refused.
+  const check = git(['check-ignore', '--quiet', '--', path.relative(root, real)], root)
+  if (check.status === 0) return real
+  if (check.status === 1) {
+    throw new BootstrapError(
+      `${file} is inside the repository and not git-ignored. ` +
+        'Use a file ending in .local, or keep it outside the repository.',
+    )
+  }
+  throw new BootstrapError(
+    `git could not check whether ${file} is ignored. Move the env file outside the repository.`,
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -167,9 +281,28 @@ export async function findUserByEmail(client, email) {
   }
 }
 
-/** @param {string} value */
-function escapeLike(value) {
-  return value.replace(/[\\%_]/g, (c) => `\\${c}`)
+/**
+ * The profile whose name equals `name` ignoring case and surrounding spaces.
+ * Compared in JavaScript (the club has a few dozen profiles), so no
+ * characters in the name act as wildcards. More than one match is refused.
+ *
+ * @param {Pick<Client, 'from'>} client
+ * @param {string} name
+ * @returns {Promise<ProfileRow | null>}
+ */
+export async function findProfileByName(client, name) {
+  const { data, error } = await client.from('profiles').select(PROFILE_COLUMNS)
+  if (error) throw new BootstrapError(`Could not read profiles: ${error.message}`)
+  const wanted = normaliseName(name)
+  const matches = /** @type {ProfileRow[]} */ (data ?? []).filter(
+    (p) => normaliseName(p.display_name) === wanted,
+  )
+  if (matches.length > 1) {
+    throw new BootstrapError(
+      `More than one profile is named "${name}". Nothing was changed; fix the names first.`,
+    )
+  }
+  return matches[0] ?? null
 }
 
 /**
@@ -179,6 +312,7 @@ function escapeLike(value) {
  *   client: Client,
  *   email: string,
  *   name?: string,
+ *   createProfile?: boolean,
  *   colour?: string | null,
  *   resetPassword?: boolean,
  *   getPassword: (isNewUser: boolean) => Promise<string>,
@@ -190,20 +324,20 @@ export async function bootstrapAdmin({
   client,
   email,
   name = DEFAULT_NAME,
+  createProfile = false,
   colour = null,
   resetPassword = false,
   getPassword,
   log = () => {},
 }) {
   // 1. Look before touching anything, so refusals change nothing.
-  const { data: candidates, error: profileError } = await client
-    .from('profiles')
-    .select(PROFILE_COLUMNS)
-    .ilike('display_name', escapeLike(name.trim()))
-  if (profileError) throw new BootstrapError(`Could not read profiles: ${profileError.message}`)
-  /** @type {ProfileRow | null} */
-  const target = /** @type {ProfileRow[]} */ (candidates ?? [])[0] ?? null
+  const target = await findProfileByName(client, name)
 
+  if (!target && !createProfile) {
+    throw new BootstrapError(
+      `No profile named "${name}"; pass --create-profile to create one. Nothing was changed.`,
+    )
+  }
   if (target?.is_system) {
     throw new BootstrapError(`"${target.display_name}" is a system profile and can't log in.`)
   }
@@ -284,8 +418,15 @@ export async function bootstrapAdmin({
     return { userId: user.id, userAction, profileId: profile.id, profileAction: profile.action }
   } catch (error) {
     if (userAction === 'created') {
-      await client.auth.admin.deleteUser(user.id)
-      log('Removed the new login again because linking failed.')
+      const { error: deleteError } = await client.auth.admin.deleteUser(user.id)
+      if (deleteError) {
+        log(
+          `WARNING: the new login ${email} was left over (removing it failed: ${deleteError.message}). ` +
+            'Delete it by hand in the Supabase dashboard (Authentication > Users) before running this again.',
+        )
+      } else {
+        log('Removed the new login again because linking failed.')
+      }
     }
     throw error
   }
@@ -347,141 +488,154 @@ function assertPassword(password) {
 // Terminal I/O
 // ---------------------------------------------------------------------------
 
+// Terminal escape sequences: CSI (arrows, bracketed-paste markers, ...),
+// SS3 (some function keys), and any other ESC + one character.
+// eslint-disable-next-line no-control-regex
+const ESCAPE_SEQUENCE = /\u001b(?:\[[0-?]*[ -/]*[@-~]|O.|[^[O])?/gs
+
 /**
- * Reads a line from the terminal without echoing it.
- * @param {string} question
- * @returns {Promise<string>}
+ * Feeds one chunk of raw-mode terminal input into a hidden-input state.
+ * Escape sequences are dropped, backspace deletes, Enter finishes (anything
+ * after it in the same pasted chunk is ignored), Ctrl+C cancels.
+ *
+ * @param {string} value  what has been typed so far
+ * @param {string} chunk
+ * @returns {{ value: string, done: boolean, cancelled: boolean }}
  */
-export function promptHidden(question) {
+export function feedHiddenInput(value, chunk) {
+  let current = value
+  for (const ch of chunk.replace(ESCAPE_SEQUENCE, '')) {
+    if (ch === '\r' || ch === '\n' || ch === '\u0004')
+      return { value: current, done: true, cancelled: false }
+    if (ch === '\u0003') return { value: '', done: true, cancelled: true }
+    if (ch === '\u007f' || ch === '\b') {
+      current = Array.from(current).slice(0, -1).join('')
+    } else if (ch >= ' ') {
+      current += ch
+    }
+  }
+  return { value: current, done: false, cancelled: false }
+}
+
+/**
+ * @typedef {{
+ *   isTTY: boolean,
+ *   promptHidden: (question: string) => Promise<string>,
+ *   promptLine: (question: string) => Promise<string>,
+ *   out: (line: string) => void,
+ *   createClient: (url: string, key: string) => Client,
+ *   runGit?: RunGit,
+ * }} Io
+ */
+
+/** @returns {Io} */
+function processIo() {
   const { stdin, stderr } = process
-  if (!stdin.isTTY) {
-    return Promise.reject(
-      new BootstrapError('The password prompt needs an interactive terminal (stdin is not a TTY).'),
-    )
-  }
-  return new Promise((resolve, reject) => {
-    let value = ''
-    const cleanup = () => {
-      stdin.off('data', onData)
-      stdin.setRawMode(false)
-      stdin.pause()
-      stderr.write('\n')
-    }
-    /** @param {string} chunk */
-    const onData = (chunk) => {
-      for (const ch of chunk) {
-        if (ch === '\r' || ch === '\n' || ch === '\u0004') {
+  return {
+    isTTY: Boolean(stdin.isTTY),
+    out: (line) => console.log(line),
+    promptHidden(question) {
+      return new Promise((resolve, reject) => {
+        let value = ''
+        const cleanup = () => {
+          stdin.off('data', onData)
+          stdin.setRawMode(false)
+          stdin.pause()
+          stderr.write('\n')
+        }
+        /** @param {string} chunk */
+        const onData = (chunk) => {
+          const next = feedHiddenInput(value, chunk)
+          value = next.value
+          if (!next.done) return
           cleanup()
-          resolve(value)
-          return
+          if (next.cancelled) reject(new BootstrapError('Cancelled.'))
+          else resolve(value)
         }
-        if (ch === '\u0003') {
-          cleanup()
-          reject(new BootstrapError('Cancelled.'))
-          return
-        }
-        if (ch === '\u007f' || ch === '\b') {
-          value = Array.from(value).slice(0, -1).join('')
-        } else if (ch >= ' ') {
-          value += ch
-        }
+        stderr.write(question)
+        stdin.setRawMode(true)
+        stdin.setEncoding('utf8')
+        stdin.resume()
+        stdin.on('data', onData)
+      })
+    },
+    async promptLine(question) {
+      const { createInterface } = await import('node:readline/promises')
+      const rl = createInterface({ input: stdin, output: stderr })
+      try {
+        return (await rl.question(question)).trim()
+      } finally {
+        rl.close()
       }
-    }
-    stderr.write(question)
-    stdin.setRawMode(true)
-    stdin.setEncoding('utf8')
-    stdin.resume()
-    stdin.on('data', onData)
-  })
-}
-
-/**
- * @param {string} question
- * @returns {Promise<string>}
- */
-async function promptVisible(question) {
-  const { createInterface } = await import('node:readline/promises')
-  const rl = createInterface({ input: process.stdin, output: process.stderr })
-  try {
-    return (await rl.question(question)).trim()
-  } finally {
-    rl.close()
+    },
+    createClient: (url, key) =>
+      createClient(url, key, {
+        auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+      }),
   }
 }
 
 /**
- * Refuses an env file inside the repo that git would commit.
- * @param {string} file
+ * The command line. Exported (with injectable I/O) so the interactive paths
+ * can be tested with a fake terminal.
+ *
+ * @param {string[]} argv
+ * @param {Io} [io]
  */
-function assertEnvFileIgnored(file) {
-  const absolute = path.resolve(file)
-  const relative = path.relative(REPO_ROOT, absolute)
-  if (relative.startsWith('..') || path.isAbsolute(relative)) return
-  try {
-    execFileSync('git', ['check-ignore', '--quiet', '--', relative], {
-      cwd: REPO_ROOT,
-      stdio: 'ignore',
-    })
-  } catch (error) {
-    if (/** @type {{ status?: number }} */ (error).status === 1) {
-      throw new BootstrapError(
-        `${relative} is inside the repository and not git-ignored. Use a file ending in .local or under a git-ignored folder.`,
-      )
-    }
-  }
-}
-
-async function main() {
-  const args = parseCliArgs(process.argv.slice(2))
+export async function main(argv, io = processIo()) {
+  const args = parseCliArgs(argv)
   if (args.help) {
-    console.log(USAGE)
+    io.out(USAGE)
     return
   }
+  if (!io.isTTY) {
+    throw new BootstrapError(
+      'Run this in an interactive terminal: it asks for confirmation and the password ' +
+        '(stdin is not a TTY).',
+    )
+  }
 
-  assertEnvFileIgnored(args.envFile)
+  const envPath = assertEnvFileIgnored(args.envFile, io.runGit)
   let envText
   try {
-    envText = readFileSync(args.envFile, 'utf8')
+    envText = readFileSync(envPath, 'utf8')
   } catch {
     throw new BootstrapError(`Could not read the env file ${args.envFile}.`)
   }
   const env = readAdminEnv(envText)
   const host = new URL(env.url).host
 
-  console.log(`Target: ${host}${env.isLocal ? ' (local stack)' : ''}`)
+  io.out(`Target: ${host}${env.isLocal ? ' (local stack)' : ''}`)
   if (!env.isLocal) {
     // Production is an owner gate: make the target explicit.
-    const typed = await promptVisible(`This is NOT a local stack. Type "${host}" to continue: `)
+    const typed = await io.promptLine(`This is NOT a local stack. Type "${host}" to continue: `)
     if (typed !== host) throw new BootstrapError('Cancelled; nothing was changed.')
   }
 
-  const client = createClient(env.url, env.secretKey, {
-    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
-  })
-
   await bootstrapAdmin({
-    client,
+    client: io.createClient(env.url, env.secretKey),
     email: args.email,
     name: args.name,
+    createProfile: args.createProfile,
     colour: args.colour,
     resetPassword: args.resetPassword,
-    log: (line) => console.log(line),
+    log: io.out,
     async getPassword(isNewUser) {
-      const password = await promptHidden(
+      const password = await io.promptHidden(
         isNewUser
           ? `Password for the new login ${args.email}: `
           : `New password for ${args.email}: `,
       )
-      const again = await promptHidden('Repeat the password: ')
+      const again = await io.promptHidden('Repeat the password: ')
       if (password !== again) throw new BootstrapError('The passwords do not match.')
       return password
     },
   })
-  console.log('Done.')
+  io.out('Done.')
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
-  main().catch((error) => {
+  main(process.argv.slice(2)).catch((error) => {
     if (error instanceof BootstrapError) {
       console.error(`Error: ${error.message}`)
     } else {
