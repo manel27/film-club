@@ -1,5 +1,14 @@
 import { expect, test, type Page } from '@playwright/test'
-import { E2E_ADMIN, E2E_PASSWORD, E2E_UNLINKED } from './fixtures'
+import {
+  adminClient,
+  E2E_ADMIN,
+  E2E_MEMBER,
+  E2E_PASSWORD,
+  E2E_UNLINKED,
+  ensureLinkedLogin,
+  removeLoginAndProfile,
+  userClient,
+} from './fixtures'
 
 const SCREENSHOTS = 'test-results/screenshots'
 
@@ -90,4 +99,79 @@ test('a login without a profile sees the "not linked" page and can log out', asy
   await page.getByRole('button', { name: 'Log out' }).click()
   await expect(page).toHaveURL(/#\/login$/)
   await expect(page.getByRole('heading', { name: 'Log in' })).toBeVisible()
+})
+
+test('a member sees the shell without a role badge', async ({ page }) => {
+  await page.goto('./#/login')
+  await logIn(page, E2E_MEMBER.email, E2E_PASSWORD)
+  const header = page.getByRole('banner')
+  await expect(header.getByText(E2E_MEMBER.name)).toBeVisible()
+  await expect(header.locator('.badge')).toHaveCount(0)
+  await expect(header.getByText(/^(Admin|Moderator)$/)).toHaveCount(0)
+})
+
+test.describe('the session is checked with the server', () => {
+  // Each test uses its own throwaway login, since it deletes or revokes it.
+  const client = adminClient()
+
+  test('a login deleted on the server is sent to the login page on reload', async ({ page }) => {
+    const account = {
+      email: 'e2e-deleted@example.test',
+      name: 'E2E Deleted',
+      colour: '#999999',
+      role: 'member',
+    }
+    const userId = await ensureLinkedLogin(client, account)
+    try {
+      await page.goto('./#/login')
+      await logIn(page, account.email, E2E_PASSWORD)
+      await expect(page.getByRole('banner').getByText(account.name)).toBeVisible()
+
+      const { error } = await client.auth.admin.deleteUser(userId)
+      expect(error).toBeNull()
+
+      await page.reload()
+      await expect(page).toHaveURL(/#\/login$/)
+      await expect(page.getByText('Your session has ended. Please log in again.')).toBeVisible()
+      await expect(page.getByText(account.name)).toHaveCount(0)
+    } finally {
+      await removeLoginAndProfile(client, account.email, account.name)
+    }
+  })
+
+  test('a global sign-out elsewhere ends the session when the tab regains focus', async ({
+    page,
+  }) => {
+    const account = {
+      email: 'e2e-revoked@example.test',
+      name: 'E2E Revoked',
+      colour: '#888888',
+      role: 'member',
+    }
+    await ensureLinkedLogin(client, account)
+    try {
+      await page.goto('./#/login')
+      await logIn(page, account.email, E2E_PASSWORD)
+      await expect(page.getByRole('banner').getByText(account.name)).toBeVisible()
+
+      // "Log out everywhere" from another device.
+      const elsewhere = userClient()
+      const { error: signInError } = await elsewhere.auth.signInWithPassword({
+        email: account.email,
+        password: E2E_PASSWORD,
+      })
+      expect(signInError).toBeNull()
+      const { error: signOutError } = await elsewhere.auth.signOut({ scope: 'global' })
+      expect(signOutError).toBeNull()
+
+      await page.evaluate(() => window.dispatchEvent(new Event('focus')))
+      await expect(page).toHaveURL(/#\/login$/)
+      await expect(page.getByText('Your session has ended. Please log in again.')).toBeVisible()
+
+      await page.reload()
+      await expect(page.getByRole('heading', { name: 'Log in' })).toBeVisible()
+    } finally {
+      await removeLoginAndProfile(client, account.email, account.name)
+    }
+  })
 })

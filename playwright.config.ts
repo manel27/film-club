@@ -1,7 +1,9 @@
 import { defineConfig, devices } from '@playwright/test'
 import { localSupabase } from './e2e/localSupabase'
 
-const PORT = 4173
+// Not Vite's default preview port, so a stray `vite preview` of some other
+// build is never mistaken for this one.
+const PORT = 4317
 
 // End-to-end tests run against the LOCAL Supabase stack (`npm run db:start`)
 // and a production build of the app pointed at it, served by `vite preview`
@@ -28,7 +30,8 @@ export default defineConfig({
       `npx vite build --outDir dist-e2e --emptyOutDir --logLevel warn && ` +
       `npx vite preview --outDir dist-e2e --port ${PORT} --strictPort`,
     url: `http://localhost:${PORT}/film-club/`,
-    reuseExistingServer: !process.env.CI,
+    // Always serve this build: never reuse whatever listens on the port.
+    reuseExistingServer: false,
     timeout: 120_000,
     env: {
       VITE_SUPABASE_URL: supabase.apiUrl,
