@@ -89,7 +89,7 @@ jobs:
           -x realtime,storage-api,imgproxy,mailpit,studio,edge-runtime,logflare,vector,supavisor
           > /dev/null
       - name: Lint database functions
-        run: npx supabase db lint -s public,app --level warning --fail-on error
+        run: npx supabase db lint -s public,app --level warning --fail-on warning
       - name: pgTAP tests (RLS, permissions, duplicates, score lock)
         run: npx supabase test db
       - name: Generated types are up to date
