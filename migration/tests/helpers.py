@@ -59,9 +59,16 @@ def rules(entries: list[dict[str, Any]], number: int | None = None) -> list[str]
     return [e["rule"] for e in entries if number is None or e.get("row") == number]
 
 
+def key(result: dict[str, Any], number: int) -> str:
+    """The legacy_key of the film from sheet row ``number``."""
+    return film(result, number)["legacy_key"]
+
+
 def scores_of(result: dict[str, Any], number: int) -> dict[str, str]:
-    return {s["profile"]: s["score"] for s in result["scores"] if s["film"] == number}
+    k = key(result, number)
+    return {s["profile"]: s["score"] for s in result["scores"] if s["film"] == k}
 
 
 def present_at(result: dict[str, Any], number: int) -> set[str]:
-    return {a["profile"] for a in result["attendance"] if a["film"] == number}
+    k = key(result, number)
+    return {a["profile"] for a in result["attendance"] if a["film"] == k}

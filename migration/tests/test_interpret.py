@@ -160,7 +160,9 @@ class InterpretFixtureTest(unittest.TestCase):
     def test_easter_egg_scores_kept_and_locked(self):
         f = film(self.result, 9)
         self.assertTrue(f["is_easter_egg"])
-        self.assertTrue(f["scores_locked"])
+        # Not locked at insert: scores go in first, then the lock (plan 4.4).
+        self.assertFalse(f["scores_locked"])
+        self.assertEqual(self.result["lock_after_scores"], [f["legacy_key"]])
         self.assertEqual(f["assigned"], "Manel")
         self.assertEqual(set(scores_of(self.result, 9).values()), {"11.00"})
         self.assertEqual(len(scores_of(self.result, 9)), 4)
@@ -181,8 +183,21 @@ class InterpretFixtureTest(unittest.TestCase):
         self.assertEqual(
             self.result["comments"],
             [
-                {"film": 3, "author": "Sheet archive", "body": "Great soundtrack & a bold ending", "is_legacy": True},
-                {"film": 9, "author": "Sheet archive", "body": "It's a joke", "is_legacy": True},
+                {
+                    "film": "2026-11-28|quiet orchard",
+                    "author": "Sheet archive",
+                    "body": "Great soundtrack & a bold ending",
+                    "is_legacy": True,
+                    "created_at": "2026-11-28",
+                },
+                {
+                    # entity decoded, line break kept
+                    "film": "2026-10-24|hollow kite",
+                    "author": "Sheet archive",
+                    "body": "It's a\njoke <3",
+                    "is_legacy": True,
+                    "created_at": "2026-10-24",
+                },
             ],
         )
 
