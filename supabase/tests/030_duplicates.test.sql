@@ -5,7 +5,7 @@
 -- 'Porto de Néon' (2021, TMDB 900002); 3 'Paper Moons Over the River'
 -- (2018, manual).
 begin;
-select plan(28);
+select plan(31);
 
 -- ---------------------------------------------------------------- TMDB id
 select tests.login_as('admin');
@@ -38,6 +38,12 @@ select throws_ok($$insert into public.films (title, release_year, screened_on, a
 select throws_ok($$insert into public.films (title, release_year, screened_on, assigned_id)
   values ('Pâper Moöns Over the Rivér', 2018, '2026-06-06', tests.profile_id('admin'))$$,
   '23505', null, 'accents are ignored');
+select throws_ok($$insert into public.films (title, release_year, screened_on, assigned_id)
+  values (U&'Paper Moons\200B Over the Ri\00ADver', 2018, '2026-06-06', tests.profile_id('admin'))$$,
+  '23505', null, 'invisible characters (zero-width space, soft hyphen) are ignored');
+select throws_ok($$insert into public.films (title, release_year, screened_on, assigned_id)
+  values (U&'\FEFFThe Quiet\2060 Orchard', 2019, '2026-06-06', tests.profile_id('admin'))$$,
+  '23505', null, 'BOM and word joiner are ignored in the manual vs TMDB cross-match');
 select lives_ok($$insert into public.films (title, release_year, screened_on, assigned_id)
   values ('Paper Moons Over the River', 1987, '2026-06-06', tests.profile_id('admin'))$$,
   'same manual title with a different year is a different film');
@@ -115,6 +121,9 @@ select is(
 select is(
   (select count(*)::int from public.film_duplicate_check('Neon Harbour', 2021, 999999)),
   0, 'film_duplicate_check: a different TMDB film with the same title is not a clash');
+select is(
+  (select array_agg(id order by id) from public.film_duplicate_check(U&'The\200D Quiet Orchard', 2019)),
+  array[1::bigint], 'film_duplicate_check ignores invisible characters');
 select is(
   (select count(*)::int from public.film_duplicate_check('A Film Nobody Has Seen', 2020)),
   0, 'film_duplicate_check returns nothing for a new film');

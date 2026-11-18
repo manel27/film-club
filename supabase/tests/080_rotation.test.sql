@@ -2,7 +2,7 @@
 -- passes, record next-chooser decision" (A ✔ Mo ✔ Me ✘ V ✘ — ✘) and
 -- "Rotation adjustments" (A ✔ Mo ✔ Me ✘ V ✘ — ✘; decision N4).
 begin;
-select plan(43);
+select plan(49);
 
 -- A viewer pass to try to remove (import path).
 insert into public.rotation_passes (week_start, profile_id) values ('2026-03-02', tests.profile_id('viewer'));
@@ -80,6 +80,23 @@ select is(tests.affected($$update public.rotation_next set profile_id = tests.pr
 reset role;
 select is((select decided_by from public.rotation_next where week_start = '2026-03-16'), tests.profile_id('moderator'),
   'decided_by records the last decider');
+select tests.login_as('moderator');
+select throws_ok($$insert into public.rotation_next (week_start, profile_id) values ('2026-04-06', tests.profile_id('cinema'))$$,
+  '23514', null, 'a system profile cannot be picked as next chooser');
+select throws_ok($$update public.rotation_next set profile_id = tests.profile_id('archive') where week_start = '2026-03-23'$$,
+  '23514', null, 'a decision cannot be changed to a system profile');
+select is(tests.affected($$update public.rotation_next set created_at = '2000-01-01' where week_start = '2026-03-23'$$), 1,
+  'a browser update that touches created_at succeeds...');
+reset role;
+select isnt((select created_at from public.rotation_next where week_start = '2026-03-23'), '2000-01-01'::timestamptz,
+  '...but created_at is kept (immutable for browsers)');
+select tests.login_as('moderator');
+insert into public.rotation_next (week_start, profile_id, created_at) values ('2026-04-13', tests.profile_id('member'), '2000-01-01');
+reset role;
+select ok((select created_at > '2020-01-01' from public.rotation_next where week_start = '2026-04-13'),
+  'a forged created_at on insert is replaced by the server time');
+select throws_ok($$insert into public.rotation_next (week_start, profile_id) values ('2026-04-20', '00000000-0000-4000-8000-0000000000c2')$$,
+  '23514', null, 'the import cannot pick a system profile as next chooser either');
 select tests.login_as('member');
 select throws_ok($$insert into public.rotation_next (week_start, profile_id) values ('2026-03-30', tests.profile_id('member'))$$,
   '42501', null, 'member cannot record a next-chooser decision');

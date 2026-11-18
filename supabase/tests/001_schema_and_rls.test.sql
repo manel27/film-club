@@ -1,7 +1,7 @@
 -- Structure: every table has RLS (deny by default), no anon grants, no
 -- TRUNCATE for browsers, helpers are hardened, role helpers resolve roles.
 begin;
-select plan(31);
+select plan(48);
 
 select tables_are(
   'public',
@@ -26,6 +26,42 @@ select is(
    where table_schema = 'public' and grantee in ('anon', 'authenticated')
      and privilege_type in ('TRUNCATE', 'REFERENCES', 'TRIGGER')),
   0, 'browsers never get TRUNCATE (which ignores RLS), REFERENCES or TRIGGER');
+
+select is(
+  (select count(*)::int from information_schema.role_table_grants
+   where table_schema = 'public' and grantee = 'service_role' and privilege_type = 'TRUNCATE'),
+  0, 'the secret key (service_role) has no TRUNCATE on any public table');
+
+select ok(
+  (select bool_and(has_table_privilege('service_role', c.oid, 'truncate') = false)
+   from pg_class c where c.relnamespace = 'public'::regnamespace and c.relkind = 'r'),
+  'has_table_privilege agrees: service_role cannot truncate any public table');
+
+select ok(
+  exists (select 1 from pg_trigger t where t.tgrelid = 'public.films'::regclass and t.tgname = 'films_block_truncate')
+  and exists (select 1 from pg_trigger t where t.tgrelid = 'public.scores'::regclass and t.tgname = 'scores_block_truncate'),
+  'films and scores have TRUNCATE guard triggers');
+
+-- auth_user_id is hidden from every browser role (column grants)
+select ok(not has_column_privilege('authenticated', 'public.profiles', 'auth_user_id', 'select'),
+  'browsers cannot read profiles.auth_user_id');
+select ok(not has_column_privilege('authenticated', 'public.profiles', 'auth_user_id', 'update')
+  and not has_column_privilege('authenticated', 'public.profiles', 'auth_user_id', 'insert'),
+  'browsers cannot write profiles.auth_user_id');
+select ok(has_column_privilege('authenticated', 'public.profiles', 'display_name', 'select'),
+  'browsers can read the other profile columns');
+select hasnt_column('public', 'profile_directory', 'auth_user_id', 'profile_directory has no auth_user_id');
+
+-- New functions get no implicit EXECUTE for PUBLIC (default privileges)
+create function app.zz_default_privilege_probe() returns integer language sql as $f$ select 1 $f$;
+create function public.zz_default_privilege_probe() returns integer language sql as $f$ select 1 $f$;
+select ok(not has_function_privilege('anon', 'app.zz_default_privilege_probe()', 'execute')
+  and not has_function_privilege('authenticated', 'app.zz_default_privilege_probe()', 'execute'),
+  'a new app function is not executable by anyone until granted');
+select ok(not has_function_privilege('anon', 'public.zz_default_privilege_probe()', 'execute'),
+  'a new public function is not executable by anon');
+drop function app.zz_default_privilege_probe();
+drop function public.zz_default_privilege_probe();
 
 select is(
   (select count(*)::int from information_schema.role_table_grants
@@ -70,6 +106,9 @@ select is(
 select ok(
   (select c.reloptions @> array['security_invoker=true'] from pg_class c where c.oid = 'public.film_stats'::regclass),
   'film_stats runs with the caller''s rights (RLS applies)');
+select ok(
+  (select c.reloptions @> array['security_invoker=true'] from pg_class c where c.oid = 'public.profile_directory'::regclass),
+  'profile_directory runs with the caller''s rights (RLS applies)');
 
 select is(
   (select p.prosecdef from pg_proc p where p.oid = 'public.film_duplicate_check(text, integer, integer, text)'::regprocedure),
@@ -79,6 +118,13 @@ select is(
 select is(app.normalize_title('Amélie'), 'amelie', 'normalize_title removes accents');
 select is(app.normalize_title('Spider-Man: Homecoming'), 'spider man homecoming', 'normalize_title removes punctuation');
 select is(app.normalize_title('  Schindler''s   LIST '), 'schindlers list', 'normalize_title drops apostrophes, lowercases, collapses spaces');
+select is(app.normalize_title(U&'Ze\200Bro'), 'zero', 'normalize_title strips a zero-width space');
+select is(app.normalize_title(U&'Ze\200Cro Da\200Dy'), 'zero day', 'normalize_title strips zero-width (non-)joiners');
+select is(app.normalize_title(U&'Super\00ADman'), 'superman', 'normalize_title strips a soft hyphen');
+select is(app.normalize_title(U&'\FEFFAmelie'), 'amelie', 'normalize_title strips a BOM');
+select is(app.normalize_title(U&'Word\2060Joiner'), 'wordjoiner', 'normalize_title strips a word joiner');
+select is(app.normalize_title(U&'\202ERTL\202C Title'), 'rtl title', 'normalize_title strips bidi controls');
+select is(app.normalize_title('Straße Æon'), 'strasse aeon', 'normalize_title expands ligatures (unaccent)');
 
 -- Role helpers
 select is(app.current_role(), null, 'no role without a session');

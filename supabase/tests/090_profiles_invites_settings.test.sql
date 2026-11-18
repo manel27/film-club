@@ -3,7 +3,7 @@
 -- "Edit own display name / saved theme" (A ✔ Mo ✔ Me ✔ V ✘ — ✘), plus
 -- placeholder claiming, app_settings and user_settings.
 begin;
-select plan(70);
+select plan(83);
 
 -- ---------------------------------------------------------------- create profiles
 select tests.login_as('admin');
@@ -142,8 +142,12 @@ reset role;
 
 -- ---------------------------------------------------------------- invites
 select tests.login_as('admin');
-select is(tests.affected($$update public.invites set revoked_at = now() where profile_id = tests.profile_id('placeholder')$$), 1,
+select is(tests.affected($$update public.invites set revoked_at = '2000-01-01' where profile_id = tests.profile_id('placeholder')$$), 1,
   'admin can revoke an invite');
+reset role;
+select ok((select revoked_at > '2020-01-01' from public.invites where profile_id = tests.profile_id('placeholder')),
+  'the revocation time is the server''s, not the browser''s');
+select tests.login_as('admin');
 select throws_ok($$update public.invites set revoked_at = null where profile_id = tests.profile_id('placeholder')$$,
   '42501', 'Invites can only be revoked here', 'admin cannot un-revoke an invite');
 select throws_ok($$update public.invites set expires_at = now() + interval '1 year'$$,
@@ -212,9 +216,48 @@ select is(tests.affected($$update public.user_settings set theme = 'superman' wh
 select throws_ok($$insert into public.user_settings (profile_id, theme) values (tests.profile_id('admin'), 'pink')$$,
   '23514', null, 'only the three themes exist');
 reset role;
+select tests.login_as('admin');
+select lives_ok($$insert into public.user_settings (profile_id, theme, films_view) values (tests.profile_id('admin'), 'letterboxd', 'list')$$,
+  'admin can save own theme');
+select is(tests.affected($$update public.user_settings set theme = 'batman' where profile_id = tests.profile_id('admin')$$), 1,
+  'admin can change own saved theme');
+reset role;
 select tests.login_as('viewer');
 select throws_ok($$insert into public.user_settings (profile_id, theme) values (tests.profile_id('viewer'), 'batman')$$,
   '42501', null, 'viewer cannot save a theme (localStorage only)');
+reset role;
+
+-- ---------------------------------------------------------------- logged in, no profile
+insert into auth.users (id, instance_id, aud, role, email)
+values ('10000000-0000-4000-8000-0000000000ff', '00000000-0000-0000-0000-000000000000',
+        'authenticated', 'authenticated', 'orphan@example.test');
+select tests.login_as_uid('10000000-0000-4000-8000-0000000000ff');
+select throws_ok($$insert into public.films (tmdb_id, title, release_year, screened_on, assigned_id)
+  values (950001, 'Orphan Film', 2001, '2026-08-01', '00000000-0000-4000-8000-0000000000a3')$$,
+  '42501', null, 'a user without a profile cannot add a film');
+select throws_ok($$insert into public.attendance (film_id, profile_id) values (8, '00000000-0000-4000-8000-0000000000a3')$$,
+  '42501', null, 'a user without a profile cannot mark attendance');
+select throws_ok($$insert into public.scores (film_id, profile_id, score) values (8, '00000000-0000-4000-8000-0000000000a3', 5)$$,
+  '42501', null, 'a user without a profile cannot score');
+select throws_ok($$insert into public.comments (film_id, author_id, body) values (8, '00000000-0000-4000-8000-0000000000a3', 'hi')$$,
+  '42501', null, 'a user without a profile cannot comment');
+select throws_ok($$insert into public.rotation_passes (week_start, profile_id) values ('2026-08-03', '00000000-0000-4000-8000-0000000000a3')$$,
+  '42501', null, 'a user without a profile cannot record a pass');
+select throws_ok($$insert into public.rotation_adjustments (profile_id, set_to) values ('00000000-0000-4000-8000-0000000000a3', 5)$$,
+  '42501', null, 'a user without a profile cannot adjust the rotation');
+select throws_ok($$insert into public.user_settings (profile_id, theme) values ('00000000-0000-4000-8000-0000000000a3', 'batman')$$,
+  '42501', null, 'a user without a profile cannot save settings');
+select throws_ok($$insert into public.profiles (display_name) values ('Self Made')$$,
+  '42501', null, 'a user without a profile cannot create one');
+select is(tests.affected($$update public.films set overview = 'x'$$)
+        + tests.affected($$update public.scores set score = 1$$)
+        + tests.affected($$update public.comments set body = 'x'$$)
+        + tests.affected($$update public.profiles set display_name = display_name || '!'$$), 0,
+  'a user without a profile cannot update anything');
+select is(tests.affected($$delete from public.attendance$$)
+        + tests.affected($$delete from public.comments$$)
+        + tests.affected($$delete from public.rotation_next$$), 0,
+  'a user without a profile cannot delete anything');
 reset role;
 
 -- ---------------------------------------------------------------- rate_limits (secret key only)

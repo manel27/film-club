@@ -2,7 +2,7 @@
 -- "Enter / edit / delete others' scores" (A ✔ Mo ✔ Me ✘ V ✘ — ✘), plus the
 -- 0–10 range with two decimals. Film 8 has no scores yet.
 begin;
-select plan(42);
+select plan(53);
 
 -- A viewer score to try to change (import path).
 insert into public.scores (film_id, profile_id, score) values (1, tests.profile_id('viewer'), 5);
@@ -138,7 +138,27 @@ select throws_ok($$insert into public.scores (film_id, profile_id, score) values
 select throws_ok($$insert into public.scores (film_id, profile_id, score) values (4, tests.profile_id('member'), 11)$$,
   '23514', 'Score must be between 0 and 10', 'an 11 is rejected on an ordinary film');
 select throws_ok($$insert into public.scores (film_id, profile_id, score) values (4, tests.profile_id('member'), 100)$$,
-  '22003', null, 'a score that doesn''t fit numeric(4,2) is rejected');
+  '23514', 'Score must be between 0 and 10', 'a huge score is rejected');
+select throws_ok($$insert into public.scores (film_id, profile_id, score) values (4, tests.profile_id('member'), 10.001)$$,
+  '23514', 'Scores have at most two decimals', '10.001 is refused (not rounded)');
+select throws_ok($$insert into public.scores (film_id, profile_id, score) values (4, tests.profile_id('member'), 7.255)$$,
+  '23514', 'Scores have at most two decimals', '7.255 is refused (not rounded to 7.26)');
+select throws_ok($$insert into public.scores (film_id, profile_id, score) values (4, tests.profile_id('member'), -0.004)$$,
+  '23514', 'Scores have at most two decimals', '-0.004 is refused (not rounded to 0)');
+select throws_ok($$insert into public.scores (film_id, profile_id, score) values (4, tests.profile_id('member'), '7.255'::text::numeric)$$,
+  '23514', 'Scores have at most two decimals', 'text input as PostgREST sends it is checked too');
+select throws_ok($$insert into public.scores (film_id, profile_id, score) values (1, tests.profile_id('member'), 7.255)
+  on conflict (film_id, profile_id) do update set score = excluded.score$$,
+  '23514', 'Scores have at most two decimals', 'an upsert with three decimals is refused');
+select is((select score from public.scores where film_id = 1 and profile_id = tests.profile_id('member')), 9.25::numeric,
+  'the refused upsert left the existing score alone');
+select lives_ok($$insert into public.scores (film_id, profile_id, score) values (5, tests.profile_id('member'), 7.25)
+  on conflict (film_id, profile_id) do update set score = excluded.score$$,
+  '7.25 is accepted (upsert)');
+select lives_ok($$insert into public.scores (film_id, profile_id, score) values (3, tests.profile_id('member'), 10.00)$$,
+  '10.00 is accepted');
+select lives_ok($$insert into public.scores (film_id, profile_id, score) values (6, tests.profile_id('member'), 6.250)$$,
+  'trailing zeros beyond two decimals are fine (6.250 = 6.25)');
 select lives_ok($$insert into public.scores (film_id, profile_id, score) values (4, tests.profile_id('member'), 0)$$,
   '0 is allowed');
 select lives_ok($$update public.scores set score = 10 where film_id = 4 and profile_id = tests.profile_id('member')$$,
@@ -148,6 +168,10 @@ select throws_ok($$update public.scores set score = 10.5 where film_id = 4 and p
 select throws_ok($$insert into public.scores (film_id, profile_id, score) values (4, tests.profile_id('member'), null)$$,
   '23502', null, 'a score cannot be null');
 reset role;
+select is((select score::text from public.scores where film_id = 6 and profile_id = tests.profile_id('member')), '6.25',
+  'scores are stored with exactly two decimals');
+select is((select score::text from public.scores where film_id = 3 and profile_id = tests.profile_id('member')), '10.00',
+  '10.00 is stored as 10.00');
 select tests.login_as('admin');
 select throws_ok($$insert into public.scores (film_id, profile_id, score) values (4, tests.profile_id('admin'), 10.5)$$,
   '23514', 'Score must be between 0 and 10', 'admin is held to 0–10 too');

@@ -1,7 +1,7 @@
 -- Matrix row "Add / edit / delete films": A ✔ Mo ✔ Me ✘ V ✘ — ✘
 -- plus film constraints and import-only columns.
 begin;
-select plan(33);
+select plan(36);
 
 -- ---------------------------------------------------------------- add
 select tests.login_as('admin');
@@ -106,6 +106,11 @@ select throws_ok($$insert into public.films (tmdb_id, title, release_year, scree
 select lives_ok($$insert into public.films (tmdb_id, title, release_year, screened_on, kind, assigned_id, turn_holder_id)
   values (910013, 'Democratic Choice', 2013, '2026-05-09', 'democratico', tests.profile_id('member2'), tests.profile_id('member'))$$,
   'a democratico film records proposer and turn-holder');
+select throws_ok($$insert into public.films (tmdb_id, title, release_year, screened_on, kind, assigned_id, turn_holder_id)
+  values (910016, 'System Turn Holder', 2016, '2026-05-09', 'democratico', tests.profile_id('member'), tests.profile_id('cinema'))$$,
+  '23514', null, 'a system profile cannot be the Democrático turn-holder');
+select throws_ok($$update public.films set turn_holder_id = tests.profile_id('archive') where tmdb_id = 910013$$,
+  '23514', null, 'a turn-holder cannot be changed to a system profile');
 select lives_ok($$insert into public.films (title, release_year, screened_on, kind, assigned_id)
   values ('Cinema Trip', 2026, '2026-05-16', 'cinema', tests.profile_id('cinema'))$$,
   'a cinema film can be assigned to the Cinema system profile');
@@ -129,6 +134,10 @@ select tests.login_service_role();
 select lives_ok($$update public.films set legacy_sheet_row = 42 where id = 1$$,
   'the import (secret key) can set legacy_sheet_row');
 reset role;
+
+select throws_ok($$insert into public.films (tmdb_id, title, release_year, screened_on, kind, assigned_id, turn_holder_id)
+  values (910017, 'Import System Turn Holder', 2017, '2026-05-09', 'democratico', '00000000-0000-4000-8000-0000000000a3', '00000000-0000-4000-8000-0000000000c1')$$,
+  '23514', null, 'the import cannot use a system profile as turn-holder either');
 
 -- A profile with films can't be deleted (history is kept)
 select throws_ok($$delete from public.profiles where id = '00000000-0000-4000-8000-0000000000a4'$$,

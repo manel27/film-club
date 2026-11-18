@@ -3,6 +3,9 @@
 -- never reaches production.
 
 create extension if not exists pgtap with schema extensions;
+-- The migrations remove PUBLIC's default EXECUTE on new functions, so the
+-- pgTAP functions need an explicit grant for tests that switch roles.
+grant execute on all functions in schema extensions to anon, authenticated, service_role;
 
 create schema if not exists tests;
 grant usage on schema tests to anon, authenticated, service_role;

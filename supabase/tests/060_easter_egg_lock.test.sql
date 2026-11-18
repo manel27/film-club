@@ -2,7 +2,7 @@
 -- including the secret key and a direct postgres session (plan 4.4).
 -- Seed film 7 is the synthetic easter egg: three scores of 11, locked.
 begin;
-select plan(37);
+select plan(43);
 
 select ok((select scores_locked and is_easter_egg from public.films where id = 7), 'film 7 is the locked easter egg');
 
@@ -103,10 +103,22 @@ select throws_ok($$update public.films set is_easter_egg = false where id = 7$$,
 select throws_ok($$delete from public.films where id = 7$$,
   '42501', null, 'postgres cannot delete the locked film');
 
+-- TRUNCATE skips row triggers: the statement-level guard stops it, even for postgres
+select throws_ok($$truncate public.scores$$, '42501', null, 'postgres cannot truncate scores while a film is locked');
+select throws_ok($$truncate public.films cascade$$, '42501', null, 'postgres cannot truncate films (cascade) while a film is locked');
+select throws_ok($$truncate public.profiles cascade$$, '42501', null, 'postgres cannot truncate profiles cascade (reaches films/scores)');
+select throws_ok($$truncate public.attendance, public.scores$$, '42501', null, 'a multi-table truncate including scores is blocked');
+select tests.login_service_role();
+select throws_ok($$truncate public.scores$$, '42501', null, 'the secret key cannot truncate scores');
+reset role;
+select tests.login_as('admin');
+select throws_ok($$truncate public.scores$$, '42501', null, 'a browser admin cannot truncate scores');
+reset role;
+
 select results_eq($$select profile_id, score from public.scores where film_id = 7 order by profile_id$$,
-  $$values (tests.profile_id('admin'), 11.00::numeric(4,2)),
-           (tests.profile_id('moderator'), 11.00::numeric(4,2)),
-           (tests.profile_id('member'), 11.00::numeric(4,2))$$,
+  $$values (tests.profile_id('admin'), 11.00::numeric),
+           (tests.profile_id('moderator'), 11.00::numeric),
+           (tests.profile_id('member'), 11.00::numeric)$$,
   'the three 11s are untouched');
 
 -- Other film details stay editable by staff

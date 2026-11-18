@@ -2,7 +2,7 @@
 -- logged in gets NOTHING, on every table. Every write is attempted against
 -- every table; the database must be byte-for-byte unchanged afterwards.
 begin;
-select plan(87);
+select plan(88);
 
 create temporary table writes (tbl text, ins text, upd text, del text) on commit drop;
 insert into writes values
@@ -96,6 +96,7 @@ select throws_ok(ins, '42501', null, format('anon cannot insert into %s', tbl)) 
 select throws_ok(upd, '42501', null, format('anon cannot update %s', tbl)) from writes order by tbl;
 select throws_ok(del, '42501', null, format('anon cannot delete from %s', tbl)) from writes order by tbl;
 select throws_ok('select * from public.film_stats', '42501', null, 'anon cannot read film_stats');
+select throws_ok('select * from public.profile_directory', '42501', null, 'anon cannot read profile_directory');
 select throws_ok('select app.current_role()', '42501', null, 'anon cannot call the app helpers');
 reset role;
 

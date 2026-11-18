@@ -2,11 +2,11 @@
 -- A ✔ Mo ✔ Me ✔ V ✔ — ✘ (plus: a logged-in user without a profile sees
 -- nothing; private tables stay private).
 begin;
-select plan(73);
+select plan(81);
 
 create temporary table readable (name text) on commit drop;
 insert into readable values
-  ('profiles'), ('films'), ('attendance'), ('scores'), ('comments'),
+  ('profile_directory'), ('films'), ('attendance'), ('scores'), ('comments'),
   ('rotation_adjustments'), ('rotation_passes'), ('rotation_next'),
   ('app_settings'), ('film_stats');
 grant select on readable to anon, authenticated;
@@ -35,7 +35,26 @@ reset role;
 -- Readers see the same rows the database holds (no partial visibility)
 select tests.login_as('viewer');
 select is(tests.row_count('select * from public.scores'), 15, 'viewer sees every score row, including the easter egg');
-select is(tests.row_count('select * from public.profiles'), 9, 'viewer sees every profile, including placeholders and system profiles');
+select is(tests.row_count('select * from public.profile_directory'), 9, 'viewer sees every profile, including placeholders and system profiles');
+reset role;
+
+-- profiles.auth_user_id is hidden from every browser role, admin included
+select tests.login_as('admin');
+select throws_ok('select auth_user_id from public.profiles', '42501', null, 'admin cannot read auth_user_id');
+select is(tests.row_count('select id, display_name, colour, role, is_claimed from public.profiles'), 9,
+  'admin reads profiles by naming the visible columns');
+reset role;
+select tests.login_as('moderator');
+select throws_ok('select auth_user_id from public.profiles', '42501', null, 'moderator cannot read auth_user_id');
+reset role;
+select tests.login_as('member');
+select throws_ok('select auth_user_id from public.profiles', '42501', null, 'member cannot read auth_user_id');
+select throws_ok('select * from public.profiles', '42501', null, 'select * on profiles is refused (use profile_directory)');
+select throws_ok('select id from public.profiles where auth_user_id is not null', '42501', null,
+  'member cannot even filter on auth_user_id');
+reset role;
+select tests.login_as('viewer');
+select throws_ok('select auth_user_id from public.profiles', '42501', null, 'viewer cannot read auth_user_id');
 reset role;
 
 -- Not logged in: nothing at all (10 relations + the private ones + the RPC)
@@ -43,6 +62,7 @@ select tests.login_anon();
 select throws_ok(format('select * from public.%I', name), '42501', null, format('anon cannot read %s', name))
 from readable order by name;
 select throws_ok('select * from public.invites', '42501', null, 'anon cannot read invites');
+select throws_ok('select id from public.profiles', '42501', null, 'anon cannot read profiles');
 select throws_ok('select * from public.user_settings', '42501', null, 'anon cannot read user_settings');
 select throws_ok('select * from public.rate_limits', '42501', null, 'anon cannot read rate_limits');
 select throws_ok($$select * from public.film_duplicate_check('The Quiet Orchard', 2019)$$, '42501', null,
