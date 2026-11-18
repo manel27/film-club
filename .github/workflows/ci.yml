@@ -35,6 +35,21 @@ jobs:
       - name: Scan full history
         run: ./gitleaks git . --config .gitleaks.toml --redact --no-banner --verbose
 
+  migration:
+    name: Migration parser tests (Python)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: python -m pip install -r migration/requirements.txt
+      - name: Unit tests (synthetic fixture only)
+        run: python -I -m unittest discover -s migration/tests -t . -v
+
   build:
     name: Lint, test, build, e2e
     runs-on: ubuntu-latest

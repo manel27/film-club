@@ -40,3 +40,7 @@ Thumbs.db
 !.vscode/extensions.json
 .idea/
 *.swp
+
+# Python
+__pycache__/
+*.pyc
