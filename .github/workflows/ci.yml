@@ -66,3 +66,36 @@ jobs:
           name: playwright-report
           path: playwright-report/
           retention-days: 7
+
+  database:
+    name: Database (migrations, pgTAP, types)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      # Applies every migration, then seed.sql + test_helpers.sql (synthetic
+      # data only). Services the tests don't need are skipped. Output is
+      # discarded: it only lists local, throwaway URLs and demo keys.
+      - name: Start local Supabase
+        run: >-
+          npx supabase start
+          -x realtime,storage-api,imgproxy,mailpit,studio,edge-runtime,logflare,vector,supavisor
+          > /dev/null
+      - name: Lint database functions
+        run: npx supabase db lint -s public,app --level warning --fail-on error
+      - name: pgTAP tests (RLS, permissions, duplicates, score lock)
+        run: npx supabase test db
+      - name: Generated types are up to date
+        run: |
+          npm run db:types
+          git diff --exit-code -- src/lib/database.types.ts
+      - name: Stop local Supabase
+        if: always()
+        run: npx supabase stop --no-backup
