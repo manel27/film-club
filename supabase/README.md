@@ -4,6 +4,26 @@ Everything here runs against a **local** Supabase stack in Docker. Nothing in
 this folder touches the hosted project; production gets the migrations later,
 after review and approval.
 
+> [!CAUTION]
+> **Edge Functions must write with the caller's JWT, never the secret key.**
+> Create the Supabase client inside the function with the user's
+> `Authorization` header, so RLS and the guard triggers see the real caller.
+> The secret key bypasses RLS and counts as "privileged" in the triggers
+> (import-only columns, scores above 10 on an unlocked easter egg). The only
+> code allowed to use it is the one-off **import** and **invite-claim** /
+> **invite-create** / **admin-reset-link** (which must re-check the caller's
+> role themselves), and each of those is reviewed explicitly.
+
+> [!WARNING]
+> **Never run `supabase db push --include-seed` (or any seed) against
+> production.** `seed.sql` and `test_helpers.sql` are local-only: they create
+> synthetic logins with a known password and a `tests` schema.
+
+> [!NOTE]
+> The hosted project must run **Postgres 17** (as `config.toml`
+> `db.major_version = 17`). The migrations revoke the `MAINTAIN` privilege,
+> which only exists from Postgres 17.
+
 | Path                | What it is                                                               |
 | ------------------- | ------------------------------------------------------------------------ |
 | `migrations/`       | Schema, triggers, RLS policies, views. Applied in filename order.         |
@@ -67,7 +87,20 @@ npm run db:reset   # drop the local database, re-apply all migrations, re-seed
 - **No duplicate films**, for everyone including the secret key: unique TMDB id,
   unique normalised title + year for manual films, and a trigger for manual vs
   TMDB cross-matches (titles and original titles).
-- **Scores** are 0–10 with two decimals. The only exception is the easter-egg
+- **`profiles.auth_user_id` is never visible to browsers** (column grants), so
+  `select *` on `profiles` is refused: read people from the
+  **`profile_directory`** view (same columns minus `auth_user_id`), or name
+  the columns. Updates must not use `returning *` (supabase-js: pass explicit
+  columns to `.select()`).
+- **TRUNCATE** is revoked from browsers and the secret key, and blocked for
+  everyone on `films`/`scores` while any film's scores are locked.
+- New functions are not executable by anyone until a migration grants them
+  (default privileges).
+- **Title normalisation** (duplicate rule) is documented step by step, with a
+  JavaScript mirror for the UI, above `app.normalize_title()` in
+  `migrations/20261117120000_foundation.sql`.
+- **Scores** are 0–10 with at most two decimals: a third decimal is refused
+  (not rounded). The only exception is the easter-egg
   film's imported scores, which are locked forever once `scores_locked` is set:
   nobody (admin, secret key, postgres) can change, add or delete them, unlock
   the film or delete it.
