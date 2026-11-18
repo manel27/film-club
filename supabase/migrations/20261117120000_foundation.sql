@@ -56,12 +56,27 @@ as $$
   select extensions.unaccent('extensions.unaccent'::regdictionary, value);
 $$;
 
--- Normalised title used by the no-duplicate rule (plan 4.3):
--- lower case, accents removed, apostrophes dropped, other punctuation turned
--- into spaces, whitespace collapsed and trimmed.
---   'Amélie'            -> 'amelie'
---   'Schindler''s List' -> 'schindlers list'
---   'Spider-Man: Homecoming' -> 'spider man homecoming'
+-- Normalised title used by the no-duplicate rule (plan 4.3). The exact rule,
+-- in order:
+--   1. remove Unicode format characters (general category Cf: zero-width
+--      space/joiners U+200B–U+200F, soft hyphen U+00AD, BOM U+FEFF, word
+--      joiner U+2060–U+2064, bidi controls U+202A–U+202E / U+2066–U+206F,
+--      and the rest of Cf listed below);
+--   2. unaccent (Postgres `unaccent` rules: removes diacritics and also
+--      expands ligatures, e.g. ß -> ss, æ -> ae, ø -> o);
+--   3. lower case;
+--   4. delete apostrophes and backticks: ' ’ ` ´
+--   5. replace every run of non-alphanumeric characters (letters and digits of
+--      any script count as alphanumeric) with one space;
+--   6. trim.
+--   'Amélie' -> 'amelie'; 'Schindler''s List' -> 'schindlers list';
+--   'Spider-Man: Homecoming' -> 'spider man homecoming'; 'Ze<U+200B>ro' -> 'zero'
+-- UI mirror (JavaScript; close but not identical for rare ligatures, so the
+-- database check film_duplicate_check() stays authoritative):
+--   s.replace(/\p{Cf}/gu, '').normalize('NFKD').replace(/\p{M}/gu, '')
+--    .replace(/ß/g, 'ss').replace(/æ/gi, 'ae').replace(/œ/gi, 'oe').replace(/[øØ]/g, 'o')
+--    .toLowerCase().replace(/['’`´]/g, '').replace(/[^\p{L}\p{N}]+/gu, ' ').trim()
+-- Postgres regexes have no \p{...}, so step 1 lists the Cf code points.
 create function app.normalize_title(value text)
 returns text
 language sql
@@ -73,7 +88,11 @@ as $$
   select btrim(
     regexp_replace(
       regexp_replace(
-        lower(app.immutable_unaccent(value)),
+        lower(app.immutable_unaccent(
+          regexp_replace(
+            value,
+            U&'[\00AD\0600-\0605\061C\06DD\070F\0890-\0891\08E2\180E\200B-\200F\202A-\202E\2060-\2064\2066-\206F\FEFF\FFF9-\FFFB\+0110BD\+0110CD\+013430-\+01343F\+01BCA0-\+01BCA3\+01D173-\+01D17A\+0E0001\+0E0020-\+0E007F]',
+            '', 'g'))),
         '[''’`´]', '', 'g'),
       '[^[:alnum:]]+', ' ', 'g'));
 $$;
@@ -93,10 +112,19 @@ revoke execute on all functions in schema app from public;
 grant execute on all functions in schema app to authenticated, service_role;
 
 -- Deny by default for objects created later by migrations: no automatic
--- grants to `anon` (not logged in), and no TRUNCATE (which ignores RLS) for
--- `authenticated`. Each migration grants exactly what it needs.
+-- grants to `anon` (not logged in), and no TRUNCATE (which ignores RLS and
+-- row triggers) for `authenticated` or the secret key (`service_role`).
+-- Each migration grants exactly what it needs.
+-- Note: `maintain` is a Postgres 17 privilege; the hosted project must be on
+-- Postgres 17 (config.toml: db.major_version = 17).
 alter default privileges for role postgres in schema public revoke all on tables from anon;
 alter default privileges for role postgres in schema public revoke all on sequences from anon;
 alter default privileges for role postgres in schema public revoke execute on functions from anon, public;
 alter default privileges for role postgres in schema public
-  revoke truncate, references, trigger, maintain on tables from authenticated;
+  revoke truncate, references, trigger, maintain on tables from authenticated, service_role;
+-- New functions must not be executable by everyone. The per-schema form is
+-- kept for intent, but Postgres only lets per-schema defaults ADD to the
+-- global ones, so the global revoke below is what actually removes PUBLIC's
+-- built-in EXECUTE (verified in tests/001). Migrations grant explicitly.
+alter default privileges for role postgres in schema app revoke execute on functions from public;
+alter default privileges for role postgres revoke execute on functions from public;

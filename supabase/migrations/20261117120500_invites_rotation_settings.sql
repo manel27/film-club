@@ -64,6 +64,8 @@ begin
       raise exception 'Invites can only be revoked here'
         using errcode = '42501';
     end if;
+    -- The revocation time is the server's, not the browser's.
+    new.revoked_at := now();
   end if;
   return new;
 end;
@@ -100,12 +102,15 @@ language plpgsql
 set search_path = ''
 as $$
 begin
-  if tg_table_name in ('rotation_adjustments', 'rotation_passes') then
-    perform app.assert_not_system_profile(new.profile_id);
-  end if;
+  perform app.assert_not_system_profile(new.profile_id);
   if not app.is_privileged() then
     if tg_table_name = 'rotation_next' then
       new.decided_by := app.current_profile_id();
+      if tg_op = 'INSERT' then
+        new.created_at := now();
+      else
+        new.created_at := old.created_at;
+      end if;
     elsif tg_op = 'INSERT' then
       new.created_by := app.current_profile_id();
       new.created_at := now();

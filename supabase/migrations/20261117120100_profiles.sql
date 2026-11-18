@@ -112,6 +112,23 @@ as $$
     and p.id is distinct from excluding;
 $$;
 
+-- System profiles (Cinema, Sheet archive) are not people: they can't attend,
+-- score, pass, be a Democrático turn-holder or be picked as next chooser.
+create function app.assert_not_system_profile(profile uuid)
+returns void
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+begin
+  if exists (select 1 from public.profiles p where p.id = profile and p.is_system) then
+    raise exception 'System profiles (Cinema, Sheet archive) cannot be used here'
+      using errcode = '23514';
+  end if;
+end;
+$$;
+
 -- ---------------------------------------------------------------------------
 -- Protected columns (plan 5: "Change roles, colours: admin; a trigger blocks
 -- self-changes to role/colour and demoting the last admin").
@@ -221,8 +238,31 @@ create policy profiles_delete_admin on public.profiles
   for delete to authenticated
   using ((select app.is_admin()));
 
+-- Column-level grants: browsers (every role, admin included) never see or
+-- write auth_user_id, which links a profile to its login. Only the secret key
+-- (invite-claim, admin-reset-link, the import) reads or sets it. Because of
+-- this, `select *` on profiles is refused for browsers: read through the
+-- profile_directory view below, or name the columns.
 revoke all on public.profiles from anon, authenticated;
-grant select, insert, update, delete on public.profiles to authenticated;
+grant select (id, display_name, sheet_keyword, colour, role, is_claimed, claimed_at, is_system, created_at, updated_at)
+  on public.profiles to authenticated;
+grant insert (display_name, sheet_keyword, colour, role) on public.profiles to authenticated;
+grant update (display_name, sheet_keyword, colour, role) on public.profiles to authenticated;
+grant delete on public.profiles to authenticated;
+
+-- Everything a browser may read about people, `select *`-friendly.
+-- security_invoker: the profiles RLS policies apply to the caller.
+create view public.profile_directory
+with (security_invoker = true)
+as
+select id, display_name, sheet_keyword, colour, role, is_claimed, claimed_at, is_system, created_at, updated_at
+from public.profiles;
+
+comment on view public.profile_directory is
+  'Profiles without auth_user_id (login links are secret-key only). Use this for reads in the UI.';
+
+revoke all on public.profile_directory from anon, authenticated;
+grant select on public.profile_directory to authenticated;
 
 revoke execute on all functions in schema app from public;
 grant execute on all functions in schema app to authenticated, service_role;

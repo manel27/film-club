@@ -131,6 +131,7 @@ create trigger films_no_duplicate
 --     (secret key), so staff can't turn an ordinary film into an easter egg
 --     and give it scores above 10.
 --   * created_by is set to the caller; created_at is immutable.
+--   * a Democrático turn-holder can't be a system profile (for anyone).
 -- SECURITY INVOKER on purpose (app.is_privileged()).
 -- ---------------------------------------------------------------------------
 
@@ -159,6 +160,10 @@ begin
     end if;
   end if;
 
+  if new.turn_holder_id is not null then
+    perform app.assert_not_system_profile(new.turn_holder_id);
+  end if;
+
   if not app.is_privileged() then
     if tg_op = 'INSERT' then
       if new.is_easter_egg or new.scores_locked or new.legacy_sheet_row is not null then
@@ -185,6 +190,33 @@ $$;
 create trigger films_guard
   before insert or update or delete on public.films
   for each row execute function app.films_guard();
+
+-- ---------------------------------------------------------------------------
+-- TRUNCATE skips row triggers (and RLS), so it would wipe the locked
+-- easter-egg scores. Block it on films and scores (which also covers
+-- TRUNCATE ... CASCADE from profiles, since triggers fire on every table a
+-- cascade truncates) while any film is locked. Applies to everyone; browsers
+-- and the secret key also have no TRUNCATE privilege at all.
+-- ---------------------------------------------------------------------------
+
+create function app.block_truncate_when_locked()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if exists (select 1 from public.films f where f.scores_locked) then
+    raise exception 'TRUNCATE of % is blocked: a film has locked scores', tg_table_name
+      using errcode = '42501';
+  end if;
+  return null;
+end;
+$$;
+
+create trigger films_block_truncate
+  before truncate on public.films
+  for each statement execute function app.block_truncate_when_locked();
 
 -- ---------------------------------------------------------------------------
 -- RLS

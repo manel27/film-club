@@ -79,3 +79,8 @@ comment on function public.film_duplicate_check(text, integer, integer, text) is
 
 revoke execute on function public.film_duplicate_check(text, integer, integer, text) from public, anon;
 grant execute on function public.film_duplicate_check(text, integer, integer, text) to authenticated, service_role;
+
+-- TRUNCATE ignores RLS and row triggers. Nobody but the table owner may use
+-- it: not browsers, and not the secret key (service_role). The statement
+-- triggers on films/scores additionally block it while scores are locked.
+revoke truncate on all tables in schema public from anon, authenticated, service_role;

@@ -1,22 +1,5 @@
 -- Attendance and scores (plan 4.2, 4.4, 5).
 
--- Shared: system profiles (Cinema, Sheet archive) are not people, so they
--- can't attend or score.
-create function app.assert_not_system_profile(profile uuid)
-returns void
-language plpgsql
-stable
-security definer
-set search_path = ''
-as $$
-begin
-  if exists (select 1 from public.profiles p where p.id = profile and p.is_system) then
-    raise exception 'System profiles cannot attend or score films'
-      using errcode = '23514';
-  end if;
-end;
-$$;
-
 -- ---------------------------------------------------------------------------
 -- Attendance: a row exists = present.
 -- ---------------------------------------------------------------------------
@@ -85,7 +68,12 @@ grant select, insert, delete on public.attendance to authenticated;
 create table public.scores (
   film_id bigint not null references public.films (id) on delete cascade,
   profile_id uuid not null references public.profiles (id) on delete restrict,
-  score numeric(4, 2) not null,
+  -- Unconstrained numeric on purpose: numeric(4,2) would silently round
+  -- 7.255 to 7.26 before any trigger or check could see it. The trigger
+  -- rejects more than two decimals and stores the value at scale 2.
+  score numeric not null
+    constraint scores_score_two_decimals check (score = round(score, 2))
+    constraint scores_score_bounds check (score >= 0 and score < 100),
   entered_by uuid references public.profiles (id) on delete set null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
@@ -141,6 +129,12 @@ begin
       using errcode = '42501';
   end if;
 
+  if new.score <> round(new.score, 2) then
+    raise exception 'Scores have at most two decimals'
+      using errcode = '23514';
+  end if;
+  new.score := round(new.score, 2);
+
   if new.score < 0 then
     raise exception 'Score must be between 0 and 10'
       using errcode = '23514';
@@ -176,6 +170,10 @@ $$;
 create trigger scores_guard
   before insert or update or delete on public.scores
   for each row execute function app.scores_guard();
+
+create trigger scores_block_truncate
+  before truncate on public.scores
+  for each statement execute function app.block_truncate_when_locked();
 
 alter table public.scores enable row level security;
 
