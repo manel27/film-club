@@ -30,13 +30,17 @@ Useful scripts:
 | `npm test`          | Unit tests (Vitest)                 |
 | `npm run build`     | Production build into `dist/`       |
 | `npm run e2e`       | End-to-end smoke tests (Playwright) |
+| `npm run db:start`  | Start the local Supabase stack      |
+| `npm run db:test`   | Database tests (pgTAP)              |
+| `npm run db:reset`  | Rebuild the local database          |
+| `npm run db:types`  | Regenerate `database.types.ts`      |
 
 For end-to-end tests, install the browser once with
 `npx playwright install --with-deps chromium` (the `--with-deps` part needs sudo
 on Linux/WSL).
 
-Supabase configuration lives in `supabase/` (`npx supabase ...`; the CLI is a dev
-dependency).
+Supabase configuration, migrations and database tests live in `supabase/`
+(`npx supabase ...`; the CLI is a dev dependency). See `supabase/README.md`.
 
 ## Secret scanning
 
