@@ -154,6 +154,14 @@ body {
   color: var(--danger);
 }
 
+.form-notice {
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--muted);
+}
+
 .actions {
   display: flex;
   gap: 0.5rem;

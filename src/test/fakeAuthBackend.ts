@@ -1,6 +1,6 @@
 import type { AuthChangeEvent, Session } from '@supabase/supabase-js'
 import { vi } from 'vitest'
-import type { AuthBackend, MyProfile } from '../auth/backend'
+import type { AuthBackend, MyProfile, SessionCheck } from '../auth/backend'
 
 export const TEST_EMAIL = 'quinn@example.test'
 export const TEST_PASSWORD = 'right-password'
@@ -32,6 +32,10 @@ interface Options {
   profile?: MyProfile | null | Error
   /** Error returned by signIn for the right credentials (e.g. a network error). */
   signInError?: unknown
+  /** Error returned by signOut (the local session is cleared anyway, like supabase-js). */
+  signOutError?: unknown
+  /** What the server says about the stored session. */
+  sessionCheck?: SessionCheck
 }
 
 /**
@@ -41,7 +45,10 @@ interface Options {
 export function createFakeAuthBackend(options: Options = {}) {
   let session = options.session ?? null
   let listener: ((session: Session | null, event: AuthChangeEvent) => void) | undefined
-  const state = { profile: options.profile === undefined ? fakeProfile() : options.profile }
+  const state = {
+    profile: options.profile === undefined ? fakeProfile() : options.profile,
+    sessionCheck: options.sessionCheck ?? ('valid' as SessionCheck),
+  }
 
   const emit = (event: AuthChangeEvent) => listener?.(session, event)
 
@@ -66,7 +73,9 @@ export function createFakeAuthBackend(options: Options = {}) {
     signOut: vi.fn(async () => {
       session = null
       emit('SIGNED_OUT')
+      return { error: options.signOutError ?? null }
     }),
+    validateSession: vi.fn(async () => state.sessionCheck),
     fetchMyProfile: vi.fn(async () => {
       if (state.profile instanceof Error) throw state.profile
       return state.profile

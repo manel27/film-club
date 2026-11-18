@@ -11,16 +11,26 @@ import type { MyProfile } from './backend'
  */
 export type AuthStatus = 'loading' | 'signedOut' | 'unlinked' | 'error' | 'signedIn'
 
+/** Shown on the login page after a logout or a forced sign-out. */
+export type AuthNotice = { kind: 'sessionEnded' } | { kind: 'signOutIncomplete' } | { kind: 'none' }
+
 export interface AuthState {
   status: AuthStatus
   session: Session | null
   profile: MyProfile | null
+  notice: AuthNotice
   /** Resolves with a friendly error message, or null on success. */
   signIn(email: string, password: string): Promise<string | null>
-  signOut(): Promise<void>
+  /** Resolves with a friendly error message if the server couldn't be told, or null. */
+  signOut(): Promise<string | null>
   /** Loads the profile again (after an `error`). */
   reloadProfile(): void
 }
+
+export const SIGN_OUT_INCOMPLETE_MESSAGE =
+  "You're logged out on this device, but the server couldn't be reached to end the session."
+
+export const SESSION_ENDED_MESSAGE = 'Your session has ended. Please log in again.'
 
 export const AuthContext = createContext<AuthState | null>(null)
 

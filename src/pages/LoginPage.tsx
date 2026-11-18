@@ -1,11 +1,11 @@
 import { useState, type FormEvent } from 'react'
 import { Navigate, useSearchParams } from 'react-router'
-import { useAuth } from '../auth/authContext'
+import { SESSION_ENDED_MESSAGE, SIGN_OUT_INCOMPLETE_MESSAGE, useAuth } from '../auth/authContext'
 import { safeNextPath } from '../auth/redirect'
 import LoadingPage from './LoadingPage'
 
 export default function LoginPage() {
-  const { status, signIn } = useAuth()
+  const { status, signIn, notice } = useAuth()
   const [searchParams] = useSearchParams()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -34,6 +34,11 @@ export default function LoginPage() {
       <h1>Film Club</h1>
       <form className="card form" onSubmit={onSubmit}>
         <h2>Log in</h2>
+        {notice.kind !== 'none' && !error && (
+          <p className="form-notice" role="status">
+            {notice.kind === 'sessionEnded' ? SESSION_ENDED_MESSAGE : SIGN_OUT_INCOMPLETE_MESSAGE}
+          </p>
+        )}
         <label className="field">
           <span>Email</span>
           <input

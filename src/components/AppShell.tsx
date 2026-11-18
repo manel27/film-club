@@ -1,6 +1,6 @@
-import { useState } from 'react'
-import { Link, Outlet, useNavigate } from 'react-router'
+import { Link, Outlet } from 'react-router'
 import { useAuth } from '../auth/authContext'
+import { useLogOut } from '../auth/useLogOut'
 
 const ROLE_LABELS: Partial<Record<string, string>> = {
   admin: 'Admin',
@@ -9,20 +9,9 @@ const ROLE_LABELS: Partial<Record<string, string>> = {
 
 /** Header (club name, who's logged in, log out) around the page content. */
 export default function AppShell() {
-  const { profile, signOut } = useAuth()
-  const navigate = useNavigate()
-  const [loggingOut, setLoggingOut] = useState(false)
+  const { profile } = useAuth()
+  const { logOut, busy } = useLogOut()
   const roleLabel = profile ? ROLE_LABELS[profile.role] : undefined
-
-  async function logOut() {
-    setLoggingOut(true)
-    try {
-      await signOut()
-    } finally {
-      setLoggingOut(false)
-    }
-    navigate('/login', { replace: true })
-  }
 
   return (
     <div className="shell">
@@ -43,7 +32,7 @@ export default function AppShell() {
               type="button"
               className="button button-secondary button-small"
               onClick={logOut}
-              disabled={loggingOut}
+              disabled={busy}
             >
               Log out
             </button>

@@ -191,3 +191,72 @@ describe('app shell', () => {
     expect(router.state.location.search).toBe('')
   })
 })
+
+describe('session checks and logout edge cases', () => {
+  it('signs out on start-up when the server says the session is gone', async () => {
+    const fake = createFakeAuthBackend({ session: fakeSession(), sessionCheck: 'invalid' })
+    const { router } = renderApp('/', fake)
+    expect(await screen.findByRole('heading', { name: 'Log in' })).toBeInTheDocument()
+    expect(screen.getByText('Your session has ended. Please log in again.')).toBeInTheDocument()
+    expect(fake.backend.signOut).toHaveBeenCalledOnce()
+    expect(fake.backend.fetchMyProfile).not.toHaveBeenCalled()
+    expect(router.state.location.pathname).toBe('/login')
+  })
+
+  it('keeps the session when the check cannot reach the server', async () => {
+    const fake = createFakeAuthBackend({ session: fakeSession(), sessionCheck: 'unknown' })
+    renderApp('/', fake)
+    expect(await screen.findByText('Films coming soon.')).toBeInTheDocument()
+    expect(fake.backend.signOut).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['focus', () => window.dispatchEvent(new Event('focus'))],
+    ['visibilitychange', () => document.dispatchEvent(new Event('visibilitychange'))],
+  ])('re-checks on %s and signs out a revoked session', async (_, fire) => {
+    const fake = signedIn()
+    renderApp('/', fake)
+    await screen.findByText('Films coming soon.')
+    expect(fake.backend.validateSession).toHaveBeenCalledOnce()
+
+    fake.state.sessionCheck = 'invalid'
+    act(() => fire())
+    expect(await screen.findByRole('heading', { name: 'Log in' })).toBeInTheDocument()
+    expect(screen.getByText('Your session has ended. Please log in again.')).toBeInTheDocument()
+  })
+
+  it('forgets the profile on sign-out (no stale name or role for the next login)', async () => {
+    const fake = signedIn(fakeProfile({ display_name: 'Orla', role: 'admin' }))
+    renderApp('/', fake)
+    fireEvent.click(await screen.findByRole('button', { name: 'Log out' }))
+    await screen.findByRole('heading', { name: 'Log in' })
+
+    // The next login's profile is slow to arrive: nothing from Orla may show meanwhile.
+    let release: (p: ReturnType<typeof fakeProfile>) => void = () => {}
+    fake.backend.fetchMyProfile.mockImplementationOnce(
+      () => new Promise((resolve) => (release = resolve)),
+    )
+    await logIn(TEST_EMAIL, TEST_PASSWORD)
+    await screen.findByRole('status')
+    expect(screen.queryByText('Orla')).not.toBeInTheDocument()
+    expect(screen.queryByText('Admin')).not.toBeInTheDocument()
+
+    act(() => release(fakeProfile({ display_name: 'Quinn', role: 'member' })))
+    expect(await screen.findByText('Quinn')).toBeInTheDocument()
+    expect(screen.queryByText('Admin')).not.toBeInTheDocument()
+  })
+
+  it('still goes to the login page and says so when the server could not be told', async () => {
+    const fake = createFakeAuthBackend({
+      session: fakeSession(),
+      signOutError: { name: 'AuthRetryableFetchError', status: 0 },
+    })
+    const { router } = renderApp('/', fake)
+    fireEvent.click(await screen.findByRole('button', { name: 'Log out' }))
+    expect(await screen.findByRole('heading', { name: 'Log in' })).toBeInTheDocument()
+    expect(
+      screen.getByText(/logged out on this device, but the server couldn't be reached/),
+    ).toBeInTheDocument()
+    expect(router.state.location.pathname).toBe('/login')
+  })
+})

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { classifySessionError } from './backend'
 import { loginErrorMessage } from './errors'
 import { loginPathFor, safeNextPath } from './redirect'
 
@@ -39,8 +40,35 @@ describe('safeNextPath', () => {
     ['https://evil.example', '/'],
     ['/login', '/'],
     ['/login?next=%2F', '/'],
-  ])('%s -> %s', (input, expected) => {
+    ['/%09/evil.com', '/'],
+    ['/\t/evil.com', '/'],
+    ['/\n/evil.com', '/'],
+    ['/\x00', '/'],
+    ['/\x7f', '/'],
+    ['/%2F/evil.com', '/'],
+    ['/%5Cevil.com', '/'],
+    ['/%E0%A4%A', '/'],
+    ['/films/caf%C3%A9', '/films/caf%C3%A9'],
+  ])('%j -> %s', (input, expected) => {
     expect(safeNextPath(input)).toBe(expected)
+  })
+
+  it('compares against the given origin', () => {
+    expect(safeNextPath('/films/1', 'https://example.github.io')).toBe('/films/1')
+  })
+})
+
+describe('classifySessionError', () => {
+  it.each([
+    [null, 'valid'],
+    [{ name: 'AuthApiError', status: 403, code: 'user_not_found' }, 'invalid'],
+    [{ name: 'AuthApiError', status: 403, code: 'session_not_found' }, 'invalid'],
+    [{ name: 'AuthApiError', status: 401, code: 'bad_jwt' }, 'invalid'],
+    [{ name: 'AuthSessionMissingError', status: 400 }, 'invalid'],
+    [{ name: 'AuthRetryableFetchError', status: 0 }, 'unknown'],
+    [{ name: 'AuthApiError', status: 500 }, 'unknown'],
+  ])('%j -> %s', (error, expected) => {
+    expect(classifySessionError(error)).toBe(expected)
   })
 })
 

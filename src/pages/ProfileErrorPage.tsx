@@ -1,15 +1,10 @@
-import { useNavigate } from 'react-router'
 import { useAuth } from '../auth/authContext'
+import { useLogOut } from '../auth/useLogOut'
 
 /** Logged in, but loading the profile failed (offline, server error). */
 export default function ProfileErrorPage() {
-  const { reloadProfile, signOut } = useAuth()
-  const navigate = useNavigate()
-
-  async function logOut() {
-    await signOut()
-    navigate('/login', { replace: true })
-  }
+  const { reloadProfile } = useAuth()
+  const { logOut, busy } = useLogOut()
 
   return (
     <main className="page">
@@ -19,7 +14,7 @@ export default function ProfileErrorPage() {
         <button type="button" className="button" onClick={reloadProfile}>
           Try again
         </button>
-        <button type="button" className="button button-secondary" onClick={logOut}>
+        <button type="button" className="button button-secondary" onClick={logOut} disabled={busy}>
           Log out
         </button>
       </p>
