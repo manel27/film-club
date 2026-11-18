@@ -48,7 +48,8 @@ rules:
 # "set" may contain: title, year, kind (normal | democratico | cinema |
 # maratona), assigned, turn_holder (democratico only), date, exclude (true =
 # skip the row), easter_egg (true = keep scores above 10 and lock them),
-# present ({person: true|false}), scores ({person: number | null to remove}).
+# present ({person: true|false}), scores ({person: number | null to remove};
+# read like sheet cells, rounded half-up, 0-10 unless easter_egg).
 films:
   - match: { date: 2026-10-24, title: Hollow Kite }
     set: { assigned: Manel, easter_egg: true }
@@ -69,5 +70,6 @@ expected:
 expected_notes:
   rows: '10 shown + 1 planned'
 
-# Optional: the date after which films count as planned (default: today).
+# Optional: the "as of" date; films after it count as planned. Set it for
+# reproducible runs. --today on the command line wins; default: the current date.
 today: 2026-12-01
