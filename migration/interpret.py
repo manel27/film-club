@@ -43,6 +43,8 @@ RULES = {
     "several_kind_tags": "Several kind tags on one title",
     "tag_colour_mismatch": "Person tag and title colour disagree",
     "no_chooser": "No chooser could be determined",
+    "cinema_member_colour": "Untagged Cinema on a member's colour",
+    "maratona_member_colour": "Untagged Maratona on another member's colour",
     "bad_date": "Date can't be read",
     "bad_score": "Score can't be read",
     "score_out_of_range": "Score outside 0-10",
@@ -126,6 +128,16 @@ class _Roster:
         return ", ".join(names) if names else "nobody in the roster"
 
 
+def legacy_key(screened_on: str, title: str) -> str:
+    """Stable identity of an imported film: ``"<screened_on>|<title_norm>"``.
+
+    Unlike the sheet row number it doesn't shift when rows are added above.
+    Attendance, scores and comments reference films by this key, and the
+    import (phase 4c) upserts on it.
+    """
+    return f"{screened_on}|{title_norm(title)}"
+
+
 def _kind_of(tag: str) -> tuple[str, bool] | None:
     """Return (kind, exact_spelling) for a kind tag, else None."""
     folded = fold(tag)
@@ -167,10 +179,14 @@ def interpret(sheet: dict[str, Any], cfg: Config, today: dt.date | None = None) 
     archive_name = cfg.archive_profile["name"]
     cinema_colours = set(cfg.cinema_colours)
 
-    columns = [c["name"] for c in sheet["columns"]["people"]]
-    for name in columns:
-        if name not in roster.by_column:  # pragma: no cover - config adds bare entries
-            report.decide("unknown_column", None, f"column {name!r}")
+    for person in cfg.people:
+        if not person.in_roster:
+            report.decide(
+                "unknown_column",
+                None,
+                f"column {person.column!r} isn't in the overrides file's people; "
+                f"imported for now as a profile named {person.name!r} with keyword ({person.name})",
+            )
     for stray in sheet.get("ignored_rows", []):
         report.note("stray_row", None, f"sheet row {stray['sheet_row']}, columns {stray['columns_with_text']}")
 
@@ -299,7 +315,15 @@ def interpret(sheet: dict[str, Any], cfg: Config, today: dt.date | None = None) 
                         f"({roster.owner_names(colour)}); kept {person.name}",
                     )
         elif kind == "maratona":
-            if cfg.maratona_default:
+            owner = roster.from_colour(colour) if is_coloured(colour) else None
+            if owner and owner.name != cfg.maratona_default:
+                auto.decide(
+                    "maratona_member_colour",
+                    row,
+                    f"untagged Maratona on {colour}, which is {owner.name}'s colour: "
+                    f"{owner.name} or {cfg.maratona_default or 'the default person'}?",
+                )
+            elif cfg.maratona_default:
                 assigned = cfg.maratona_default
                 auto.fix("maratona_default", row, f"-> {assigned}")
             else:
@@ -307,6 +331,13 @@ def interpret(sheet: dict[str, Any], cfg: Config, today: dt.date | None = None) 
         elif kind == "cinema" and (colour in cinema_colours or not is_coloured(colour)):
             assigned = cinema_name
             auto.fix("cinema_system", row, f"{colour} -> {cinema_name}")
+        elif kind == "cinema" and roster.by_colour.get(colour or ""):
+            auto.decide(
+                "cinema_member_colour",
+                row,
+                f"untagged Cinema on {colour}, which is {roster.owner_names(colour)}'s colour: "
+                f"that person or the {cinema_name} chooser?",
+            )
         else:
             person = roster.from_colour(colour) if is_coloured(colour) else None
             if person:
@@ -315,8 +346,10 @@ def interpret(sheet: dict[str, Any], cfg: Config, today: dt.date | None = None) 
             else:
                 auto.decide("no_chooser", row, f"no person tag and the colour {colour} is {roster.owner_names(colour)}")
         if sets.get("assigned"):
-            assigned = sets["assigned"]  # an explicit override settles it
-            auto.needs_decision = []
+            # An explicit override settles it: whatever the rules found about
+            # the chooser no longer applies (the override itself is listed).
+            assigned = sets["assigned"]
+            auto = _Report()
         report.fixes += auto.fixes
         report.needs_decision += auto.needs_decision
         report.observations += auto.observations
@@ -370,10 +403,12 @@ def interpret(sheet: dict[str, Any], cfg: Config, today: dt.date | None = None) 
                 raise ConfigError(f"row {film_ref}: score override for unknown person {name!r}")
             if value is None:
                 film_scores.pop(name, None)
+            elif (value < 0 or value > MAX_SCORE) and not is_egg:
+                raise ConfigError(f"row {film_ref}: score override {name} = {value} is outside 0-10")
             else:
-                film_scores[name] = Decimal(str(value)).quantize(Decimal("0.01"))
+                film_scores[name] = value
         if egg_scores:
-            report.fix("easter_egg_scores", row, f"{egg_scores} scores above 10 kept; scores_locked = true")
+            report.fix("easter_egg_scores", row, f"{egg_scores} scores above 10 kept; lock after inserting scores")
         if is_planned and (present or film_scores):
             report.note("planned_has_data", row, f"{len(present)} present, {len(film_scores)} scores")
         if (
@@ -407,32 +442,37 @@ def interpret(sheet: dict[str, Any], cfg: Config, today: dt.date | None = None) 
                 raw_counts["average_mismatches"] += 1
                 report.note("average_mismatch", row, f"sheet {avg.value}, recomputed {mean:.2f}")
 
+        final_title = sets.get("title", title)
+        key = legacy_key(screened_on.isoformat(), final_title)
         film = {
+            "legacy_key": key,
             "legacy_sheet_row": film_ref,
             "screened_on": screened_on.isoformat(),
             "day_order": None,
-            "title": sets.get("title", title),
+            "title": final_title,
             "title_raw": row["title_raw"],
-            "title_norm": title_norm(sets.get("title", title)),
+            "title_norm": title_norm(final_title),
             "year_hint": year_hint,
             "kind": kind,
             "assigned": assigned,
             "turn_holder": sets.get("turn_holder"),
             "is_easter_egg": is_egg,
-            "scores_locked": is_egg,
+            # Always false at insert: the import inserts the scores first and
+            # only then locks the film (see lock_after_scores, plan §4.4).
+            "scores_locked": False,
             "is_planned": is_planned,
             "labels": labels,
             "title_colour": colour,
             "source_url": row["link"],
-            "tmdb_query": tmdb.build_query(sets.get("title", title), year_hint, link),
+            "tmdb_query": tmdb.build_query(final_title, year_hint, link),
             "tmdb": None,
         }
         if film["turn_holder"] and kind != "democratico":
             raise ConfigError(f"row {film_ref}: turn_holder is only allowed on democratico films")
         films.append(film)
-        attendance += [{"film": film_ref, "profile": name} for name in sorted(present)]
+        attendance += [{"film": key, "profile": name} for name in sorted(present)]
         scores += [
-            {"film": film_ref, "profile": name, "score": f"{value:.2f}", "entered_by": archive_name}
+            {"film": key, "profile": name, "score": f"{value:.2f}", "entered_by": archive_name}
             for name, value in sorted(film_scores.items())
         ]
         if row["notes"]:
@@ -440,7 +480,15 @@ def interpret(sheet: dict[str, Any], cfg: Config, today: dt.date | None = None) 
             if len(body) > MAX_COMMENT:
                 report.decide("comment_too_long", row, f"{len(body)} characters; not imported")
             else:
-                comments.append({"film": film_ref, "author": archive_name, "body": body, "is_legacy": True})
+                comments.append(
+                    {
+                        "film": key,
+                        "author": archive_name,
+                        "body": body,
+                        "is_legacy": True,
+                        "created_at": screened_on.isoformat(),
+                    }
+                )
 
     # Order within a day: the sheet lists newest first, so a lower row is earlier.
     by_day: dict[str, list[dict[str, Any]]] = defaultdict(list)
@@ -452,6 +500,10 @@ def interpret(sheet: dict[str, Any], cfg: Config, today: dt.date | None = None) 
 
     films.sort(key=lambda f: (f["screened_on"], f["day_order"]))
     dupes.assert_no_duplicates(films)
+    key_counts = Counter(f["legacy_key"] for f in films)
+    clashing = [[f for f in films if f["legacy_key"] == k] for k, n in key_counts.items() if n > 1]
+    if clashing:  # same date and title: already a duplicate, but be explicit
+        raise dupes.DuplicateFilmError(clashing)
 
     used = {f["assigned"] for f in films} | {a["profile"] for a in attendance}
     profiles = [
@@ -515,6 +567,9 @@ def interpret(sheet: dict[str, Any], cfg: Config, today: dt.date | None = None) 
         "attendance": attendance,
         "scores": scores,
         "comments": comments,
+        # Set films.scores_locked = true for these only after their scores
+        # are inserted (the lock trigger refuses score changes afterwards).
+        "lock_after_scores": [f["legacy_key"] for f in films if f["is_easter_egg"]],
         "fixes": report.fixes,
         "needs_decision": report.needs_decision,
         "observations": report.observations,
