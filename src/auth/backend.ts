@@ -26,6 +26,10 @@ export interface AuthBackend {
   validateSession(): Promise<SessionCheck>
   /** The caller's own profile, or null when the login isn't linked to one. Throws on failure. */
   fetchMyProfile(): Promise<MyProfile | null>
+  /** The caller's saved theme (user_settings), or null if none or on failure. Never throws. */
+  fetchTheme(profileId: string): Promise<string | null>
+  /** Saves the caller's theme. Never throws (the theme is in localStorage anyway). */
+  saveTheme(profileId: string, theme: string): Promise<{ error: unknown }>
 }
 
 // Auth error codes meaning "this session is over" (GoTrue error codes).
@@ -88,6 +92,29 @@ export function supabaseAuthBackend(client: SupabaseClient<Database>): AuthBacke
       const { data, error } = await client.rpc('my_profile').maybeSingle()
       if (error) throw error
       return data
+    },
+    async fetchTheme(profileId) {
+      try {
+        const { data } = await client
+          .from('user_settings')
+          .select('theme')
+          .eq('profile_id', profileId)
+          .maybeSingle()
+        return data?.theme ?? null
+      } catch {
+        return null
+      }
+    },
+    async saveTheme(profileId, theme) {
+      try {
+        // Upsert touches only the given columns, so films_view is kept.
+        const { error } = await client
+          .from('user_settings')
+          .upsert({ profile_id: profileId, theme })
+        return { error }
+      } catch (error) {
+        return { error }
+      }
     },
   }
 }

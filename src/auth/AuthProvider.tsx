@@ -8,6 +8,7 @@ import {
   type AuthStatus,
 } from './authContext'
 import type { AuthBackend, MyProfile } from './backend'
+import { applyTheme, currentTheme, isTheme, type Theme } from '../theme'
 import { loginErrorMessage } from './errors'
 
 interface ProfileResult {
@@ -137,17 +138,58 @@ export function AuthProvider({ backend, children }: { backend: AuthBackend; chil
 
   const reloadProfile = useCallback(() => setAttempt((n) => n + 1), [])
 
+  // Themes: saved per person in user_settings (private to them, D5). Viewers
+  // can't write, so theirs stays in localStorage only, like the login page's.
+  const profile = status === 'signedIn' ? (current?.profile ?? null) : null
+  const settingsId = profile && profile.role !== 'viewer' ? profile.id : null
+  const [theme, setThemeState] = useState(currentTheme)
+
+  useEffect(() => {
+    if (!settingsId) return
+    let cancelled = false
+    void backend.fetchTheme(settingsId).then((saved) => {
+      if (cancelled || !isTheme(saved)) return
+      applyTheme(saved)
+      setThemeState(saved)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [backend, settingsId])
+
+  const setTheme = useCallback(
+    (next: Theme) => {
+      applyTheme(next)
+      setThemeState(next)
+      if (settingsId) void backend.saveTheme(settingsId, next)
+    },
+    [backend, settingsId],
+  )
+
   const value = useMemo<AuthState>(
     () => ({
       status,
       session: userId ? sessionState.session : null,
-      profile: status === 'signedIn' ? (current?.profile ?? null) : null,
+      profile,
       notice,
       signIn,
       signOut,
       reloadProfile,
+      theme,
+      setTheme,
     }),
-    [status, userId, sessionState.session, current, notice, signIn, signOut, reloadProfile],
+    [
+      status,
+      userId,
+      sessionState.session,
+      profile,
+      notice,
+      signIn,
+      signOut,
+      reloadProfile,
+      theme,
+      setTheme,
+    ],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
