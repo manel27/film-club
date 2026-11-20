@@ -143,12 +143,15 @@ export function AuthProvider({ backend, children }: { backend: AuthBackend; chil
   const profile = status === 'signedIn' ? (current?.profile ?? null) : null
   const settingsId = profile && profile.role !== 'viewer' ? profile.id : null
   const [theme, setThemeState] = useState(currentTheme)
+  // A switch made while the saved theme is still loading wins over it.
+  const chose = useRef(false)
 
   useEffect(() => {
     if (!settingsId) return
+    chose.current = false
     let cancelled = false
     void backend.fetchTheme(settingsId).then((saved) => {
-      if (cancelled || !isTheme(saved)) return
+      if (cancelled || chose.current || !isTheme(saved)) return
       applyTheme(saved)
       setThemeState(saved)
     })
@@ -159,9 +162,14 @@ export function AuthProvider({ backend, children }: { backend: AuthBackend; chil
 
   const setTheme = useCallback(
     (next: Theme) => {
+      chose.current = true
       applyTheme(next)
       setThemeState(next)
-      if (settingsId) void backend.saveTheme(settingsId, next)
+      if (settingsId) {
+        void backend.saveTheme(settingsId, next).then(({ error }) => {
+          if (error) console.warn('Theme not saved', error)
+        })
+      }
     },
     [backend, settingsId],
   )

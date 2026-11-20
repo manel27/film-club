@@ -1,10 +1,11 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { createMemoryRouter, RouterProvider } from 'react-router'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { AuthProvider } from './auth/AuthProvider'
 import { routes } from './routes'
 import { createFakeAuthBackend, fakeProfile, fakeSession } from './test/fakeAuthBackend'
-import { THEME_STORAGE_KEY } from './theme'
+import { THEME_STORAGE_KEY, THEMES } from './theme'
+import indexHtml from '../index.html?raw'
 
 function renderShell(fake: ReturnType<typeof createFakeAuthBackend>) {
   render(
@@ -52,5 +53,26 @@ describe('theme switcher', () => {
     expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe('superman')
     expect(fake.backend.fetchTheme).not.toHaveBeenCalled()
     expect(fake.backend.saveTheme).not.toHaveBeenCalled()
+  })
+
+  it('keeps a switch made while the saved theme is still loading', async () => {
+    const fake = createFakeAuthBackend({ session: fakeSession() })
+    let resolveSaved: (theme: string | null) => void = () => {}
+    fake.backend.fetchTheme.mockImplementation(
+      () => new Promise<string | null>((resolve) => (resolveSaved = resolve)),
+    )
+    renderShell(fake)
+    const picker = await screen.findByLabelText('Theme')
+    await waitFor(() => expect(fake.backend.fetchTheme).toHaveBeenCalled())
+
+    fireEvent.change(picker, { target: { value: 'batman' } })
+    await act(async () => resolveSaved('letterboxd'))
+    expect(picker).toHaveValue('batman')
+    expect(html.dataset.theme).toBe('batman')
+  })
+
+  it('index.html’s pre-paint script knows exactly the THEMES ids', () => {
+    const ids = indexHtml.match(/\^\(([\w|]+)\)\$/)?.[1].split('|')
+    expect(ids).toEqual(THEMES.map((t) => t.id))
   })
 })

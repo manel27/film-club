@@ -38,16 +38,16 @@
 /* A Letterboxd-inspired palette only: no logos or trademarks. */
 :root[data-theme='letterboxd'] {
   color-scheme: dark;
-  --bg: #14181c;
+  --bg: #151a1f;
   --surface: #202831;
   --text: #e1e8ef;
   --muted: #9aabbc;
   --accent: #00c853;
   --accent-text: #0b0f12;
   --accent-2: #ff8a1f;
-  --highlight: #40bcf4;
+  --highlight: #45b8ee;
   --border: #66788a;
-  --focus: #40bcf4;
+  --focus: #45b8ee;
   --danger: #ff8a80;
 }
 

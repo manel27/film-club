@@ -7,7 +7,7 @@ const SCREENSHOTS = 'test-results/screenshots'
 const BACKGROUNDS = {
   superman: 'rgb(247, 246, 240)',
   batman: 'rgb(26, 26, 29)',
-  letterboxd: 'rgb(20, 24, 28)',
+  letterboxd: 'rgb(21, 26, 31)',
 }
 
 test('a member switches themes and the choice survives a reload', async ({ page }) => {
