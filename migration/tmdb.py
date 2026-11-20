@@ -5,11 +5,13 @@ searches (``/3/search/movie``), picks a match, fetches its details
 (``/3/movie/{id}?append_to_response=credits``) and gives it a confidence:
 
 - **high**: the normalised title (or original title) equals the query and the
-  release year equals the sheet's year hint; with no year hint, the exact-title
-  match must also be the clear favourite (10x the votes of any other film with
-  that exact title). A ``tmdb_id`` pinned in the overrides file is high too.
+  release year equals the sheet's year hint. With no year hint, the top
+  exact-title match must equal the sheet title itself (not only the link
+  title), have at least 50 TMDB votes and be the clear favourite (10x the
+  votes of any other film with that exact title). A ``tmdb_id`` pinned in the
+  overrides file is high too.
 - **medium**: exact title one year off the hint, a different title with the
-  hinted year, or an exact title that isn't the clear favourite.
+  hinted year, or any other exact title without a year hint.
 - **low**: neither title nor year agree; TMDB's first result is kept.
 - **none**: no result (or ``no_tmdb`` in the overrides file).
 
@@ -22,6 +24,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import subprocess
 import time
 import urllib.error
 import urllib.parse
@@ -35,6 +38,7 @@ IMAGE_BASE = "https://image.tmdb.org/t/p/"
 CONFIDENCE_LEVELS = ("high", "medium", "low", "none")
 MIN_INTERVAL = 0.06  # seconds between network requests (under 20 per second)
 RETRIES = 5
+MIN_VOTES_NO_YEAR = 50  # "high" without a year hint needs a well-known film
 
 
 def build_query(title: str, year_hint: int | None, link: Any | None) -> dict[str, Any]:
@@ -50,8 +54,38 @@ class TmdbError(RuntimeError):
     """A TMDB request failed (the message never includes request headers)."""
 
 
-def read_token(env_path: str) -> str:
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *args: Any, **kwargs: Any) -> None:
+        return None  # a 3xx then raises HTTPError: never forward headers (tokens) elsewhere
+
+
+no_redirect_urlopen = urllib.request.build_opener(_NoRedirect).open
+
+
+def _git_status(args: list[str], cwd: str) -> int:
+    try:
+        return subprocess.run(["git", *args], cwd=cwd, capture_output=True).returncode
+    except OSError:
+        return -1
+
+
+def assert_git_ignored(path: str, git: Callable[[list[str], str], int] | None = None) -> str:
+    """The real path of a secrets file, refused (ValueError) when it sits in a
+    git working tree and git doesn't confirm it is ignored (a tracked file never is)."""
+    real = os.path.realpath(path)
+    git = git or _git_status
+    folder = os.path.dirname(real)
+    if git(["rev-parse", "--is-inside-work-tree"], folder) == 0 and git(["check-ignore", "--quiet", "--", real], folder) != 0:
+        raise ValueError(f"{path} is inside a git repository and not git-ignored; keep it outside the repo")
+    return real
+
+
+def read_token(env_path: str, git: Callable[[list[str], str], int] | None = None) -> str:
     """``TMDB_TOKEN`` from a git-ignored env file. Never printed."""
+    try:
+        env_path = assert_git_ignored(env_path, git)
+    except ValueError as exc:
+        raise TmdbError(str(exc)) from None
     try:
         with open(env_path, encoding="utf-8") as fh:
             for line in fh:
@@ -71,7 +105,7 @@ class Client:
         self,
         cache_dir: str,
         token: Callable[[], str] | None,
-        urlopen: Callable[..., Any] = urllib.request.urlopen,
+        urlopen: Callable[..., Any] = no_redirect_urlopen,
         sleep: Callable[[float], None] = time.sleep,
     ):
         self.cache_dir = cache_dir
@@ -155,8 +189,13 @@ def score_candidates(
     if exact:
         exact.sort(key=lambda c: -(c.get("vote_count") or 0))
         top = exact[0].get("vote_count") or 0
-        if top > 0 and all((c.get("vote_count") or 0) * 10 <= top for c in exact[1:]):
-            return exact[0], "high", "exact title, clear favourite (no year hint)"
+        sheet_title = {title_norm(exact[0].get("title") or ""), title_norm(exact[0].get("original_title") or "")}
+        if (
+            top >= MIN_VOTES_NO_YEAR
+            and title_norm(queries[0]) in sheet_title
+            and all((c.get("vote_count") or 0) * 10 <= top for c in exact[1:])
+        ):
+            return exact[0], "high", "sheet title, clear favourite (no year hint)"
         return exact[0], "medium", f"exact title, {len(exact)} films share it (no year hint)"
     return candidates[0], "low", "no exact title (no year hint)"
 
@@ -186,9 +225,9 @@ def match_film(film: dict[str, Any], client: Client, pin: dict[str, Any] | None 
     q = film["tmdb_query"]
     if pin and pin.get("no_tmdb"):
         return {"tmdb_id": None, "release_year": pin["year"], "confidence": "none", "pinned": True, "reason": "no_tmdb in the overrides file"}
-    if pin:
+    if pin and pin.get("tmdb_id"):
         tmdb_id, confidence, reason = pin["tmdb_id"], "high", "tmdb_id pinned in the overrides file"
-    else:
+    else:  # no pin, or confirm: true (keep the automatic match, marked as confirmed)
         queries = [q["query"], *q.get("alternative_queries", [])]
         seen: dict[int, dict[str, Any]] = {}
         screened_year = int(film["screened_on"][:4])
@@ -204,8 +243,10 @@ def match_film(film: dict[str, Any], client: Client, pin: dict[str, Any] | None 
                 if results:
                     break
         chosen, confidence, reason = score_candidates(list(seen.values()), queries, q.get("year"))
+        if pin:
+            reason += "; confirmed in the overrides file"
         if chosen is None:
-            return {"tmdb_id": None, "release_year": q.get("year"), "confidence": "none", "pinned": False, "reason": reason}
+            return {"tmdb_id": None, "release_year": q.get("year"), "confidence": "none", "pinned": bool(pin), "reason": reason}
         tmdb_id = chosen["id"]
     details = client.get(f"movie/{tmdb_id}", {"append_to_response": "credits", "language": q.get("language", "en-US")})
     return {

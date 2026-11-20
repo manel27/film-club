@@ -7,9 +7,12 @@ and the host is typed at a terminal prompt (the create-admin pattern).
 
 Idempotent: it reads what is already there and only inserts what is missing
 or patches what differs, so a second run writes nothing. Films are found by
-their natural keys (TMDB id; title + year for films without TMDB; sheet row +
-date as a fallback), profiles by name, the rest by their primary keys.
-It never deletes anything.
+TMDB id, then title + year (films without TMDB), then sheet row + date (a
+re-pinned film). The sheet row is the last key because rows shift when rows
+are added, and on days with several films a shifted row points at the
+neighbouring film. Profiles are found by name, the rest by primary key.
+It never deletes anything. It is a one-off before go-live: a re-run after
+go-live overwrites admin edits to imported films.
 
 Order (plan §4.4): profiles -> films -> attendance -> scores -> legacy
 comments -> lock the easter egg (scores first, then the lock).
@@ -18,7 +21,6 @@ comments -> lock the easter egg (scores first, then the lock).
 from __future__ import annotations
 
 import json
-import subprocess
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -27,7 +29,10 @@ from decimal import Decimal
 from typing import Any, Callable
 
 from .text import title_norm
+from .tmdb import assert_git_ignored, no_redirect_urlopen, to_check
 
+# Owner decision pending: True stores TMDB's title for matched films, False keeps the sheet title.
+USE_TMDB_TITLE = True
 LOCAL_HOSTS = ("localhost", "127.0.0.1", "[::1]", "::1")
 PAGE = 1000  # PostgREST max_rows
 FILM_FIELDS = (
@@ -51,14 +56,10 @@ class CountMismatch(RuntimeError):
 def read_env(path: str, git: Callable[[list[str], str], int] | None = None) -> tuple[str, str, bool]:
     """``(url, secret_key, is_local)`` from a git-ignored env file. Errors name
     the variable, never its value."""
-    import os
-
-    real = os.path.realpath(path)
-    git = git or _git_status
-    if git(["rev-parse", "--is-inside-work-tree"], os.path.dirname(real)) == 0:
-        # Inside a repo: git must positively confirm the file is ignored (a tracked file never is).
-        if git(["check-ignore", "--quiet", "--", real], os.path.dirname(real)) != 0:
-            raise ImportRefused(f"{path} is inside a git repository and not git-ignored; keep it outside the repo")
+    try:
+        real = assert_git_ignored(path, git)
+    except ValueError as exc:
+        raise ImportRefused(str(exc)) from None
     env: dict[str, str] = {}
     try:
         with open(real, encoding="utf-8") as fh:
@@ -79,13 +80,6 @@ def read_env(path: str, git: Callable[[list[str], str], int] | None = None) -> t
     if key.startswith("sb_publishable_") or not (key.startswith("sb_secret_") or key.startswith("eyJ")):
         raise ImportRefused("SUPABASE_SECRET_KEY doesn't look like a Supabase secret key")
     return f"{parts.scheme}://{parts.netloc}", key, is_local
-
-
-def _git_status(args: list[str], cwd: str) -> int:
-    try:
-        return subprocess.run(["git", *args], cwd=cwd, capture_output=True).returncode
-    except OSError:
-        return -1
 
 
 def check_target(url: str, is_local: bool, production: bool, prompt: Callable[[str], str] | None) -> None:
@@ -116,6 +110,12 @@ def check_ready(data: dict[str, Any], matches: dict[str, dict[str, Any]]) -> Non
             f"{len(no_year)} film(s) have no TMDB match and no year; give them a tmdb_id or no_tmdb + year "
             f"in the overrides file: {sorted(no_year)[:5]}"
         )
+    unconfirmed = to_check(matches)
+    if unconfirmed:
+        problems.append(
+            f"{len(unconfirmed)} TMDB match(es) are not confirmed (the preview's 'Check these matches'); "
+            f"pin tmdb_id, no_tmdb + year, or confirm: true in the overrides file: {unconfirmed[:5]}"
+        )
     if problems:
         raise ImportRefused("; ".join(problems))
 
@@ -127,7 +127,7 @@ class Rest:
     """Minimal PostgREST client (secret key). Errors carry the status and
     PostgREST's message, never the request headers."""
 
-    def __init__(self, url: str, key: str, urlopen: Callable[..., Any] = urllib.request.urlopen):
+    def __init__(self, url: str, key: str, urlopen: Callable[..., Any] = no_redirect_urlopen):
         self.base = url.rstrip("/") + "/rest/v1/"
         self.headers = {"apikey": key, "Content-Type": "application/json", "Accept": "application/json"}
         if key.startswith("eyJ"):  # legacy JWT keys also go in Authorization
@@ -181,7 +181,7 @@ def _film_row(f: dict[str, Any], m: dict[str, Any], profile_ids: dict[str, str])
     has_tmdb = bool(m.get("tmdb_id"))
     return {
         "tmdb_id": m.get("tmdb_id"),
-        "title": m["title"] if has_tmdb else f["title"],
+        "title": _title(f, m),
         "original_title": m.get("original_title") if has_tmdb else None,
         "release_year": m.get("release_year"),
         "release_date": m.get("release_date") if has_tmdb else None,
@@ -203,6 +203,41 @@ def _film_row(f: dict[str, Any], m: dict[str, Any], profile_ids: dict[str, str])
     }
 
 
+def _title(f: dict[str, Any], m: dict[str, Any]) -> str:
+    return m["title"] if m.get("tmdb_id") and USE_TMDB_TITLE else f["title"]
+
+
+def resolve_films(
+    data: dict[str, Any], matches: dict[str, dict[str, Any]], have_films: list[dict[str, Any]]
+) -> dict[str, dict[str, Any] | None]:
+    """The existing DB film for each sheet film (None = new). Refuses when two
+    sheet films land on the same DB film, or a TMDB id / title + year belongs
+    to a film that wasn't imported from the sheet."""
+    by_tmdb = {f["tmdb_id"]: f for f in have_films if f["tmdb_id"]}
+    by_title = {(title_norm(f["title"]), f["release_year"]): f for f in have_films if not f["tmdb_id"]}
+    by_row = {(f["legacy_sheet_row"], f["screened_on"]): f for f in have_films if f["legacy_sheet_row"]}
+    found: dict[str, dict[str, Any] | None] = {}
+    owner: dict[Any, str] = {}
+    for f in data["films"]:
+        key, m = f["legacy_key"], matches[f["legacy_key"]]
+        if m.get("tmdb_id"):
+            natural = by_tmdb.get(m["tmdb_id"])
+        else:
+            natural = by_title.get((title_norm(_title(f, m)), m.get("release_year")))
+        if natural is not None and not natural["legacy_sheet_row"]:
+            raise ImportRefused(
+                f"{key}: its TMDB id / title + year belongs to DB film #{natural['id']}, which wasn't imported "
+                "from the sheet; fix the match in the overrides file. Nothing was changed."
+            )
+        have = natural or by_row.get((f["legacy_sheet_row"], f["screened_on"]))
+        if have is not None:
+            if have["id"] in owner:
+                raise ImportRefused(f"{key} and {owner[have['id']]} both resolve to DB film #{have['id']}. Nothing was changed.")
+            owner[have["id"]] = key
+        found[key] = have
+    return found
+
+
 def _name(name: str) -> str:
     return name.strip().lower()  # the DB's unique index: lower(btrim(display_name))
 
@@ -214,6 +249,8 @@ def run_import(
     ``db`` has ``select``, ``insert`` and ``update`` (see :class:`Rest`)."""
     check_ready(data, matches)
     written: Counter = Counter()
+    have_films = db.select("films", "id,scores_locked," + ",".join(FILM_FIELDS), "id")
+    resolved = resolve_films(data, matches, have_films)  # refusals happen here, before any write
 
     # 1. Profiles: keep existing ones (e.g. made by create-admin), fill their empty keyword/colour.
     existing = {_name(p["display_name"]): p for p in db.select("profiles", "id,display_name,sheet_keyword,colour,is_system", "id")}
@@ -239,20 +276,17 @@ def run_import(
             existing[_name(p["display_name"])] = {"id": "new:" + p["display_name"]}
     profile_ids = {p["display_name"]: existing[_name(p["display_name"])]["id"] for p in data["profiles"]}
 
-    # 2. Films, matched on natural keys.
-    have_films = db.select("films", "id,scores_locked," + ",".join(FILM_FIELDS), "id")
-    by_tmdb = {f["tmdb_id"]: f for f in have_films if f["tmdb_id"]}
-    by_title = {(title_norm(f["title"]), f["release_year"]): f for f in have_films if not f["tmdb_id"]}
-    by_row = {(f["legacy_sheet_row"], f["screened_on"]): f for f in have_films if f["legacy_sheet_row"]}
+    # 2. Films. Sheet rows shift, so first free every (unique) sheet row that moves.
+    rows = {f["legacy_key"]: _film_row(f, matches[f["legacy_key"]], profile_ids) for f in data["films"]}
+    for key, have in resolved.items():
+        if have is not None and have["legacy_sheet_row"] != rows[key]["legacy_sheet_row"]:
+            if not dry_run:
+                db.update("films", {"id": have["id"]}, {"legacy_sheet_row": None})
+            have["legacy_sheet_row"] = None
     film_ids: dict[str, Any] = {}
     locked: set[str] = set()
     for f in data["films"]:
-        row = _film_row(f, matches[f["legacy_key"]], profile_ids)
-        have = (
-            by_tmdb.get(row["tmdb_id"])
-            or by_title.get((title_norm(row["title"]), row["release_year"]) if not row["tmdb_id"] else None)
-            or by_row.get((row["legacy_sheet_row"], row["screened_on"]))
-        )
+        row, have = rows[f["legacy_key"]], resolved[f["legacy_key"]]
         if have is None:
             written["films"] += 1
             film_ids[f["legacy_key"]] = "new:" + f["legacy_key"]
@@ -330,16 +364,33 @@ def run_import(
 def verify_counts(
     data: dict[str, Any], db: Any, film_ids: set[Any], profile_ids: dict[str, Any], log: Callable[[str], None] = print
 ) -> dict[str, int]:
-    """Count what the database now holds for the imported films and compare it
-    with the preview's counts. Raises :class:`CountMismatch`."""
-    films = [f for f in db.select("films", "id,scores_locked", "id") if f["id"] in film_ids]
+    """Count what the database now holds and compare it with the preview's
+    counts: for the imported films, and for every film with a sheet row (so
+    orphans from an earlier import show up). Raises :class:`CountMismatch`."""
+    all_films = db.select("films", "id,scores_locked,legacy_sheet_row,screened_on", "id")
+    sheet_ids = {f["id"] for f in all_films if f["legacy_sheet_row"]}
+    for f in all_films:
+        if f["id"] in sheet_ids - film_ids:
+            log(f"orphan: DB film #{f['id']} (sheet row {f['legacy_sheet_row']}, {f['screened_on']}) is not in import.json")
+    attendance = db.select("attendance", "film_id", "film_id,profile_id")
+    scores = db.select("scores", "film_id", "film_id,profile_id")
+    comments = [c for c in db.select("comments", "film_id,is_legacy", "id") if c["is_legacy"]]
+
+    def on(rows: list[dict[str, Any]], ids: set[Any]) -> int:
+        return sum(1 for r in rows if r["film_id"] in ids)
+
     actual = {
         "profiles": len({p["id"] for p in db.select("profiles", "id", "id")} & set(profile_ids.values())),
-        "films": len(films),
-        "attendance": sum(1 for a in db.select("attendance", "film_id", "film_id,profile_id") if a["film_id"] in film_ids),
-        "scores": sum(1 for s in db.select("scores", "film_id", "film_id,profile_id") if s["film_id"] in film_ids),
-        "comments": sum(1 for c in db.select("comments", "film_id,is_legacy", "id") if c["is_legacy"] and c["film_id"] in film_ids),
-        "locked": sum(1 for f in films if f["scores_locked"]),
+        "films": sum(1 for f in all_films if f["id"] in film_ids),
+        "attendance": on(attendance, film_ids),
+        "scores": on(scores, film_ids),
+        "comments": on(comments, film_ids),
+        "locked": sum(1 for f in all_films if f["id"] in film_ids and f["scores_locked"]),
+        # Whole tables, limited to sheet films (a local stack also holds seed films).
+        "all films with a sheet row": len(sheet_ids),
+        "all attendance": on(attendance, sheet_ids),
+        "all scores": on(scores, sheet_ids),
+        "all legacy comments": on(comments, sheet_ids),
     }
     c = data["counts"]
     expected = {
@@ -349,6 +400,10 @@ def verify_counts(
         "scores": c["scores"],
         "comments": c["comments"],
         "locked": len(data["lock_after_scores"]),
+        "all films with a sheet row": c["films"],
+        "all attendance": c["attendance"],
+        "all scores": c["scores"],
+        "all legacy comments": c["comments"],
     }
     log("counts (database / preview):")
     for k in expected:
