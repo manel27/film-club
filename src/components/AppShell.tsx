@@ -1,7 +1,7 @@
 import { Link, Outlet } from 'react-router'
 import { useAuth } from '../auth/authContext'
 import { useLogOut } from '../auth/useLogOut'
-import { isTheme, THEMES } from '../theme'
+import ThemePicker from './ThemePicker'
 
 const ROLE_LABELS: Partial<Record<string, string>> = {
   admin: 'Admin',
@@ -10,7 +10,7 @@ const ROLE_LABELS: Partial<Record<string, string>> = {
 
 /** Header (club name, theme, who's logged in, log out) around the page content. */
 export default function AppShell() {
-  const { profile, theme, setTheme } = useAuth()
+  const { profile } = useAuth()
   const { logOut, busy } = useLogOut()
   const roleLabel = profile ? ROLE_LABELS[profile.role] : undefined
 
@@ -21,21 +21,7 @@ export default function AppShell() {
           Film Club
         </Link>
         <div className="header-tools">
-          <label className="theme-picker">
-            <span>Theme</span>
-            <select
-              value={theme}
-              onChange={(e) => {
-                if (isTheme(e.target.value)) setTheme(e.target.value)
-              }}
-            >
-              {THEMES.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.label}
-                </option>
-              ))}
-            </select>
-          </label>
+          <ThemePicker />
           {profile && (
             <div className="whoami" aria-label="Logged in as">
               <span

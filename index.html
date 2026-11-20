@@ -8,11 +8,11 @@
     <!-- If a CSP is added, this script needs a sha256 hash or must move to a file. -->
     <script>
       // Applies the saved theme before first paint (no flash). Keep the ids and
-      // key in sync with src/theme.ts. No saved theme: follow the OS setting.
+      // key in sync with src/theme.ts. No saved theme: Letterboxd.
       try {
         var theme = localStorage.getItem('film-club-theme')
         if (!/^(superman|batman|letterboxd)$/.test(theme)) {
-          theme = matchMedia('(prefers-color-scheme: dark)').matches ? 'batman' : 'superman'
+          theme = 'letterboxd'
         }
         document.documentElement.dataset.theme = theme
       } catch (e) {}

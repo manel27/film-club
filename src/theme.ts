@@ -7,6 +7,9 @@ export const THEMES = [
 
 export type Theme = (typeof THEMES)[number]['id']
 
+/** Used with no saved theme (Manel's choice). Keep in sync with index.html. */
+export const DEFAULT_THEME: Theme = 'letterboxd'
+
 /** localStorage key; index.html reads it before first paint. */
 export const THEME_STORAGE_KEY = 'film-club-theme'
 
@@ -17,7 +20,7 @@ export function isTheme(value: unknown): value is Theme {
 /** The theme on <html> right now (set by index.html before first paint). */
 export function currentTheme(): Theme {
   const theme = document.documentElement.dataset.theme
-  return isTheme(theme) ? theme : 'superman'
+  return isTheme(theme) ? theme : DEFAULT_THEME
 }
 
 /** Applies a theme and remembers it on this device. */

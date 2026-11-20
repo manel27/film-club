@@ -4,13 +4,13 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { AuthProvider } from './auth/AuthProvider'
 import { routes } from './routes'
 import { createFakeAuthBackend, fakeProfile, fakeSession } from './test/fakeAuthBackend'
-import { THEME_STORAGE_KEY, THEMES } from './theme'
+import { DEFAULT_THEME, THEME_STORAGE_KEY, THEMES } from './theme'
 import indexHtml from '../index.html?raw'
 
-function renderShell(fake: ReturnType<typeof createFakeAuthBackend>) {
+function renderShell(fake: ReturnType<typeof createFakeAuthBackend>, path = '/') {
   render(
     <AuthProvider backend={fake.backend}>
-      <RouterProvider router={createMemoryRouter(routes, { initialEntries: ['/'] })} />
+      <RouterProvider router={createMemoryRouter(routes, { initialEntries: [path] })} />
     </AuthProvider>,
   )
 }
@@ -74,5 +74,22 @@ describe('theme switcher', () => {
   it('index.html’s pre-paint script knows exactly the THEMES ids', () => {
     const ids = indexHtml.match(/\^\(([\w|]+)\)\$/)?.[1].split('|')
     expect(ids).toEqual(THEMES.map((t) => t.id))
+  })
+
+  it('defaults to Letterboxd, in index.html too', () => {
+    expect(DEFAULT_THEME).toBe('letterboxd')
+    expect(indexHtml).toContain(`theme = '${DEFAULT_THEME}'`)
+  })
+
+  it('lets a logged-out visitor switch theme on the login page (device only)', async () => {
+    const fake = createFakeAuthBackend()
+    renderShell(fake, '/login')
+    const picker = await screen.findByLabelText('Theme')
+    expect(picker).toHaveValue(DEFAULT_THEME)
+
+    fireEvent.change(picker, { target: { value: 'superman' } })
+    expect(html.dataset.theme).toBe('superman')
+    expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe('superman')
+    expect(fake.backend.saveTheme).not.toHaveBeenCalled()
   })
 })

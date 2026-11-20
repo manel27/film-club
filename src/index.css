@@ -1,10 +1,9 @@
 /*
  * Theme tokens (plan 9). Components only ever use these variables; each theme
  * redefines them on <html data-theme="…"> (set before first paint by the
- * script in index.html). Superman is also the fallback with no data-theme.
+ * script in index.html). Letterboxd is also the fallback with no data-theme.
  * scripts/theme-contrast.test.mjs checks the text and control pairs for WCAG AA contrast.
  */
-:root,
 :root[data-theme='superman'] {
   color-scheme: light;
   --bg: #f7f6f0;
@@ -36,6 +35,7 @@
 }
 
 /* A Letterboxd-inspired palette only: no logos or trademarks. */
+:root,
 :root[data-theme='letterboxd'] {
   color-scheme: dark;
   --bg: #151a1f;
