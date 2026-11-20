@@ -22,25 +22,86 @@ npm run dev                  # http://localhost:5173/film-club/
 
 Useful scripts:
 
-| Command             | What it does                        |
-| ------------------- | ----------------------------------- |
-| `npm run dev`       | Start the dev server                |
-| `npm run lint`      | ESLint                              |
-| `npm run typecheck` | TypeScript type check               |
-| `npm test`          | Unit tests (Vitest)                 |
-| `npm run build`     | Production build into `dist/`       |
-| `npm run e2e`       | End-to-end smoke tests (Playwright) |
-| `npm run db:start`  | Start the local Supabase stack      |
-| `npm run db:test`   | Database tests (pgTAP)              |
-| `npm run db:reset`  | Rebuild the local database          |
-| `npm run db:types`  | Regenerate `database.types.ts`      |
+| Command             | What it does                   |
+| ------------------- | ------------------------------ |
+| `npm run dev`       | Start the dev server           |
+| `npm run lint`      | ESLint                         |
+| `npm run typecheck` | TypeScript type check          |
+| `npm test`          | Unit tests (Vitest)            |
+| `npm run build`     | Production build into `dist/`  |
+| `npm run e2e`       | End-to-end tests (Playwright)  |
+| `npm run db:start`  | Start the local Supabase stack |
+| `npm run db:test`   | Database tests (pgTAP)         |
+| `npm run db:reset`  | Rebuild the local database     |
+| `npm run db:types`  | Regenerate `database.types.ts` |
 
 For end-to-end tests, install the browser once with
 `npx playwright install --with-deps chromium` (the `--with-deps` part needs sudo
-on Linux/WSL).
+on Linux/WSL). They run against the **local** Supabase stack, so start it first
+(`npm run db:start`). Playwright reads the stack's URL and throwaway dev keys
+from `supabase status`, builds the app into `dist-e2e/` pointed at it, creates
+synthetic test logins (`*@example.test`) and removes them afterwards. It refuses
+to run against anything that isn't on your machine.
 
 Supabase configuration, migrations and database tests live in `supabase/`
 (`npx supabase ...`; the CLI is a dev dependency). See `supabase/README.md`.
+
+## Logging in
+
+Login is email + password. There is no sign-up: accounts come from invites (a
+later phase) or, for the first admin, from the bootstrap script below. Every
+page except `#/login` needs a session; a login that isn't linked to a club
+profile sees "Your account isn't linked yet".
+
+## Admin bootstrap
+
+`scripts/create-admin.mjs` creates Manel's login and makes it the admin. It
+creates (or finds) the auth user with the email already confirmed, then links
+it to the existing **Manel** placeholder profile (from the history import) and
+sets the role to admin. If there is no Manel profile yet (the import hasn't
+run), pass `--create-profile` and it creates one; without that flag it stops.
+
+1. Put the project URL and **secret** key in an env file that git ignores, for
+   example `admin.env.local` (any `*.local` file is ignored) or a file outside
+   the repository:
+
+   ```ini
+   SUPABASE_URL=http://127.0.0.1:54321      # local: "API URL" from `npx supabase status`
+   SUPABASE_SECRET_KEY=...                   # local: "Secret key" from `npx supabase status`
+   ```
+
+   The script never prints the key. It resolves symlinks and refuses an env
+   file inside any git working tree (including a worktree) unless git confirms
+   that the file is ignored there; if git can't check, it refuses. Plain
+   `http://` is only accepted for a local stack.
+
+2. Run it and type the password at the hidden prompt (twice):
+
+   ```bash
+   node scripts/create-admin.mjs --env admin.env.local --email you@example.com
+   ```
+
+   Options: `--name` (profile to link, default `Manel`; matched exactly,
+   ignoring case and surrounding spaces, no wildcards), `--create-profile`
+   (create the profile if there is none with that name), `--colour '#rrggbb'`
+   (only with `--create-profile`), `--reset-password` (set a new password on an
+   existing login). There is no password option on purpose: it would end up in
+   your shell history. It must run in an interactive terminal (piped input is
+   refused).
+
+Running it again changes nothing. It refuses, without changing anything, if the
+profile is already claimed by a different login, if the email is already
+linked to another profile, or if the name is a system profile (Cinema, Sheet
+archive), or if more than one profile has that name. If linking fails after it
+created a new login, it deletes that login again (and tells you to delete it by
+hand in the dashboard if even that fails).
+
+- **Local first.** On the local stack, run `npm run db:reset` afterwards before
+  `npm run db:test`: the pgTAP tests expect the seed exactly as it is.
+- **Production is an owner gate** (plan phase 4d): only after Manel approves.
+  For a non-local URL the script asks you to type the host name to confirm.
+  Use the hosted project's secret key from the Supabase dashboard (API keys),
+  keep the env file outside the repository and delete it afterwards.
 
 ## Secret scanning
 
