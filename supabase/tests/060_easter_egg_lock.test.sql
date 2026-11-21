@@ -87,8 +87,9 @@ select throws_ok($$delete from public.films where id = 7$$,
   '42501', null, 'admin cannot delete the locked film');
 reset role;
 select tests.login_as('moderator');
-select throws_ok($$delete from public.films where id = 7$$,
-  '42501', null, 'moderator cannot delete the locked film');
+-- Moderators can't delete any film (RLS hides it from the delete).
+select is(tests.affected($$delete from public.films where id = 7$$), 0,
+  'moderator cannot delete the locked film');
 reset role;
 select tests.login_service_role();
 select throws_ok($$update public.films set scores_locked = false where id = 7$$,

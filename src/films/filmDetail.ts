@@ -26,6 +26,8 @@ export function permissions(me: MyProfile | null, scoresLocked: boolean) {
     score: (profileId: string) => !scoresLocked && ownOrStaff(profileId),
     // Moderators can't touch others' comments; only the admin can (decision N3).
     comment: (authorId: string) => role === 'admin' || (canWrite && authorId === me?.id),
+    // Admin only; the locked easter egg can never be deleted.
+    deleteFilm: role === 'admin' && !scoresLocked,
   }
 }
 

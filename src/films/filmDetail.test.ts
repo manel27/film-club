@@ -49,6 +49,13 @@ describe('permissions', () => {
     expect(me('admin').comment('x')).toBe(true)
   })
 
+  it('lets only the admin delete a film, and never the locked one', () => {
+    expect(
+      ['admin', 'moderator', 'member', 'viewer'].map((r) => me(r as 'admin').deleteFilm),
+    ).toEqual([true, false, false, false])
+    expect(permissions(fakeProfile({ role: 'admin' }), true).deleteFilm).toBe(false)
+  })
+
   it('lets viewers change nothing', () => {
     const p = me('viewer')
     expect([p.canWrite, p.attendance('me'), p.score('me'), p.comment('me')]).toEqual([

@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { createMemoryRouter, RouterProvider } from 'react-router'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AuthProvider } from '../auth/AuthProvider'
 import RequireAuth from '../auth/RequireAuth'
 import type { FilmDetailData, FilmRecord } from '../films/api'
@@ -71,6 +71,7 @@ const writes = vi.hoisted(() => ({
   addComment: vi.fn(async () => {}),
   editComment: vi.fn(async () => {}),
   deleteComment: vi.fn(async () => {}),
+  deleteFilm: vi.fn(async () => {}),
 }))
 vi.mock('../films/api', () => ({
   fetchFilm: (id: number) => fetchFilm(id),
@@ -108,6 +109,17 @@ const commentItem = (text: string) => screen.getByText(text).closest('li')!
 const findComment = async (text: string) => (await screen.findByText(text)).closest('li')!
 
 beforeEach(() => vi.clearAllMocks())
+
+// jsdom has <dialog> but not showModal()/close().
+beforeAll(() => {
+  HTMLDialogElement.prototype.showModal = function (this: HTMLDialogElement) {
+    this.open = true
+  }
+  HTMLDialogElement.prototype.close = function (this: HTMLDialogElement) {
+    this.open = false
+    this.dispatchEvent(new Event('close'))
+  }
+})
 
 describe('film page', () => {
   it('shows the film, screening, attendance, scores and comments', async () => {
@@ -323,5 +335,61 @@ describe('film page', () => {
     expect(screen.getByRole('row', { name: 'Average 11.00' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /score/ })).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Your score')).not.toBeInTheDocument()
+  })
+
+  it('lets only the admin delete a film', async () => {
+    renderPage('moderator')
+    expect(await screen.findByRole('link', { name: 'Edit' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Delete film' })).not.toBeInTheDocument()
+  })
+
+  it('asks before deleting, says what goes with it, then goes to the films with a notice', async () => {
+    const router = renderPage('admin')
+    fireEvent.click(await screen.findByRole('button', { name: 'Delete film' }))
+    const dialog = screen.getByRole('dialog', { name: 'Delete "Glass River"?' })
+    expect(dialog).toHaveTextContent('2 scores')
+    expect(dialog).toHaveTextContent('2 attendance marks')
+    expect(dialog).toHaveTextContent('2 comments')
+    // Cancel deletes nothing.
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    expect(dialog).not.toHaveAttribute('open')
+    expect(writes.deleteFilm).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete film' }))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Yes, delete film' }))
+    expect(writes.deleteFilm).toHaveBeenCalledWith(5)
+    await waitFor(() => expect(router.state.location.pathname).toBe('/'))
+    expect(router.state.location.state).toEqual({ notice: 'Deleted "Glass River".' })
+  })
+
+  it('says so in the dialog when the film was already removed, then shows "not found"', async () => {
+    writes.deleteFilm.mockRejectedValueOnce(NO_ROWS)
+    const router = renderPage('admin')
+    fireEvent.click(await screen.findByRole('button', { name: 'Delete film' }))
+    const dialog = screen.getByRole('dialog')
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Yes, delete film' }))
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(
+      'This was changed or removed elsewhere.',
+    )
+    expect(router.state.location.pathname).toBe('/films/5')
+    fetchFilm.mockResolvedValueOnce(null)
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    expect(await screen.findByRole('heading', { name: 'Film not found' })).toBeInTheDocument()
+  })
+
+  it('shows a refused delete in the dialog', async () => {
+    writes.deleteFilm.mockRejectedValueOnce({ code: '42501', message: 'row-level security' })
+    renderPage('admin')
+    fireEvent.click(await screen.findByRole('button', { name: 'Delete film' }))
+    const dialog = screen.getByRole('dialog')
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Yes, delete film' }))
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent("You can't change that.")
+  })
+
+  it('offers no delete for the locked easter egg', async () => {
+    fetchFilm.mockResolvedValueOnce(detail({ is_easter_egg: true, scores_locked: true }))
+    renderPage('admin')
+    await screen.findByText('You just lost the game!')
+    expect(screen.queryByRole('button', { name: 'Delete film' })).not.toBeInTheDocument()
   })
 })

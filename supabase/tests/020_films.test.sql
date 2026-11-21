@@ -1,7 +1,8 @@
--- Matrix row "Add / edit / delete films": A ✔ Mo ✔ Me ✘ V ✘ — ✘
+-- Matrix rows "Add / edit films": A ✔ Mo ✔ Me ✘ V ✘ — ✘
+-- and "Delete films": A ✔ Mo ✘ Me ✘ V ✘ — ✘
 -- plus film constraints and import-only columns.
 begin;
-select plan(36);
+select plan(40);
 
 -- ---------------------------------------------------------------- add
 select tests.login_as('admin');
@@ -77,12 +78,21 @@ select tests.login_as('admin');
 select is(tests.affected($$delete from public.films where tmdb_id = 910001$$), 1, 'admin can delete a film');
 reset role;
 select tests.login_as('moderator');
-select is(tests.affected($$delete from public.films where tmdb_id = 910002$$), 1, 'moderator can delete a film');
+select is(tests.affected($$delete from public.films where tmdb_id = 910002$$), 0, 'moderator cannot delete a film');
+select is(tests.affected($$delete from public.films where id = 2$$), 0, 'moderator cannot delete a film with history');
+reset role;
+select ok(exists (select 1 from public.films where tmdb_id = 910002), 'the moderator''s delete had no effect');
+select tests.login_as('admin');
+select is(tests.affected($$delete from public.films where tmdb_id = 910002$$), 1, 'admin can delete a film added by a moderator');
 reset role;
 
 -- Deleting a film removes its attendance, scores and comments
+select ok((select count(*) from public.scores where film_id = 2) > 0
+      and (select count(*) from public.attendance where film_id = 2) > 0
+      and (select count(*) from public.comments where film_id = 2) > 0,
+  'film 2 has attendance, scores and comments before the delete');
 select tests.login_as('admin');
-select is(tests.affected($$delete from public.films where id = 2$$), 1, 'staff can delete a film with history');
+select is(tests.affected($$delete from public.films where id = 2$$), 1, 'admin can delete a film with history');
 reset role;
 select is((select count(*)::int from public.scores where film_id = 2)
         + (select count(*)::int from public.attendance where film_id = 2)

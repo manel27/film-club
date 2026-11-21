@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
-import { Link, useParams } from 'react-router'
+import { Link, useNavigate, useParams } from 'react-router'
 import { useAuth } from '../auth/authContext'
 import { fetchFilm, filmWrites, type FilmDetailData, type FilmRecord } from '../films/api'
 import { errorMessage, parseScore, permissions } from '../films/filmDetail'
 import { KIND_LABELS, type Person } from '../films/films'
 import { textOn } from '../lib/colour'
 
-type Section = 'attendance' | 'scores' | 'comments'
+type Section = 'attendance' | 'scores' | 'comments' | 'delete'
 /** Runs one write at a time, then reloads the film. Resolves true on success. */
 type Run = (section: Section, write: () => Promise<void>) => Promise<boolean>
 
@@ -46,6 +46,7 @@ function Film({ id }: { id: string }) {
   const [busy, setBusy] = useState(false)
   const busyRef = useRef(false)
   const people = useRef<Person[] | undefined>(undefined)
+  const navigate = useNavigate()
 
   // Only the first load can fail the page; a failed reload keeps what is shown.
   const load = useCallback(async () => {
@@ -76,6 +77,23 @@ function Film({ id }: { id: string }) {
       return false
     } finally {
       await load()
+      busyRef.current = false
+      setBusy(false)
+    }
+  }
+
+  // Not run(): a reload after a successful delete would flash "Film not found".
+  const deleteFilm = async (film: FilmRecord) => {
+    if (busyRef.current) return
+    busyRef.current = true
+    setBusy(true)
+    setError(null)
+    try {
+      await filmWrites.deleteFilm(film.id)
+      navigate('/', { state: { notice: `Deleted "${film.title}".` } })
+    } catch (e) {
+      setError({ section: 'delete', message: errorMessage(e) })
+    } finally {
       busyRef.current = false
       setBusy(false)
     }
@@ -124,9 +142,10 @@ function Film({ id }: { id: string }) {
   const kind = KIND_LABELS[film.kind]
   const assigned = byId.get(film.assigned_id)
   const turnHolder = film.turn_holder_id ? byId.get(film.turn_holder_id) : undefined
+  const perms = permissions(profile, film.scores_locked)
   const props: SectionProps = {
     byId,
-    perms: permissions(profile, film.scores_locked),
+    perms,
     me: profile?.id,
     run,
     busy,
@@ -158,6 +177,21 @@ function Film({ id }: { id: string }) {
             <Link to={`/films/${film.id}/edit`} className="button button-secondary button-small">
               Edit
             </Link>
+          )}{' '}
+          {perms.deleteFilm && (
+            <DeleteFilm
+              film={film}
+              busy={busy}
+              error={error?.section === 'delete' ? error.message : ''}
+              onDelete={() => void deleteFilm(film)}
+              onClose={() => {
+                // After a failed delete, show what is there now (maybe "Film not found").
+                if (error?.section === 'delete') {
+                  setError(null)
+                  void load()
+                }
+              }}
+            />
           )}
           {film.original_title && film.original_title !== film.title && (
             <p className="muted">{film.original_title}</p>
@@ -180,6 +214,68 @@ function Film({ id }: { id: string }) {
       <Scores data={data} {...props} />
       <Comments film={film} {...props} />
     </main>
+  )
+}
+
+const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
+
+/** "Delete film" and its confirmation dialog (native <dialog>: focus, Escape and inertness for free). */
+function DeleteFilm({
+  film,
+  busy,
+  error,
+  onDelete,
+  onClose,
+}: {
+  film: FilmRecord
+  busy: boolean
+  error: string
+  onDelete: () => void
+  onClose: () => void
+}) {
+  const dialog = useRef<HTMLDialogElement>(null)
+  return (
+    <>
+      <button
+        type="button"
+        className="button button-danger button-small"
+        onClick={() => dialog.current?.showModal()}
+      >
+        Delete film
+      </button>
+      <dialog
+        ref={dialog}
+        className="confirm-dialog"
+        aria-labelledby="delete-film-heading"
+        onClose={onClose}
+      >
+        <h2 id="delete-film-heading">Delete "{film.title}"?</h2>
+        <p>This also deletes, for good:</p>
+        <ul>
+          <li>{count(film.scores.length, 'score', 'scores')}</li>
+          <li>{count(film.attendance.length, 'attendance mark', 'attendance marks')}</li>
+          <li>{count(film.comments.length, 'comment', 'comments')}</li>
+        </ul>
+        {error && (
+          <p role="alert" className="form-error">
+            {error}
+          </p>
+        )}
+        <div className="actions">
+          {/* First, so showModal() focuses it rather than the destructive button. */}
+          <button
+            type="button"
+            className="button button-secondary"
+            onClick={() => dialog.current?.close()}
+          >
+            Cancel
+          </button>
+          <button type="button" className="button button-danger" disabled={busy} onClick={onDelete}>
+            Yes, delete film
+          </button>
+        </div>
+      </dialog>
+    </>
   )
 }
 
