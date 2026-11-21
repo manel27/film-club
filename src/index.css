@@ -262,7 +262,30 @@ body {
 
 .view-toggle {
   display: flex;
-  gap: 0.25rem;
+}
+
+/* One segmented control: joined buttons, rounded only at the ends. */
+.view-toggle .button {
+  display: flex;
+  padding: 0.25rem 0.625rem;
+  border-radius: 0;
+}
+
+.view-toggle .button:first-child {
+  border-radius: var(--radius) 0 0 var(--radius);
+}
+
+.view-toggle .button:last-child {
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+
+.view-toggle .button + .button {
+  margin-left: -1px;
+}
+
+/* The focus ring sits above the neighbouring button. */
+.view-toggle .button:focus-visible {
+  position: relative;
 }
 
 .view-toggle [aria-pressed='true'] {

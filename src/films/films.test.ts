@@ -151,7 +151,7 @@ describe('filterFilms', () => {
 
 describe('readParams', () => {
   it('has defaults and ignores unknown values', () => {
-    const { view, sort, filters } = readParams(new URLSearchParams('view=grid&sort=x&kind=bogus'))
+    const { view, sort, filters } = readParams(new URLSearchParams('view=mosaic&sort=x&kind=bogus'))
     expect(view).toBe('list')
     expect(sort).toBe('newest')
     expect(filters).toEqual(NO_FILTERS)
@@ -159,11 +159,10 @@ describe('readParams', () => {
 
   it('reads every filter', () => {
     const p = new URLSearchParams(
-      'view=posters&weeks=0&sort=oldest&present=a,b&presentMode=all&genre=Drama&assigned=c&kind=cinema&year=2025&unscored=1',
+      'view=grid&sort=oldest&present=a,b&presentMode=all&genre=Drama&assigned=c&kind=cinema&year=2025&unscored=1',
     )
     expect(readParams(p)).toEqual({
-      view: 'posters',
-      byWeek: false,
+      view: 'grid',
       sort: 'oldest',
       filters: {
         present: ['a', 'b'],
@@ -181,12 +180,12 @@ describe('readParams', () => {
 describe('toParams', () => {
   it('round-trips known keys and drops defaults and junk', () => {
     const p =
-      'view=posters&weeks=0&sort=oldest&present=a,b&presentMode=all&genre=Drama&assigned=c&kind=cinema&year=2025&unscored=1'
+      'view=grid&sort=oldest&present=a,b&presentMode=all&genre=Drama&assigned=c&kind=cinema&year=2025&unscored=1'
     expect(toParams(readParams(new URLSearchParams(p))).toString()).toBe(
-      'view=posters&weeks=0&sort=oldest&present=a%2Cb&presentMode=all&genre=Drama&assigned=c&kind=cinema&year=2025&unscored=1',
+      'view=grid&sort=oldest&present=a%2Cb&presentMode=all&genre=Drama&assigned=c&kind=cinema&year=2025&unscored=1',
     )
     expect(
-      toParams(readParams(new URLSearchParams('{bad json&sort=newest&weeks=1'))).toString(),
+      toParams(readParams(new URLSearchParams('{bad json&sort=newest&view=nope'))).toString(),
     ).toBe('')
   })
 })

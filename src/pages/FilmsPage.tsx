@@ -88,7 +88,7 @@ export default function FilmsPage() {
       canScore,
     })
   }
-  const { view, byWeek, sort, filters } = state
+  const { view, sort, filters } = state
 
   const change = (next: Partial<PageState>) => {
     const nextSearch = toParams({ ...state, ...next }).toString()
@@ -137,30 +137,31 @@ export default function FilmsPage() {
     <main className="page films-page">
       <div className="films-head">
         <h1>Films</h1>
-        <div className="header-tools">
-          {view === 'posters' && (
-            <label className="check">
-              <input
-                type="checkbox"
-                checked={byWeek}
-                onChange={(e) => change({ byWeek: e.target.checked })}
-              />
-              Group by week
-            </label>
-          )}
-          <div className="view-toggle" role="group" aria-label="View">
-            {(['list', 'posters'] as const).map((v) => (
-              <button
-                key={v}
-                type="button"
-                className="button button-secondary button-small"
-                aria-pressed={view === v}
-                onClick={() => change({ view: v })}
+        <div className="view-toggle" role="group" aria-label="View">
+          {VIEWS.map(([v, name, icon]) => (
+            <button
+              key={v}
+              type="button"
+              className="button button-secondary button-small"
+              aria-pressed={view === v}
+              aria-label={name}
+              title={name}
+              onClick={() => change({ view: v })}
+            >
+              <svg
+                viewBox="0 0 24 24"
+                width="20"
+                height="20"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                aria-hidden="true"
               >
-                {v === 'list' ? 'List' : 'Posters'}
-              </button>
-            ))}
-          </div>
+                {icon}
+              </svg>
+            </button>
+          ))}
         </div>
       </div>
 
@@ -241,7 +242,7 @@ export default function FilmsPage() {
               </div>
             ))}
 
-          {view === 'posters' && !byWeek ? (
+          {view === 'grid' ? (
             <ul className="poster-grid poster-grid-flat">
               {groups
                 .flatMap((g) => g.films)
@@ -274,6 +275,30 @@ export default function FilmsPage() {
     </main>
   )
 }
+
+// Inline icons (stroke = currentColor, so they follow the theme).
+const VIEWS: [PageState['view'], string, React.ReactNode][] = [
+  ['list', 'List', <path d="M4 6h.01M9 6h11M4 12h.01M9 12h11M4 18h.01M9 18h11" />],
+  [
+    'posters',
+    'Posters by week',
+    <>
+      <path d="M3 4h18" />
+      <rect x="3" y="9" width="7.5" height="12" rx="1.5" />
+      <rect x="13.5" y="9" width="7.5" height="12" rx="1.5" />
+    </>,
+  ],
+  [
+    'grid',
+    'Poster grid',
+    <>
+      <rect x="3" y="3" width="7.5" height="7.5" rx="2.5" />
+      <rect x="13.5" y="3" width="7.5" height="7.5" rx="2.5" />
+      <rect x="3" y="13.5" width="7.5" height="7.5" rx="2.5" />
+      <rect x="13.5" y="13.5" width="7.5" height="7.5" rx="2.5" />
+    </>,
+  ],
+]
 
 const byName = (a: Person, b: Person) => a.name.localeCompare(b.name)
 

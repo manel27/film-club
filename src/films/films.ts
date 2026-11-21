@@ -115,9 +115,8 @@ export function filterFilms(films: FilmItem[], f: Filters, scored: Set<number>):
 export const KINDS = Object.keys(KIND_LABELS) as FilmKind[]
 
 export interface PageState {
-  view: 'list' | 'posters'
-  /** Posters view only: false shows one grid with no week headings. */
-  byWeek: boolean
+  /** posters = grouped by week; grid = one continuous poster grid with no dates. */
+  view: 'list' | 'posters' | 'grid'
   sort: Sort
   filters: Filters
 }
@@ -125,6 +124,7 @@ export interface PageState {
 /** Reads the page state from URL search params (unknown view/sort/kind values are ignored). */
 export function readParams(params: URLSearchParams): PageState {
   const kind = params.get('kind') ?? ''
+  const view = params.get('view')
   const filters: Filters = {
     present: params.get('present')?.split(',').filter(Boolean) ?? [],
     presentMode: params.get('presentMode') === 'all' ? 'all' : 'any',
@@ -135,18 +135,16 @@ export function readParams(params: URLSearchParams): PageState {
     unscored: params.get('unscored') === '1',
   }
   return {
-    view: params.get('view') === 'posters' ? 'posters' : 'list',
-    byWeek: params.get('weeks') !== '0',
+    view: view === 'posters' || view === 'grid' ? view : 'list',
     sort: params.get('sort') === 'oldest' ? 'oldest' : 'newest',
     filters,
   }
 }
 
 /** The page state as search params, defaults left out (known keys only). */
-export function toParams({ view, byWeek, sort, filters: f }: PageState): URLSearchParams {
+export function toParams({ view, sort, filters: f }: PageState): URLSearchParams {
   const p = new URLSearchParams()
-  if (view === 'posters') p.set('view', view)
-  if (!byWeek) p.set('weeks', '0')
+  if (view !== 'list') p.set('view', view)
   if (sort === 'oldest') p.set('sort', sort)
   if (f.present.length > 0) p.set('present', f.present.join(','))
   if (f.presentMode === 'all') p.set('presentMode', 'all')

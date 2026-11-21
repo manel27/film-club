@@ -60,7 +60,7 @@ test('view and filters are kept in the URL and restored from localStorage', asyn
   await tamsin.click()
   await expect(tamsin).not.toBeChecked()
 
-  await page.getByRole('button', { name: 'Posters' }).click()
+  await page.getByRole('button', { name: 'Posters by week' }).click()
   await expect(page.getByRole('img', { name: 'Midnight Marathon (2015)' })).toBeVisible()
   await page.screenshot({ path: `${SCREENSHOTS}/films-posters.png`, fullPage: true })
 
@@ -77,11 +77,11 @@ test('view and filters are kept in the URL and restored from localStorage', asyn
 
 test('posters can be shown in one grid without week headings', async ({ page }) => {
   await logIn(page, E2E_MEMBER.email, E2E_PASSWORD)
-  await page.getByRole('button', { name: 'Posters' }).click()
+  await page.getByRole('button', { name: 'Posters by week' }).click()
   await expect(page.getByRole('heading', { level: 2 })).toHaveCount(7)
 
-  await page.getByRole('checkbox', { name: 'Group by week' }).click()
-  await expect(page).toHaveURL(/#\/\?view=posters&weeks=0$/)
+  await page.getByRole('button', { name: 'Poster grid' }).click()
+  await expect(page).toHaveURL(/#\/\?view=grid$/)
   await expect(page.getByRole('heading', { level: 2 })).toHaveCount(0)
   await expect(page.locator('.poster')).toHaveCount(8)
   await expect(page.locator('.poster').first()).toHaveAttribute(
@@ -91,7 +91,10 @@ test('posters can be shown in one grid without week headings', async ({ page }) 
   await page.screenshot({ path: `${SCREENSHOTS}/films-posters-flat.png`, fullPage: true })
 
   await page.reload()
-  await expect(page.getByRole('checkbox', { name: 'Group by week' })).not.toBeChecked()
+  await expect(page.getByRole('button', { name: 'Poster grid' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
 })
 
 test('the present filter closes on a click outside or Escape', async ({ page }) => {
@@ -130,7 +133,7 @@ test('the films page fits a 360px screen', async ({ page }) => {
   await page.getByText('Present', { exact: true }).click()
   await expect(page.getByRole('checkbox', { name: 'Tamsin' })).toBeVisible()
   expect(await overflow()).toBe(0)
-  await page.getByRole('button', { name: 'Posters' }).click()
+  await page.getByRole('button', { name: 'Posters by week' }).click()
   await expect(page.getByRole('img', { name: 'Midnight Marathon (2015)' })).toBeVisible()
   expect(await overflow()).toBe(0)
   await page.screenshot({ path: `${SCREENSHOTS}/films-narrow-present.png`, fullPage: true })

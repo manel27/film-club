@@ -129,7 +129,10 @@ describe('films page', () => {
     const router = renderPage()
     expect(await screen.findByRole('img', { name: 'Shark Joke (2001)' })).toBeInTheDocument()
     expect(router.state.location.search).toBe('?view=posters&year=2025')
-    expect(screen.getByRole('button', { name: 'Posters' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Posters by week' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
   })
 
   it('does not bring the saved choice back when the visitor empties the URL', async () => {
@@ -159,20 +162,18 @@ describe('films page', () => {
   it('can show posters in one grid without week headings', async () => {
     const router = renderPage('/?view=posters')
     await screen.findByText('3 films')
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Group by week' }))
-    expect(router.state.location.search).toBe('?view=posters&weeks=0')
+    const grid = screen.getByRole('button', { name: 'Poster grid' })
+    expect(grid).toHaveAttribute('title', 'Poster grid')
+    fireEvent.click(grid)
+    expect(grid).toHaveAttribute('aria-pressed', 'true')
+    expect(router.state.location.search).toBe('?view=grid')
     expect(screen.queryAllByRole('heading', { level: 2 })).toHaveLength(0)
     expect(
       screen
         .getAllByRole('img', { name: /\(2001\)$/ })
         .map((i) => i.getAttribute('aria-label') ?? i.getAttribute('alt')),
     ).toEqual(['Glass River (2001)', 'Night Bus (2001)', 'Shark Joke (2001)'])
-    expect(localStorage.getItem('film-club-films')).toBe('view=posters&weeks=0')
-
-    // The list view ignores it and has no such option.
-    fireEvent.click(screen.getByRole('button', { name: 'List' }))
-    expect(screen.getAllByRole('heading', { level: 2 })).toHaveLength(3)
-    expect(screen.queryByRole('checkbox', { name: 'Group by week' })).not.toBeInTheDocument()
+    expect(localStorage.getItem('film-club-films')).toBe('view=grid')
   })
 
   it('closes the present filter on a click outside or Escape', async () => {
