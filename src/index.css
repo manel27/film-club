@@ -239,9 +239,31 @@ a {
   border-color: var(--border);
 }
 
+.button-danger {
+  color: var(--bg);
+  background: var(--danger);
+  border-color: var(--danger);
+}
+
 .button-small {
   padding: 0.25rem 0.75rem;
   font-size: 0.875rem;
+}
+
+.confirm-dialog {
+  max-width: min(28rem, calc(100vw - 2rem));
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.confirm-dialog::backdrop {
+  background: rgb(0 0 0 / 0.6);
+}
+
+.confirm-dialog h2 {
+  margin-top: 0;
 }
 
 /* ---------------------------------------------------------------- films */

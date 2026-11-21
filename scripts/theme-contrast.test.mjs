@@ -41,6 +41,8 @@ const PAIRS = [
   ['accent-text', 'accent', 4.5],
   ['danger', 'bg', 4.5],
   ['danger', 'surface', 4.5],
+  // Text on the destructive button (.button-danger).
+  ['bg', 'danger', 4.5],
   ['focus', 'bg', 3],
   ['focus', 'surface', 3],
   ['border', 'bg', 3],

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link, useSearchParams } from 'react-router'
+import { Link, useLocation, useSearchParams } from 'react-router'
 import { useAuth } from '../auth/authContext'
 import { fetchFilmsData, type FilmsData } from '../films/api'
 import {
@@ -54,6 +54,17 @@ export default function FilmsPage() {
   const [data, setData] = useState<FilmsData | null>(null)
   const [failed, setFailed] = useState(false)
   const [attempt, setAttempt] = useState(0)
+  // E.g. "Deleted …" after deleting a film. Kept in state: restoring the saved view replaces the URL and its state.
+  const { state: navState } = useLocation()
+  const [notice] = useState((navState as { notice?: string } | null)?.notice)
+  const noticeRef = useRef<HTMLParagraphElement>(null)
+  useEffect(() => {
+    if (!notice) return
+    noticeRef.current?.focus()
+    // Shown once: drop it from the history entry (React Router keeps it in
+    // `usr`), so a reload or Back doesn't show it again.
+    window.history.replaceState({ ...window.history.state, usr: null }, '')
+  }, [notice])
 
   useEffect(() => {
     if (!profileId) return
@@ -197,6 +208,11 @@ export default function FilmsPage() {
           })}
         </div>
       </div>
+      {notice && (
+        <p ref={noticeRef} role="status" className="form-notice" tabIndex={-1}>
+          {notice}
+        </p>
+      )}
 
       {!data || !options ? (
         <p role="status" className="muted">

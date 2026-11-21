@@ -128,6 +128,9 @@ export const filmWrites = {
     check(supabase.from('comments').update({ body }).eq('id', id).select('id'), true),
   deleteComment: (id: number) =>
     check(supabase.from('comments').delete().eq('id', id).select('id'), true),
+  // Attendance, scores and comments go with it (on delete cascade).
+  deleteFilm: (id: number) =>
+    check(supabase.from('films').delete().eq('id', id).select('id'), true),
 }
 
 /** Everyone, for the add/edit film form's choosers. */

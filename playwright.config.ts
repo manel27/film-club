@@ -25,12 +25,12 @@ export default defineConfig({
     trace: 'on-first-retry',
   },
   projects: [
-    { name: 'chromium', use: { ...devices['Desktop Chrome'] }, testIgnore: /add-film/ },
-    // Adds films, which other tests count: runs alone, after them.
+    { name: 'chromium', use: { ...devices['Desktop Chrome'] }, testIgnore: /(add|delete)-film/ },
+    // Add and delete films, which other tests count: run after them.
     {
       name: 'chromium-writes',
       use: { ...devices['Desktop Chrome'] },
-      testMatch: /add-film/,
+      testMatch: /(add|delete)-film/,
       dependencies: ['chromium'],
     },
   ],

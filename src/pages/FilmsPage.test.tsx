@@ -50,7 +50,10 @@ const DATA: FilmsData = {
 const fetchFilmsData = vi.fn(async (): Promise<FilmsData> => DATA)
 vi.mock('../films/api', () => ({ fetchFilmsData: () => fetchFilmsData() }))
 
-function renderPage(path = '/', role: 'member' | 'viewer' = 'member') {
+function renderPage(
+  path: string | { pathname: string; state: unknown } = '/',
+  role: 'member' | 'viewer' = 'member',
+) {
   const router = createMemoryRouter([{ path: '/', element: <FilmsPage /> }], {
     initialEntries: [path],
   })
@@ -133,6 +136,14 @@ describe('films page', () => {
       'aria-pressed',
       'true',
     )
+  })
+
+  it('shows a notice passed by the previous page (a deleted film), even after restoring the view', async () => {
+    localStorage.setItem('film-club-films', 'view=posters')
+    const router = renderPage({ pathname: '/', state: { notice: 'Deleted "Old Film".' } })
+    await waitFor(() => expect(router.state.location.search).toBe('?view=posters'))
+    expect(screen.getByText('Deleted "Old Film".')).toHaveAttribute('role', 'status')
+    expect(screen.getByText('Deleted "Old Film".')).toHaveFocus()
   })
 
   it('does not bring the saved choice back when the visitor empties the URL', async () => {
