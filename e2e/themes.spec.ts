@@ -15,7 +15,7 @@ test('a member switches themes and the choice survives a reload', async ({ page 
   await page.getByLabel('Email').fill(E2E_MEMBER.email)
   await page.getByLabel('Password').fill(E2E_PASSWORD)
   await page.getByRole('button', { name: 'Log in' }).click()
-  await expect(page.getByText('Films coming soon.')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Films', exact: true })).toBeVisible()
 
   const picker = page.getByRole('banner').getByLabel('Theme')
   const html = page.locator('html')

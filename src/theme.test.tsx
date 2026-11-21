@@ -1,11 +1,15 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { createMemoryRouter, RouterProvider } from 'react-router'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { AuthProvider } from './auth/AuthProvider'
 import { routes } from './routes'
 import { createFakeAuthBackend, fakeProfile, fakeSession } from './test/fakeAuthBackend'
 import { DEFAULT_THEME, THEME_STORAGE_KEY, THEMES } from './theme'
 import indexHtml from '../index.html?raw'
+
+vi.mock('./films/api', () => ({
+  fetchFilmsData: async () => ({ films: [], people: [], scored: new Set() }),
+}))
 
 function renderShell(fake: ReturnType<typeof createFakeAuthBackend>, path = '/') {
   render(
