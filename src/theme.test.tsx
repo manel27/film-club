@@ -9,6 +9,7 @@ import indexHtml from '../index.html?raw'
 
 vi.mock('./films/api', () => ({
   fetchFilmsData: async () => ({ films: [], people: [], scored: new Set() }),
+  fetchFilm: async () => null,
 }))
 
 function renderShell(fake: ReturnType<typeof createFakeAuthBackend>, path = '/') {

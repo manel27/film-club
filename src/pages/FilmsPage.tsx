@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useSearchParams } from 'react-router'
+import { Link, useSearchParams } from 'react-router'
 import { useAuth } from '../auth/authContext'
 import { fetchFilmsData, type FilmsData } from '../films/api'
 import {
@@ -323,7 +323,8 @@ function FilmRow({ film, people }: { film: FilmItem; people: Map<string, Person>
   return (
     <li className="film-row">
       <span className="film-title">
-        <Dot person={assigned} label={`Chosen by ${assigned?.name ?? 'unknown'}`} /> {film.title}
+        <Dot person={assigned} label={`Chosen by ${assigned?.name ?? 'unknown'}`} />{' '}
+        <Link to={`/films/${film.id}`}>{film.title}</Link>
         {film.releaseYear && <span className="muted"> ({film.releaseYear})</span>}
       </span>
       {kind && <span className="badge">{kind}</span>}
@@ -356,20 +357,22 @@ function PosterTile({ film }: { film: FilmItem }) {
   const name = withYear(film)
   return (
     <li className="poster" title={name}>
-      {film.posterPath ? (
-        <img
-          src={`${POSTER_BASE}${film.posterPath}`}
-          alt={name}
-          loading="lazy"
-          width={185}
-          height={278}
-        />
-      ) : (
-        <div className="poster-placeholder" role="img" aria-label={name}>
-          <span>{film.title}</span>
-          {film.releaseYear && <span className="muted">{film.releaseYear}</span>}
-        </div>
-      )}
+      <Link to={`/films/${film.id}`}>
+        {film.posterPath ? (
+          <img
+            src={`${POSTER_BASE}${film.posterPath}`}
+            alt={name}
+            loading="lazy"
+            width={185}
+            height={278}
+          />
+        ) : (
+          <div className="poster-placeholder" role="img" aria-label={name}>
+            <span>{film.title}</span>
+            {film.releaseYear && <span className="muted">{film.releaseYear}</span>}
+          </div>
+        )}
+      </Link>
     </li>
   )
 }
