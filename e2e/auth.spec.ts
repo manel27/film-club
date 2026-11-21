@@ -69,7 +69,7 @@ test('after logging in, the visitor returns to the page they asked for', async (
   await expect(page).toHaveURL(/#\/login\?next=/)
   await logIn(page, E2E_ADMIN.email, E2E_PASSWORD)
   await expect(page).toHaveURL(/#\/films\/12$/)
-  await expect(page.getByRole('heading', { name: 'Page not found' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Film not found' })).toBeVisible()
   await expect(page.getByRole('banner').getByText(E2E_ADMIN.name)).toBeVisible()
 })
 
