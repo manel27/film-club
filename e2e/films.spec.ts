@@ -97,6 +97,52 @@ test('posters can be shown in one grid without week headings', async ({ page }) 
   )
 })
 
+test('films can be sorted by title, release year and average, without week headings', async ({
+  page,
+}) => {
+  await logIn(page, E2E_MEMBER.email, E2E_PASSWORD)
+  const titles = page.locator('.film-title a')
+
+  await page.getByLabel('Sort').selectOption({ label: 'Title A–Z' })
+  await expect(page).toHaveURL(/#\/\?sort=title$/)
+  await expect(page.getByRole('heading', { level: 2 })).toHaveCount(0)
+  // A leading "The" is ignored.
+  await expect(titles).toHaveText([
+    'The Long Vote',
+    'Megashark Rising 2',
+    'Midnight Marathon',
+    'Midnight Marathon II',
+    'Neon Harbour',
+    'Paper Moons Over the River',
+    'The Quiet Orchard',
+    "Tomorrow's Feature",
+  ])
+
+  await page.getByLabel('Sort').selectOption({ label: 'Oldest release' })
+  await expect(titles.first()).toHaveText('Megashark Rising 2')
+
+  // Films with no average go last, newest screening first.
+  await page.getByLabel('Sort').selectOption({ label: 'Highest average' })
+  await expect(titles).toHaveText([
+    'Paper Moons Over the River',
+    'The Quiet Orchard',
+    'The Long Vote',
+    'Neon Harbour',
+    "Tomorrow's Feature",
+    'Midnight Marathon',
+    'Midnight Marathon II',
+    'Megashark Rising 2',
+  ])
+
+  await page.getByRole('button', { name: 'Posters by week' }).click()
+  await expect(page).toHaveURL(/#\/\?view=posters&sort=score-desc$/)
+  await expect(page.getByRole('heading', { level: 2 })).toHaveCount(0)
+  await expect(page.locator('.poster').first()).toHaveAttribute(
+    'title',
+    'Paper Moons Over the River (2018)',
+  )
+})
+
 test('the present filter closes on a click outside or Escape', async ({ page }) => {
   await logIn(page, E2E_MEMBER.email, E2E_PASSWORD)
   const summary = page.getByText('Present', { exact: true })

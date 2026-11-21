@@ -25,7 +25,22 @@ export interface Person {
   isSystem: boolean
 }
 
-export type Sort = 'newest' | 'oldest'
+/** Sort options and their labels; the first is the default. */
+export const SORTS = {
+  newest: 'Newest screening',
+  oldest: 'Oldest screening',
+  title: 'Title A–Z',
+  'title-desc': 'Title Z–A',
+  'year-desc': 'Newest release',
+  year: 'Oldest release',
+  'score-desc': 'Highest average',
+  score: 'Lowest average',
+} as const
+
+export type Sort = keyof typeof SORTS
+
+/** Only the screening-date sorts group films into weeks. */
+export const isDateSort = (sort: Sort) => sort === 'newest' || sort === 'oldest'
 
 export interface Filters {
   present: string[]
@@ -75,16 +90,41 @@ export interface WeekGroup {
   films: FilmItem[]
 }
 
+const collator = new Intl.Collator(undefined, { sensitivity: 'base' })
+// Ignores a leading English article, so "The Thing" sorts under T.
+const sortTitle = (title: string) => title.replace(/^(the|an?)\s+/i, '')
+
+/** Compares possibly missing numbers in `dir` (1 = ascending); missing values always go last. */
+function byValue(a: number | null, b: number | null, dir: number): number {
+  if (a == null || b == null) return (a == null ? 1 : 0) - (b == null ? 1 : 0)
+  return dir * (a - b)
+}
+
 /**
- * Sorts by screening date (newest or oldest first); films shown on the same day
- * always keep their day_order. Then groups them into Mon–Sun weeks.
+ * Sorts by the chosen key. Screening-date sorts keep same-day films in their
+ * day_order; every other sort breaks ties by screening date (newest first),
+ * then title. Films with no year or average go last in both directions.
  */
-export function groupByWeek(films: FilmItem[], sort: Sort): WeekGroup[] {
-  const dir = sort === 'newest' ? -1 : 1
-  const sorted = [...films].sort(
-    (a, b) =>
-      dir * a.screenedOn.localeCompare(b.screenedOn) || a.dayOrder - b.dayOrder || a.id - b.id,
-  )
+export function sortFilms(films: FilmItem[], sort: Sort): FilmItem[] {
+  const date = (a: FilmItem, b: FilmItem) =>
+    b.screenedOn.localeCompare(a.screenedOn) || a.dayOrder - b.dayOrder
+  const title = (a: FilmItem, b: FilmItem) =>
+    collator.compare(sortTitle(a.title), sortTitle(b.title))
+  const key: Record<Sort, (a: FilmItem, b: FilmItem) => number> = {
+    newest: date,
+    oldest: (a, b) => a.screenedOn.localeCompare(b.screenedOn) || a.dayOrder - b.dayOrder,
+    title,
+    'title-desc': (a, b) => title(b, a),
+    year: (a, b) => byValue(a.releaseYear, b.releaseYear, 1),
+    'year-desc': (a, b) => byValue(a.releaseYear, b.releaseYear, -1),
+    score: (a, b) => byValue(a.avgScore, b.avgScore, 1),
+    'score-desc': (a, b) => byValue(a.avgScore, b.avgScore, -1),
+  }
+  return [...films].sort((a, b) => key[sort](a, b) || date(a, b) || title(a, b) || a.id - b.id)
+}
+
+/** Groups films, already sorted by screening date, into Mon–Sun weeks. */
+export function groupByWeek(sorted: FilmItem[]): WeekGroup[] {
   const groups: WeekGroup[] = []
   for (const film of sorted) {
     const start = weekStart(film.screenedOn)
@@ -125,6 +165,7 @@ export interface PageState {
 export function readParams(params: URLSearchParams): PageState {
   const kind = params.get('kind') ?? ''
   const view = params.get('view')
+  const sort = params.get('sort') ?? ''
   const filters: Filters = {
     present: params.get('present')?.split(',').filter(Boolean) ?? [],
     presentMode: params.get('presentMode') === 'all' ? 'all' : 'any',
@@ -136,7 +177,7 @@ export function readParams(params: URLSearchParams): PageState {
   }
   return {
     view: view === 'posters' || view === 'grid' ? view : 'list',
-    sort: params.get('sort') === 'oldest' ? 'oldest' : 'newest',
+    sort: Object.hasOwn(SORTS, sort) ? (sort as Sort) : 'newest',
     filters,
   }
 }
@@ -145,7 +186,7 @@ export function readParams(params: URLSearchParams): PageState {
 export function toParams({ view, sort, filters: f }: PageState): URLSearchParams {
   const p = new URLSearchParams()
   if (view !== 'list') p.set('view', view)
-  if (sort === 'oldest') p.set('sort', sort)
+  if (sort !== 'newest') p.set('sort', sort)
   if (f.present.length > 0) p.set('present', f.present.join(','))
   if (f.presentMode === 'all') p.set('presentMode', 'all')
   for (const key of ['genre', 'assigned', 'kind', 'year'] as const) if (f[key]) p.set(key, f[key])

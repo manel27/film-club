@@ -5,9 +5,12 @@ import { fetchFilmsData, type FilmsData } from '../films/api'
 import {
   filterFilms,
   groupByWeek,
+  isDateSort,
   KIND_LABELS,
   KINDS,
   readParams,
+  sortFilms,
+  SORTS,
   toParams,
   validFilters,
   type FilmItem,
@@ -15,6 +18,7 @@ import {
   type Filters,
   type PageState,
   type Person,
+  type Sort,
 } from '../films/films'
 
 const STORAGE_KEY = 'film-club-films'
@@ -123,8 +127,10 @@ export default function FilmsPage() {
 
   // ~300 films: cheap enough to recompute on every render.
   const people = new Map(data?.people.map((p) => [p.id, p]))
-  const groups = data ? groupByWeek(filterFilms(data.films, filters, data.scored), sort) : []
-  const count = groups.reduce((n, g) => n + g.films.length, 0)
+  const films = data ? sortFilms(filterFilms(data.films, filters, data.scored), sort) : []
+  const count = films.length
+  // Weeks only make sense when sorted by screening date; otherwise lists are flat.
+  const byWeek = isDateSort(sort)
   const { present, genre, assigned, kind, year, unscored } = filters
   const hasFilters = present.length > 0 || !!(genre || assigned || kind || year || unscored)
   const clearButton = (
@@ -174,14 +180,12 @@ export default function FilmsPage() {
           <form className="film-filters" aria-label="Filters" onSubmit={(e) => e.preventDefault()}>
             <label className="field">
               Sort
-              <select
-                value={sort}
-                onChange={(e) =>
-                  change({ sort: e.target.value === 'oldest' ? 'oldest' : 'newest' })
-                }
-              >
-                <option value="newest">Newest first</option>
-                <option value="oldest">Oldest first</option>
+              <select value={sort} onChange={(e) => change({ sort: e.target.value as Sort })}>
+                {Object.entries(SORTS).map(([value, text]) => (
+                  <option key={value} value={value}>
+                    {text}
+                  </option>
+                ))}
               </select>
             </label>
             <PresentFilter
@@ -242,16 +246,20 @@ export default function FilmsPage() {
               </div>
             ))}
 
-          {view === 'grid' ? (
+          {view === 'grid' || (view === 'posters' && !byWeek) ? (
             <ul className="poster-grid poster-grid-flat">
-              {groups
-                .flatMap((g) => g.films)
-                .map((f) => (
-                  <PosterTile key={f.id} film={f} />
-                ))}
+              {films.map((f) => (
+                <PosterTile key={f.id} film={f} />
+              ))}
+            </ul>
+          ) : !byWeek ? (
+            <ul className="film-list">
+              {films.map((f) => (
+                <FilmRow key={f.id} film={f} people={people} />
+              ))}
             </ul>
           ) : (
-            groups.map((g) => (
+            groupByWeek(films).map((g) => (
               <section key={g.weekStart} className="week">
                 <h2>{g.heading}</h2>
                 {view === 'list' ? (

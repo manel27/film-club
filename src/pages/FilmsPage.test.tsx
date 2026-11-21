@@ -176,6 +176,30 @@ describe('films page', () => {
     expect(localStorage.getItem('film-club-films')).toBe('view=grid')
   })
 
+  it('sorts by average as a flat list, and posters without week headings', async () => {
+    const router = renderPage()
+    fireEvent.change(await screen.findByLabelText('Sort'), { target: { value: 'score-desc' } })
+    expect(router.state.location.search).toBe('?sort=score-desc')
+    expect(localStorage.getItem('film-club-films')).toBe('sort=score-desc')
+    expect(screen.queryAllByRole('heading', { level: 2 })).toHaveLength(0)
+    expect(screen.getAllByRole('link').map((l) => l.textContent)).toEqual([
+      'Glass River',
+      'Night Bus',
+      'Shark Joke',
+    ])
+
+    fireEvent.click(screen.getByRole('button', { name: 'Posters by week' }))
+    expect(router.state.location.search).toBe('?view=posters&sort=score-desc')
+    expect(screen.queryAllByRole('heading', { level: 2 })).toHaveLength(0)
+    expect(screen.getAllByRole('img', { name: /\(2001\)$/ })).toHaveLength(3)
+  })
+
+  it('falls back to the default sort for an unknown value', async () => {
+    renderPage('/?sort=bogus')
+    expect(await screen.findByLabelText('Sort')).toHaveValue('newest')
+    expect(screen.getAllByRole('heading', { level: 2 })).toHaveLength(3)
+  })
+
   it('closes the present filter on a click outside or Escape', async () => {
     renderPage()
     const summary = await screen.findByText('Present', { selector: 'summary' })
