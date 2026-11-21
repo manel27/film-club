@@ -134,10 +134,16 @@ export function filterFilms(films: FilmItem[], f: Filters, scored: Set<number>):
   })
 }
 
-const KINDS = Object.keys(KIND_LABELS) as FilmKind[]
+export const KINDS = Object.keys(KIND_LABELS) as FilmKind[]
 
-/** Reads the page state from URL search params (unknown values are ignored). */
-export function readParams(params: URLSearchParams) {
+export interface PageState {
+  view: 'list' | 'posters'
+  sort: Sort
+  filters: Filters
+}
+
+/** Reads the page state from URL search params (unknown view/sort/kind values are ignored). */
+export function readParams(params: URLSearchParams): PageState {
   const kind = params.get('kind') ?? ''
   const filters: Filters = {
     present: params.get('present')?.split(',').filter(Boolean) ?? [],
@@ -149,8 +155,40 @@ export function readParams(params: URLSearchParams) {
     unscored: params.get('unscored') === '1',
   }
   return {
-    view: params.get('view') === 'posters' ? ('posters' as const) : ('list' as const),
-    sort: params.get('sort') === 'oldest' ? ('oldest' as const) : ('newest' as const),
+    view: params.get('view') === 'posters' ? 'posters' : 'list',
+    sort: params.get('sort') === 'oldest' ? 'oldest' : 'newest',
     filters,
+  }
+}
+
+/** The page state as search params, defaults left out (known keys only). */
+export function toParams({ view, sort, filters: f }: PageState): URLSearchParams {
+  const p = new URLSearchParams()
+  if (view === 'posters') p.set('view', view)
+  if (sort === 'oldest') p.set('sort', sort)
+  if (f.present.length > 0) p.set('present', f.present.join(','))
+  if (f.presentMode === 'all') p.set('presentMode', 'all')
+  for (const key of ['genre', 'assigned', 'kind', 'year'] as const) if (f[key]) p.set(key, f[key])
+  if (f.unscored) p.set('unscored', '1')
+  return p
+}
+
+export interface FilterOptions {
+  present: Set<string>
+  genres: Set<string>
+  assigned: Set<string>
+  years: Set<string>
+  canScore: boolean
+}
+
+/** Drops filter values that match no option (stale links, old localStorage), so no hidden filter is ever active. */
+export function validFilters(f: Filters, o: FilterOptions): Filters {
+  return {
+    ...f,
+    present: f.present.filter((id) => o.present.has(id)),
+    genre: o.genres.has(f.genre) ? f.genre : '',
+    assigned: o.assigned.has(f.assigned) ? f.assigned : '',
+    year: o.years.has(f.year) ? f.year : '',
+    unscored: f.unscored && o.canScore,
   }
 }

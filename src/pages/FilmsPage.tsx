@@ -6,9 +6,14 @@ import {
   filterFilms,
   groupByWeek,
   KIND_LABELS,
+  KINDS,
   readParams,
+  toParams,
+  validFilters,
   type FilmItem,
   type FilmKind,
+  type Filters,
+  type PageState,
   type Person,
 } from '../films/films'
 
@@ -35,6 +40,7 @@ function save(value: string) {
 export default function FilmsPage() {
   const { profile } = useAuth()
   const profileId = profile?.id
+  const canScore = !!profile && profile.role !== 'viewer'
   const [data, setData] = useState<FilmsData | null>(null)
   const [failed, setFailed] = useState(false)
   const [attempt, setAttempt] = useState(0)
@@ -53,36 +59,46 @@ export default function FilmsPage() {
 
   // View, sort and filters live in the URL; the last choice is also kept in
   // localStorage and restored whenever the page is reached without one (but
-  // not when the visitor's own change empties the URL).
+  // not when the visitor's own change empties the URL). Only known keys and
+  // values are restored.
   const [params, setParams] = useSearchParams()
   const search = params.toString()
-  const { view, sort, filters } = readParams(params)
   const ownChange = useRef(false)
   useEffect(() => {
-    const saved = readSaved()
-    if (!search && !ownChange.current && saved) {
-      setParams(new URLSearchParams(saved), { replace: true })
-    } else save(search)
+    const saved = toParams(readParams(new URLSearchParams(readSaved()))).toString()
+    if (!search && !ownChange.current && saved) setParams(saved, { replace: true })
+    else save(search)
     ownChange.current = false
   }, [search, setParams])
 
-  const setOwnParams = (next: (prev: URLSearchParams) => URLSearchParams) => {
-    ownChange.current = true
-    setParams(next, { replace: true })
+  // Options come from the films themselves; values matching none are dropped.
+  const options = data && {
+    present: data.people.filter((p) => !p.isSystem).sort(byName),
+    genres: unique(data.films.flatMap((f) => f.genres)),
+    assigned: data.people.filter((p) => data.films.some((f) => f.assignedId === p.id)).sort(byName),
+    years: unique(data.films.map((f) => f.screenedOn.slice(0, 4))).reverse(),
   }
-  const update = (key: string, value: string) =>
-    setOwnParams((prev) => {
-      const next = new URLSearchParams(prev)
-      if (value) next.set(key, value)
-      else next.delete(key)
-      return next
+  const state = readParams(params)
+  if (options) {
+    state.filters = validFilters(state.filters, {
+      present: new Set(options.present.map((p) => p.id)),
+      genres: new Set(options.genres),
+      assigned: new Set(options.assigned.map((p) => p.id)),
+      years: new Set(options.years),
+      canScore,
     })
-  const clearFilters = () =>
-    setOwnParams(() => new URLSearchParams(view === 'posters' ? { view } : {}))
+  }
+  const { view, sort, filters } = state
 
-  // ~300 films: cheap enough to recompute on every render.
-  const people = new Map(data?.people.map((p) => [p.id, p]))
-  const groups = data ? groupByWeek(filterFilms(data.films, filters, data.scored), sort) : []
+  const change = (next: Partial<PageState>) => {
+    const nextSearch = toParams({ ...state, ...next }).toString()
+    if (nextSearch === search) return
+    ownChange.current = true
+    setParams(nextSearch, { replace: true })
+  }
+  const setFilter = <K extends keyof Filters>(key: K, value: Filters[K]) =>
+    change({ filters: { ...filters, [key]: value } })
+  const clearFilters = () => change({ filters: readParams(new URLSearchParams()).filters })
 
   if (failed) {
     return (
@@ -105,10 +121,17 @@ export default function FilmsPage() {
     )
   }
 
+  // ~300 films: cheap enough to recompute on every render.
+  const people = new Map(data?.people.map((p) => [p.id, p]))
+  const groups = data ? groupByWeek(filterFilms(data.films, filters, data.scored), sort) : []
   const count = groups.reduce((n, g) => n + g.films.length, 0)
-  const canScore = profile?.role !== 'viewer'
   const { present, genre, assigned, kind, year, unscored } = filters
   const hasFilters = present.length > 0 || !!(genre || assigned || kind || year || unscored)
+  const clearButton = (
+    <button type="button" className="button button-secondary button-small" onClick={clearFilters}>
+      Clear filters
+    </button>
+  )
 
   return (
     <main className="page films-page">
@@ -121,7 +144,7 @@ export default function FilmsPage() {
               type="button"
               className="button button-secondary button-small"
               aria-pressed={view === v}
-              onClick={() => update('view', v === 'list' ? '' : v)}
+              onClick={() => change({ view: v })}
             >
               {v === 'list' ? 'List' : 'Posters'}
             </button>
@@ -129,7 +152,7 @@ export default function FilmsPage() {
         </div>
       </div>
 
-      {!data ? (
+      {!data || !options ? (
         <p role="status" className="muted">
           Loading films…
         </p>
@@ -140,78 +163,74 @@ export default function FilmsPage() {
               Sort
               <select
                 value={sort}
-                onChange={(e) => update('sort', e.target.value === 'oldest' ? 'oldest' : '')}
+                onChange={(e) =>
+                  change({ sort: e.target.value === 'oldest' ? 'oldest' : 'newest' })
+                }
               >
                 <option value="newest">Newest first</option>
                 <option value="oldest">Oldest first</option>
               </select>
             </label>
             <PresentFilter
-              people={data.people.filter((p) => !p.isSystem)}
-              selected={filters.present}
+              people={options.present}
+              selected={present}
               mode={filters.presentMode}
-              onChange={(ids) => update('present', ids.join(','))}
-              onModeChange={(m) => update('presentMode', m === 'all' ? m : '')}
+              onChange={(ids) => setFilter('present', ids)}
+              onModeChange={(m) => setFilter('presentMode', m)}
             />
             <SelectFilter
               label="Genre"
-              value={filters.genre}
-              onChange={(v) => update('genre', v)}
-              options={unique(data.films.flatMap((f) => f.genres)).map((g) => [g, g])}
+              value={genre}
+              onChange={(v) => setFilter('genre', v)}
+              options={options.genres.map((g) => [g, g])}
             />
             <SelectFilter
               label="Chosen by"
-              value={filters.assigned}
-              onChange={(v) => update('assigned', v)}
-              options={data.people
-                .filter((p) => data.films.some((f) => f.assignedId === p.id))
-                .sort((a, b) => a.name.localeCompare(b.name))
-                .map((p) => [p.id, p.name])}
+              value={assigned}
+              onChange={(v) => setFilter('assigned', v)}
+              options={options.assigned.map((p) => [p.id, p.name])}
             />
             <SelectFilter
               label="Kind"
-              value={filters.kind}
-              onChange={(v) => update('kind', v)}
-              options={(Object.keys(KIND_LABELS) as FilmKind[]).map((k) => [
-                k,
-                KIND_LABELS[k] ?? 'Normal',
-              ])}
+              value={kind}
+              onChange={(v) => setFilter('kind', v as FilmKind | '')}
+              options={KINDS.map((k) => [k, KIND_LABELS[k] ?? 'Normal'])}
             />
             <SelectFilter
               label="Year shown"
-              value={filters.year}
-              onChange={(v) => update('year', v)}
-              options={unique(data.films.map((f) => f.screenedOn.slice(0, 4)))
-                .reverse()
-                .map((y) => [y, y])}
+              value={year}
+              onChange={(v) => setFilter('year', v)}
+              options={options.years.map((y) => [y, y])}
             />
             {canScore && (
               <label className="check">
                 <input
                   type="checkbox"
-                  checked={filters.unscored}
-                  onChange={(e) => update('unscored', e.target.checked ? '1' : '')}
+                  checked={unscored}
+                  onChange={(e) => setFilter('unscored', e.target.checked)}
                 />
                 I haven't scored
               </label>
             )}
-            {hasFilters && (
-              <button
-                type="button"
-                className="button button-secondary button-small"
-                onClick={clearFilters}
-              >
-                Clear filters
-              </button>
-            )}
+            {hasFilters && clearButton}
           </form>
 
           <p className="muted films-count" aria-live="polite">
             {count === 1 ? '1 film' : `${count} films`}
           </p>
 
+          {count === 0 &&
+            (data.films.length === 0 ? (
+              <p>No films yet.</p>
+            ) : (
+              <div className="films-empty">
+                <p>No films match these filters.</p>
+                {clearButton}
+              </div>
+            ))}
+
           {groups.map((g) => (
-            <section key={g.weekStart} className="week" aria-label={g.heading}>
+            <section key={g.weekStart} className="week">
               <h2>{g.heading}</h2>
               {view === 'list' ? (
                 <ul className="film-list">
@@ -233,6 +252,8 @@ export default function FilmsPage() {
     </main>
   )
 }
+
+const byName = (a: Person, b: Person) => a.name.localeCompare(b.name)
 
 const unique = (values: string[]) => [...new Set(values)].sort((a, b) => a.localeCompare(b))
 
@@ -259,12 +280,17 @@ function FilmRow({ film, people }: { film: FilmItem; people: Map<string, Person>
         {film.releaseYear && <span className="muted"> ({film.releaseYear})</span>}
       </span>
       {kind && <span className="badge">{kind}</span>}
-      <span
-        className="film-avg"
-        aria-label={film.avgScore == null ? 'No average' : `Average ${film.avgScore.toFixed(2)}`}
-      >
-        {film.avgScore == null ? '–' : film.avgScore.toFixed(2)}
-      </span>
+      {film.avgScore == null ? (
+        <span className="film-avg">
+          <span aria-hidden="true">–</span>
+          <span className="sr-only">No average</span>
+        </span>
+      ) : (
+        <span className="film-avg">
+          <span className="sr-only">Average </span>
+          {film.avgScore.toFixed(2)}
+        </span>
+      )}
       {film.presentIds.length > 0 && (
         <span className="present-dots" role="group" aria-label="Present">
           {film.presentIds
@@ -329,7 +355,6 @@ function PresentFilter(props: {
   onChange: (ids: string[]) => void
   onModeChange: (mode: 'any' | 'all') => void
 }) {
-  const sorted = [...props.people].sort((a, b) => a.name.localeCompare(b.name))
   return (
     <details className="present-filter">
       <summary>Present{props.selected.length > 0 && ` (${props.selected.length})`}</summary>
@@ -348,7 +373,7 @@ function PresentFilter(props: {
             </label>
           ))}
         </div>
-        {sorted.map((p) => (
+        {props.people.map((p) => (
           <label key={p.id} className="check">
             <input
               type="checkbox"

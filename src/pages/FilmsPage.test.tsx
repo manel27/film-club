@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { createMemoryRouter, RouterProvider } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { AuthProvider } from '../auth/AuthProvider'
@@ -68,11 +68,12 @@ beforeEach(() => localStorage.clear())
 describe('films page', () => {
   it('lists films by week with year, kind, average and present people', async () => {
     renderPage()
-    const week = await screen.findByRole('region', { name: 'Week of Sat 14 Nov 2026' })
-    const row = within(week).getByRole('listitem')
+    const heading = await screen.findByRole('heading', { name: 'Week of Sat 14 Nov 2026' })
+    const row = within(heading.closest('section')!).getByRole('listitem')
     expect(row).toHaveTextContent('Glass River (2001)')
     expect(within(row).getByRole('img', { name: 'Chosen by Ada' })).toBeInTheDocument()
-    expect(within(row).getByLabelText('Average 7.50')).toBeInTheDocument()
+    expect(row.querySelector('.film-avg')).toHaveTextContent('Average 7.50')
+    expect(screen.getAllByText('No average')).toHaveLength(2)
     const present = within(row).getByRole('group', { name: 'Present' })
     expect(
       within(present)
@@ -96,8 +97,31 @@ describe('films page', () => {
     expect(router.state.location.search).toBe('?sort=oldest&kind=cinema')
     expect(localStorage.getItem('film-club-films')).toBe('sort=oldest&kind=cinema')
 
+    // Clearing the filters keeps the sort (and view).
     fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }))
     expect(screen.getByText('3 films')).toBeInTheDocument()
+    expect(router.state.location.search).toBe('?sort=oldest')
+  })
+
+  it('ignores filter values that match nothing, and offers to clear an empty result', async () => {
+    const router = renderPage(
+      '/?genre=Nope&year=abc&assigned=gone&present=gone,p-bo&kind=bogus&junk=1',
+    )
+    expect(await screen.findByText('1 film')).toBeInTheDocument() // only present=p-bo applies
+    expect(screen.getByLabelText('Genre')).toHaveValue('')
+    expect(screen.getByLabelText('Year shown')).toHaveValue('')
+
+    fireEvent.change(screen.getByLabelText('Kind'), { target: { value: 'maratona' } })
+    expect(router.state.location.search).toBe('?present=p-bo&kind=maratona')
+    expect(screen.getByText('No films match these filters.')).toBeInTheDocument()
+    fireEvent.click(screen.getAllByRole('button', { name: 'Clear filters' })[1])
+    expect(screen.getByText('3 films')).toBeInTheDocument()
+  })
+
+  it('says so when there are no films at all', async () => {
+    fetchFilmsData.mockResolvedValueOnce({ films: [], people: [], scored: new Set() })
+    renderPage()
+    expect(await screen.findByText('No films yet.')).toBeInTheDocument()
   })
 
   it('restores the last choice when opened without one', async () => {
@@ -114,6 +138,22 @@ describe('films page', () => {
     expect(router.state.location.search).toBe('')
     expect(screen.getByRole('button', { name: 'List' })).toHaveAttribute('aria-pressed', 'true')
     expect(localStorage.getItem('film-club-films')).toBe('')
+  })
+
+  it('still restores after clicking the view that is already active', async () => {
+    localStorage.setItem('film-club-films', 'year=2025')
+    const router = renderPage()
+    await screen.findByText('1 film')
+    fireEvent.click(screen.getByRole('button', { name: 'List' }))
+    await act(() => router.navigate('/'))
+    await waitFor(() => expect(router.state.location.search).toBe('?year=2025'))
+  })
+
+  it('restores only known keys from a corrupt localStorage value', async () => {
+    localStorage.setItem('film-club-films', '{bad json')
+    const router = renderPage()
+    await screen.findByText('3 films')
+    expect(router.state.location.search).toBe('')
   })
 
   it('shows TMDB posters lazily, and a text placeholder without one', async () => {
@@ -135,8 +175,8 @@ describe('films page', () => {
   })
 
   it('has no "I haven\'t scored" filter for viewers', async () => {
-    renderPage('/', 'viewer')
-    await screen.findByText('3 films')
+    renderPage('/?unscored=1', 'viewer')
+    await screen.findByText('3 films') // a hidden filter is never active
     expect(screen.queryByLabelText("I haven't scored")).not.toBeInTheDocument()
   })
 

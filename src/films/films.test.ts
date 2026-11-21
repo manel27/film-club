@@ -4,6 +4,8 @@ import {
   formatDate,
   groupByWeek,
   readParams,
+  toParams,
+  validFilters,
   weekHeading,
   weekStart,
   type FilmItem,
@@ -177,5 +179,38 @@ describe('readParams', () => {
         unscored: true,
       },
     })
+  })
+})
+
+describe('toParams', () => {
+  it('round-trips known keys and drops defaults and junk', () => {
+    const p =
+      'view=posters&sort=oldest&present=a,b&presentMode=all&genre=Drama&assigned=c&kind=cinema&year=2025&unscored=1'
+    expect(toParams(readParams(new URLSearchParams(p))).toString()).toBe(
+      'view=posters&sort=oldest&present=a%2Cb&presentMode=all&genre=Drama&assigned=c&kind=cinema&year=2025&unscored=1',
+    )
+    expect(toParams(readParams(new URLSearchParams('{bad json&sort=newest'))).toString()).toBe('')
+  })
+})
+
+describe('validFilters', () => {
+  const options = {
+    present: new Set(['a']),
+    genres: new Set(['Drama']),
+    assigned: new Set(['b']),
+    years: new Set(['2026']),
+    canScore: false,
+  }
+
+  it('drops values that match no option, and unscored for people who cannot score', () => {
+    const f = {
+      ...NO_FILTERS,
+      present: ['a', 'gone'],
+      genre: 'Nope',
+      assigned: 'b',
+      year: 'abc',
+      unscored: true,
+    }
+    expect(validFilters(f, options)).toEqual({ ...NO_FILTERS, present: ['a'], assigned: 'b' })
   })
 })
