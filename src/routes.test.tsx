@@ -11,9 +11,10 @@ import {
   TEST_PASSWORD,
 } from './test/fakeAuthBackend'
 
-// The films page's data comes from Supabase; these tests are about routing.
+// The film pages' data comes from Supabase; these tests are about routing (no such film).
 vi.mock('./films/api', () => ({
   fetchFilmsData: async () => ({ films: [], people: [], scored: new Set() }),
+  fetchFilm: async () => null,
 }))
 
 function renderApp(path: string, fake = createFakeAuthBackend()) {
@@ -61,7 +62,7 @@ describe('route guard', () => {
   it('returns to the original page after logging in', async () => {
     const { router } = renderApp('/films/12')
     await logIn(TEST_EMAIL, TEST_PASSWORD)
-    expect(await screen.findByRole('heading', { name: 'Page not found' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Film not found' })).toBeInTheDocument()
     expect(router.state.location.pathname).toBe('/films/12')
     expect(screen.getByText('Quinn')).toBeInTheDocument()
   })
@@ -154,7 +155,7 @@ describe('login page', () => {
 
   it('sends an already logged-in user on to the app', async () => {
     const { router } = renderApp('/login?next=%2Ffilms%2F3', signedIn())
-    expect(await screen.findByRole('heading', { name: 'Page not found' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Film not found' })).toBeInTheDocument()
     expect(router.state.location.pathname).toBe('/films/3')
   })
 })

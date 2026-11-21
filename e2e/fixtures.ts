@@ -11,8 +11,12 @@ export const E2E_MEMBER = {
   colour: '#6aa84f',
 }
 export const E2E_UNLINKED = { email: 'e2e-unlinked@example.test' }
-/** A viewer login from supabase/seed.sql (local stack only). */
-export const SEED_VIEWER = { email: 'petra@example.test', password: 'film-club-local' }
+/** Logins from supabase/seed.sql (local stack only). */
+const SEED_PASSWORD = 'film-club-local'
+export const SEED_VIEWER = { email: 'petra@example.test', password: SEED_PASSWORD }
+export const SEED_ADMIN = { email: 'orla@example.test', password: SEED_PASSWORD }
+export const SEED_MODERATOR = { email: 'tamsin@example.test', password: SEED_PASSWORD }
+export const SEED_MEMBER = { email: 'kwame@example.test', password: SEED_PASSWORD }
 
 /** Client with the local stack's secret key (test setup only, never in the browser). */
 export function adminClient(): SupabaseClient {
