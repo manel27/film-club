@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { createMemoryRouter, RouterProvider } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { AuthProvider } from '../auth/AuthProvider'
@@ -87,12 +87,18 @@ describe('add / edit film page', () => {
     fireEvent.change(search, { target: { value: 'g' } })
     fireEvent.change(search, { target: { value: 'gla' } })
     fireEvent.change(search, { target: { value: 'glass' } })
-    const watched = await screen.findByRole('button', { name: /Glass River 2/ })
+    // Waits on the search debounce.
+    const watched = await screen.findByRole('button', { name: /Glass River 2/ }, { timeout: 3000 })
+    expect(screen.getByRole('status')).toHaveTextContent('2 matches on TMDB.')
     // Debounced: one search for the final text only.
     expect(api.searchTmdb).toHaveBeenCalledTimes(1)
     expect(api.searchTmdb).toHaveBeenCalledWith('glass')
-    expect(watched).toBeDisabled()
+    // Not selectable, but still focusable so its text can be read.
+    expect(watched).toHaveAttribute('aria-disabled', 'true')
+    expect(watched).toBeEnabled()
     expect(watched).toHaveTextContent('Already watched on 2026/01/10')
+    fireEvent.click(watched)
+    expect(screen.queryByRole('button', { name: 'Change film' })).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: /Glass River \(2001\)/ }))
     expect(screen.getByRole('button', { name: 'Change film' })).toHaveFocus()
@@ -124,7 +130,7 @@ describe('add / edit film page', () => {
     expect(screen.getByLabelText('Title')).toHaveFocus()
     fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'glass river' } })
     fireEvent.change(screen.getByLabelText('Release year'), { target: { value: '2001' } })
-    expect(await screen.findByRole('alert')).toHaveTextContent(
+    expect(await screen.findByRole('alert', {}, { timeout: 3000 })).toHaveTextContent(
       'Already watched on 2026/01/24 (Cinema): Glass River',
     )
     expect(screen.getByRole('link', { name: 'Glass River' })).toHaveAttribute('href', '/films/3')
@@ -152,6 +158,37 @@ describe('add / edit film page', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Already watched on 2026/01/10.')
   })
 
+  it('uses the current search text as the title when saving without TMDB', async () => {
+    renderPage('moderator')
+    fireEvent.change(await screen.findByLabelText('Search TMDB'), { target: { value: 'first' } })
+    fireEvent.change(screen.getByLabelText('Search TMDB'), { target: { value: ' Home Movie ' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Not on TMDB? Save without TMDB' }))
+    expect(screen.getByLabelText('Title')).toHaveValue('Home Movie')
+  })
+
+  it('shows one alert when a save is refused as a duplicate during the check', async () => {
+    let finishCheck: (films: unknown[]) => void = () => {}
+    api.findDuplicates.mockReturnValue(new Promise((resolve) => (finishCheck = resolve)))
+    api.saveFilm.mockRejectedValue({
+      status: 409,
+      error: 'duplicate',
+      film: { id: 3, screened_on: '2026-01-10', kind: 'normal' },
+    })
+    renderPage('moderator')
+    fireEvent.click(await screen.findByRole('button', { name: 'Not on TMDB? Save without TMDB' }))
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Home Movie' } })
+    fireEvent.change(screen.getByLabelText('Release year'), { target: { value: '2005' } })
+    fireEvent.change(screen.getByLabelText('Chosen by'), { target: { value: 'p-ada' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Already watched on 2026/01/10.')
+    await waitFor(() => expect(api.findDuplicates).toHaveBeenCalled(), { timeout: 3000 })
+    await act(async () =>
+      finishCheck([{ id: 3, title: 'Home Movie', screened_on: '2026-01-10', kind: 'normal' }]),
+    )
+    expect(screen.getAllByRole('alert')).toHaveLength(1)
+    expect(screen.getByRole('alert')).toHaveTextContent('Already watched on 2026/01/10: Home Movie')
+  })
+
   it('edits a film: prefilled, keeps its id, turn-holder optional for old Democrático films', async () => {
     api.fetchFilm.mockResolvedValue({
       film: {
@@ -177,8 +214,11 @@ describe('add / edit film page', () => {
     expect(await screen.findByText('Glass River')).toBeInTheDocument()
     expect(screen.getByLabelText('Screening date')).toHaveValue('2026-01-10')
     fireEvent.change(screen.getByLabelText('Screening date'), { target: { value: '2026-01-17' } })
-    await waitFor(() => expect(api.findDuplicates).toHaveBeenCalled())
+    await waitFor(() => expect(api.findDuplicates).toHaveBeenCalled(), { timeout: 3000 })
+    // Let the check's result land, then: no warning, Save still allowed.
+    await act(() => api.findDuplicates.mock.results[0].value)
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled()
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
     await waitFor(() =>
       expect(api.saveFilm).toHaveBeenCalledWith({

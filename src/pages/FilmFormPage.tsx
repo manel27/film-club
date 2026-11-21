@@ -10,6 +10,7 @@ import {
   comingSaturday,
   functionErrorMessage,
   parseYear,
+  screeningDateRange,
   toSaveBody,
   type FilmFormState,
   type TmdbResult,
@@ -280,7 +281,7 @@ function Fields({
         ) : (
           <TmdbSearch
             onPick={(r) => set({ picked: r })}
-            onManual={(query) => set({ manual: true, title: s.title || query })}
+            onManual={(query) => set({ manual: true, title: query })}
           />
         )}
       </fieldset>
@@ -297,6 +298,7 @@ function Fields({
         <input
           type="date"
           required
+          {...screeningDateRange()}
           value={s.screenedOn}
           onChange={(e) => set({ screenedOn: e.target.value })}
         />
@@ -347,7 +349,8 @@ function Fields({
         </label>
       )}
 
-      {error && (
+      {/* A refused duplicate is already shown by the warning above: one alert, not two. */}
+      {error && clashes.length === 0 && (
         <p role="alert" className="form-error">
           {error}
         </p>
@@ -408,7 +411,9 @@ function TmdbSearch({
           ? 'Searching…'
           : shown?.results?.length === 0
             ? 'No matches on TMDB.'
-            : ''}
+            : shown?.results
+              ? `${shown.results.length} ${shown.results.length === 1 ? 'match' : 'matches'} on TMDB.`
+              : ''}
       </p>
       {shown?.error && (
         <p role="alert" className="form-error">
@@ -422,8 +427,10 @@ function TmdbSearch({
               <button
                 type="button"
                 className="tmdb-result"
-                disabled={!!r.watched}
-                onClick={() => onPick(r)}
+                // aria-disabled, not disabled: still reachable by keyboard, so the
+                // "Already watched" text can be read, but it can't be picked.
+                aria-disabled={r.watched ? true : undefined}
+                onClick={() => !r.watched && onPick(r)}
               >
                 {r.poster_path ? (
                   <img src={`https://image.tmdb.org/t/p/w92${r.poster_path}`} alt="" width={46} />

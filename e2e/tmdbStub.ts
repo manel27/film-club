@@ -45,13 +45,22 @@ export function assertFunctionsUseStub() {
   }
 }
 
+/** How many TMDB requests the stub has answered (from a test: proves real TMDB wasn't used). */
+export async function tmdbStubRequests(): Promise<number> {
+  const res = await fetch(`http://127.0.0.1:${TMDB_STUB_PORT}/__requests`)
+  return ((await res.json()) as { count: number }).count
+}
+
 export function startTmdbStub(): Promise<Server> {
+  let count = 0
   const server = createServer((req, res) => {
     const url = new URL(req.url ?? '/', 'http://stub')
     const send = (status: number, body: unknown) => {
       res.writeHead(status, { 'Content-Type': 'application/json' })
       res.end(JSON.stringify(body))
     }
+    if (url.pathname === '/__requests') return send(200, { count })
+    count++
     if (url.pathname === '/3/search/movie') {
       const q = (url.searchParams.get('query') ?? '').toLowerCase()
       return send(200, { results: MOVIES.filter((m) => m.title.toLowerCase().includes(q)) })

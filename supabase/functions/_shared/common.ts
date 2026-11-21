@@ -158,7 +158,9 @@ export function fail(req: Request, e: unknown): Response {
     console.error(e.message)
     return json(req, 502, { error: 'tmdb_unavailable' })
   }
-  console.error('unexpected error', (e as { code?: string })?.code ?? '')
+  // The error's own message only: never the request, its headers or the TMDB token.
+  const { code, message } = (e ?? {}) as { code?: string; message?: string }
+  console.error('unexpected error', code ?? '', message ?? String(e))
   return json(req, 500, { error: 'server_error' })
 }
 

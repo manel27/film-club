@@ -87,6 +87,22 @@ export function parseYear(text: string): number | null {
   return /^\d{4}$/.test(text.trim()) && year >= 1870 && year <= 2100 ? year : null
 }
 
+/** Screening dates the form and film-save accept: 1990-01-01 to two years from today. */
+export function screeningDateRange(now = new Date()): { min: string; max: string } {
+  const max = new Date(now)
+  max.setUTCFullYear(max.getUTCFullYear() + 2)
+  return { min: '1990-01-01', max: max.toISOString().slice(0, 10) }
+}
+
+/** A real calendar date (YYYY-MM-DD) within screeningDateRange(). */
+export function validScreeningDate(text: string, now = new Date()): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return false
+  const [y, m, d] = text.split('-').map(Number)
+  const t = new Date(Date.UTC(y, m - 1, d))
+  const { min, max } = screeningDateRange(now)
+  return t.getUTCMonth() === m - 1 && t.getUTCDate() === d && text >= min && text <= max
+}
+
 /** The film-save body (an edit when `filmId` is given), or the first problem to show. */
 export function toSaveBody(
   s: FilmFormState,
@@ -94,9 +110,14 @@ export function toSaveBody(
 ): { body: FilmSaveBody } | { error: string } {
   let film: Pick<FilmSaveBody, 'tmdb_id' | 'title' | 'release_year'>
   if (s.manual) {
-    const title = s.title.trim()
+    // Runs of spaces, tabs and newlines become one space (film-save does the same).
+    const title = s.title.replace(/\s+/g, ' ').trim()
     const year = parseYear(s.year)
     if (!title) return { error: 'Enter the title.' }
+    // The database refuses titles that normalise to nothing (emoji, punctuation, invisible characters).
+    if (!/[\p{L}\p{N}]/u.test(title.replace(/\p{Cf}/gu, ''))) {
+      return { error: 'The title needs at least one letter or number.' }
+    }
     if (year === null) return { error: 'Enter the release year (e.g. 1999).' }
     film = { tmdb_id: null, title, release_year: year }
   } else if (s.picked) {
@@ -104,7 +125,11 @@ export function toSaveBody(
   } else {
     return { error: 'Pick the film from TMDB, or save without TMDB.' }
   }
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(s.screenedOn)) return { error: 'Enter the screening date.' }
+  if (!s.screenedOn) return { error: 'Enter the screening date.' }
+  if (!validScreeningDate(s.screenedOn)) {
+    const { max } = screeningDateRange()
+    return { error: `Enter a screening date from 1990/01/01 to ${max.replaceAll('-', '/')}.` }
+  }
   if (!s.assignedId) return { error: 'Choose who chose the film.' }
   const democratico = s.kind === 'democratico'
   if (democratico && !s.turnHolderId && filmId === undefined) {

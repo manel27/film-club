@@ -6,7 +6,9 @@ import {
   defaultChooser,
   functionErrorMessage,
   parseYear,
+  screeningDateRange,
   toSaveBody,
+  validScreeningDate,
   type FilmFormState,
 } from './filmForm'
 import type { Person } from './films'
@@ -74,6 +76,27 @@ describe('parseYear', () => {
   })
 })
 
+describe('screening dates', () => {
+  const now = new Date('2026-11-21T10:00:00Z')
+  it('accepts real dates from 1990-01-01 to two years ahead (same as film-save)', () => {
+    expect(screeningDateRange(now)).toEqual({ min: '1990-01-01', max: '2028-11-21' })
+    for (const ok of ['1990-01-01', '2024-02-29', '2028-11-21']) {
+      expect(validScreeningDate(ok, now)).toBe(true)
+    }
+    for (const bad of [
+      '2026-02-30',
+      '2026-13-01',
+      '0000-01-01',
+      '1989-12-31',
+      '2028-11-22',
+      '2026-1-1',
+      '',
+    ]) {
+      expect(validScreeningDate(bad, now)).toBe(false)
+    }
+  })
+})
+
 describe('toSaveBody', () => {
   it('sends only the TMDB id for a picked film', () => {
     expect(toSaveBody(base)).toEqual({
@@ -102,6 +125,15 @@ describe('toSaveBody', () => {
       },
     })
     expect(toSaveBody({ ...manual, title: ' ' })).toEqual({ error: 'Enter the title.' })
+    expect(toSaveBody({ ...manual, title: ' Home\n\t Movie ' })).toMatchObject({
+      body: { title: 'Home Movie' },
+    })
+    for (const title of ['\u200b\u200b', '!!! ...', '\u{1F3AC}']) {
+      expect(toSaveBody({ ...manual, title })).toEqual({
+        error: 'The title needs at least one letter or number.',
+      })
+    }
+    expect(toSaveBody({ ...manual, title: 'Ze\u200bro' })).toMatchObject({ body: {} })
     expect(toSaveBody({ ...manual, year: '' })).toEqual({
       error: 'Enter the release year (e.g. 1999).',
     })
@@ -112,6 +144,9 @@ describe('toSaveBody', () => {
       error: 'Pick the film from TMDB, or save without TMDB.',
     })
     expect(toSaveBody({ ...base, screenedOn: '' })).toEqual({ error: 'Enter the screening date.' })
+    expect(toSaveBody({ ...base, screenedOn: '2026-02-30' })).toEqual({
+      error: expect.stringMatching(/^Enter a screening date from 1990\/01\/01 to /),
+    })
     expect(toSaveBody({ ...base, assignedId: '' })).toEqual({ error: 'Choose who chose the film.' })
   })
 

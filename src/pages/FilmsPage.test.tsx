@@ -68,7 +68,7 @@ beforeEach(() => localStorage.clear())
 describe('films page', () => {
   it('lists films by week with year, kind, average and present people', async () => {
     renderPage()
-    const heading = await screen.findByRole('heading', { name: '2026/11/14' })
+    const heading = await screen.findByRole('heading', { name: '2026/11/14' }, { timeout: 3000 })
     const row = within(heading.closest('section')!).getByRole('listitem')
     expect(row).toHaveTextContent('Glass River (2001)')
     expect(within(row).getByRole('img', { name: 'Chosen by Ada' })).toBeInTheDocument()

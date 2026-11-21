@@ -785,12 +785,12 @@ a.button {
   cursor: pointer;
 }
 
-.tmdb-result:hover:not(:disabled) {
+.tmdb-result:hover:not([aria-disabled='true']) {
   border-color: var(--accent);
 }
 
 /* Already watched: greyed out and not selectable. */
-.tmdb-result:disabled {
+.tmdb-result[aria-disabled='true'] {
   opacity: 0.55;
   cursor: not-allowed;
 }

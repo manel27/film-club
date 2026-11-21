@@ -86,7 +86,11 @@ const stub = Deno.serve({ hostname: '127.0.0.1', port: 0, onListen() {} }, (req)
   const m = url.pathname.match(/^\/3\/movie\/(\d+)(\/credits)?$/)
   const movie = m && MOVIES[Number(m[1])]
   if (!movie) return Response.json({ status_message: 'not found' }, { status: 404 })
-  if (m[2]) return Response.json(credits(movie.id as number))
+  if (m[2]) {
+    // Film Two's credits are broken: the search must still work.
+    if (movie.id === 777002) return new Response('oops', { status: 500 })
+    return Response.json(credits(movie.id as number))
+  }
   return Response.json({ ...movie, credits: credits(movie.id as number) })
 })
 
@@ -180,6 +184,8 @@ Deno.test(
           directors: ['Director 777001'],
           watched: null,
         })
+        const two = res.body.results.find((r: { tmdb_id: number }) => r.tmdb_id === 777002)
+        assertEquals(two.directors, [], 'a failed credits call loses only the director')
         const search1 = tmdbCalls.find((c) => c.path === '/3/search/movie')!
         assertEquals(search1.params.get('language'), 'en-US')
         assertEquals(search1.auth, `Bearer ${FAKE_TOKEN}`)
@@ -231,6 +237,49 @@ Deno.test(
         const { count } = await admin.from('films').select('id', { count: 'exact' }).eq(
           'tmdb_id',
           777001,
+        )
+        assertEquals(count, 0)
+      })
+
+      await t.step('film-save: impossible input is a 400, never a 500', async () => {
+        const manual = { tmdb_id: null, title: 'Fine Title', release_year: 2001, ...screening }
+        const inTwoYears = new Date()
+        inTwoYears.setUTCFullYear(inTwoYears.getUTCFullYear() + 2)
+        const tooLate = new Date(inTwoYears.getTime() + 86_400_000).toISOString().slice(0, 10)
+        const bad: Record<string, unknown>[] = [
+          // Dates: impossible, or outside 1990-01-01 .. today + 2 years.
+          ...['2026-02-30', '2026-13-01', '0000-01-01', '1989-12-31', tooLate, '2026-1-1'].map(
+            (screened_on) => ({ ...manual, screened_on }),
+          ),
+          // Titles that normalise to nothing.
+          ...['\u200b\u200b', '!!! ...', '\u{1F3AC}', ' \n\t '].map((title) => ({
+            ...manual,
+            title,
+          })),
+          // Democrático on add needs a turn-holder, and not the chooser.
+          { ...manual, kind: 'democratico' },
+          { ...manual, kind: 'democratico', turn_holder_id: P('a3') },
+          // System profiles: only Cinema may choose; none may hold a turn.
+          { ...manual, assigned_id: P('c2') },
+          { ...manual, kind: 'democratico', turn_holder_id: P('c1') },
+          { ...manual, assigned_id: '00000000-0000-4000-8000-00000000ffff' },
+          { ...manual, assigned_id: 'not-a-uuid' },
+        ]
+        for (const body of bad) {
+          const res = await call(save, 'tamsin', body)
+          assertEquals(res.status, 400, JSON.stringify(body))
+        }
+        assertEquals(
+          (await call(save, 'tamsin', {
+            ...manual,
+            screened_on: inTwoYears.toISOString().slice(0, 10),
+            title: '',
+          })).status,
+          400,
+        )
+        const { count } = await admin.from('films').select('id', { count: 'exact' }).eq(
+          'title',
+          'Fine Title',
         )
         assertEquals(count, 0)
       })
@@ -296,7 +345,7 @@ Deno.test(
         const edit = await call(save, 'tamsin', {
           id,
           tmdb_id: null,
-          title: 'A Home Movie (cut)',
+          title: '  A Home\n Movie \t (cut) ',
           release_year: 2006,
           screened_on: '2026-12-19',
           kind: 'cinema',
@@ -312,6 +361,8 @@ Deno.test(
           'cinema',
         ])
         assertEquals(film.turn_holder_id, null)
+        // Moved to a day with no other film: day_order is recomputed (it was 2).
+        assertEquals(film.day_order, 1)
 
         // Relink: members refused; staff link it to TMDB; a taken TMDB id is a duplicate.
         for (const [who, code] of [...outsiders, ['kwame', 403] as [string, number]]) {

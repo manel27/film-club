@@ -49,7 +49,8 @@ export async function handler(req: Request): Promise<Response> {
           poster_path: typeof m.poster_path === 'string' ? m.poster_path : null,
         }
         const [credits, watched] = await Promise.all([
-          tmdb(`/movie/${film.tmdb_id}/credits`),
+          // A failed credits call only loses that result's director.
+          tmdb(`/movie/${film.tmdb_id}/credits`).catch(() => null),
           clashes(me.db, { ...film, release_year: film.year }),
         ])
         const w = watched[0]

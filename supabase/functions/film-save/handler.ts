@@ -20,6 +20,19 @@ import {
 
 const KINDS = ['normal', 'democratico', 'cinema', 'maratona']
 const DATE = /^\d{4}-\d{2}-\d{2}$/
+/** Same range as the form's date input (src/films/filmForm.ts). */
+const FIRST_SCREENING = '1990-01-01'
+
+/** A real calendar date from 1990-01-01 to two years from today. */
+export function validScreeningDate(v: unknown, now = new Date()): v is string {
+  if (typeof v !== 'string' || !DATE.test(v)) return false
+  const [y, m, d] = v.split('-').map(Number)
+  const t = new Date(Date.UTC(y, m - 1, d))
+  if (t.getUTCFullYear() !== y || t.getUTCMonth() !== m - 1 || t.getUTCDate() !== d) return false
+  const last = new Date(now)
+  last.setUTCFullYear(last.getUTCFullYear() + 2)
+  return v >= FIRST_SCREENING && v <= last.toISOString().slice(0, 10)
+}
 /** Cleared when a film is unlinked from TMDB, so no stale poster or synopsis remains. */
 const TMDB_COLUMNS = {
   original_title: null,
@@ -44,16 +57,38 @@ export async function handler(req: Request): Promise<Response> {
     const b = await readBody(req)
     const id = b?.id
     const tmdbId = b?.tmdb_id ?? null
-    const uuid = (v: unknown) => typeof v === 'string' && v.length > 0
+    const uuid = (v: unknown) =>
+      typeof v === 'string' && /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(v)
     if (
       !b ||
       (id !== undefined && !isPositiveInt(id)) ||
       (tmdbId !== null && !isPositiveInt(tmdbId)) ||
-      typeof b.screened_on !== 'string' ||
-      !DATE.test(b.screened_on) ||
+      !validScreeningDate(b.screened_on) ||
       !KINDS.includes(b.kind as string) ||
       !uuid(b.assigned_id) ||
       (b.turn_holder_id != null && !uuid(b.turn_holder_id))
+    ) {
+      return json(req, 400, { error: 'invalid' })
+    }
+    const turnHolder = b.kind === 'democratico' ? (b.turn_holder_id ?? null) : null
+    // On add, a Democrático needs whose turn it was (historic films may have none).
+    if (
+      (id === undefined && b.kind === 'democratico' && !turnHolder) || turnHolder === b.assigned_id
+    ) {
+      return json(req, 400, { error: 'invalid' })
+    }
+    // System profiles can't choose or miss a turn; only "Cinema" may stand in as chooser.
+    const { data: people, error: peopleError } = await me.db
+      .from('profile_directory')
+      .select('id, display_name, is_system')
+      .in('id', turnHolder ? [b.assigned_id, turnHolder] : [b.assigned_id])
+    if (peopleError) throw peopleError
+    const person = (pid: unknown) => people.find((p) => p.id === pid)
+    const chooser = person(b.assigned_id)
+    if (
+      !chooser ||
+      (chooser.is_system && chooser.display_name !== 'Cinema') ||
+      (turnHolder && (!person(turnHolder) || person(turnHolder)!.is_system))
     ) {
       return json(req, 400, { error: 'invalid' })
     }
@@ -70,7 +105,7 @@ export async function handler(req: Request): Promise<Response> {
       screened_on: b.screened_on,
       kind: b.kind,
       assigned_id: b.assigned_id,
-      turn_holder_id: b.kind === 'democratico' ? (b.turn_holder_id ?? null) : null,
+      turn_holder_id: turnHolder,
     }
     if (tmdbId !== null) {
       if (current?.tmdb_id !== tmdbId) {
@@ -79,7 +114,8 @@ export async function handler(req: Request): Promise<Response> {
         Object.assign(row, details)
       }
     } else {
-      const title = typeof b.title === 'string' ? b.title.trim() : ''
+      // Newlines, tabs and runs of spaces become one space.
+      const title = typeof b.title === 'string' ? b.title.replace(/\s+/g, ' ').trim() : ''
       const year = b.release_year
       if (!title || title.length > 300 || !isPositiveInt(year) || year < 1870 || year > 2100) {
         return json(req, 400, { error: 'invalid' })
@@ -91,17 +127,8 @@ export async function handler(req: Request): Promise<Response> {
       })
     }
 
-    if (id === undefined) {
-      // Films shown on the same day keep the order they were added in.
-      const { data, error } = await me.db
-        .from('films')
-        .select('day_order')
-        .eq('screened_on', row.screened_on)
-        .order('day_order', { ascending: false })
-        .limit(1)
-      if (error) throw error
-      row.day_order = (data[0]?.day_order ?? 0) + 1
-    }
+    // null: the films_day_order trigger puts it after the day's other films.
+    if (id === undefined) row.day_order = null
 
     const saved = id === undefined
       ? await me.db.from('films').insert(row).select('id').single()

@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import { adminClient, SEED_MEMBER, SEED_MODERATOR, userClient } from './fixtures'
+import { tmdbStubRequests } from './tmdbStub'
 
 // Adds films to the shared local database, so this file runs on its own after
 // the others (playwright.config.ts) and removes what it added. TMDB is the
@@ -23,6 +24,7 @@ test.beforeAll(removeStubFilm)
 test.afterAll(removeStubFilm)
 
 test('a moderator adds a film from TMDB; watched films cannot be picked', async ({ page }) => {
+  const stubRequestsBefore = await tmdbStubRequests()
   await logIn(page, SEED_MODERATOR)
   await page.getByRole('link', { name: 'Add film' }).click()
   await expect(page.getByRole('heading', { name: 'Add film' })).toBeVisible()
@@ -30,8 +32,9 @@ test('a moderator adds a film from TMDB; watched films cannot be picked', async 
   const search = page.getByLabel('Search TMDB')
   await search.fill('the quiet')
   const watched = page.getByRole('button', { name: /The Quiet Orchard/ })
-  await expect(watched).toBeDisabled()
+  await expect(watched).toHaveAttribute('aria-disabled', 'true')
   await expect(watched).toContainText('Already watched on 2026/01/10')
+  await expect(page.getByRole('status')).toHaveText('1 match on TMDB.')
 
   await search.fill('lighthouse')
   await page.getByRole('button', { name: /E2E Lighthouse Keeper \(2014\)/ }).click()
@@ -44,6 +47,8 @@ test('a moderator adds a film from TMDB; watched films cannot be picked', async 
   await expect(page.getByText('O Faroleiro')).toBeVisible()
   await expect(page.getByText('Stub Director')).toBeVisible()
   await expect(page.getByText('2026/12/19')).toBeVisible()
+  // Search and details came from the stub: a run against real TMDB fails here.
+  expect(await tmdbStubRequests()).toBeGreaterThan(stubRequestsBefore + 2)
 
   // Edit: change the date.
   await page.getByRole('link', { name: 'Edit' }).click()
