@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { Navigate, useSearchParams } from 'react-router'
 import { SESSION_ENDED_MESSAGE, SIGN_OUT_INCOMPLETE_MESSAGE, useAuth } from '../auth/authContext'
 import { safeNextPath } from '../auth/redirect'
+import ThemePicker from '../components/ThemePicker'
 import LoadingPage from './LoadingPage'
 
 export default function LoginPage() {
@@ -71,6 +72,7 @@ export default function LoginPage() {
         </button>
       </form>
       <p className="muted">Invite-only. Ask Manel for an invite.</p>
+      <ThemePicker />
     </main>
   )
 }
