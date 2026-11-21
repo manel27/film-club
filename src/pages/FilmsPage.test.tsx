@@ -68,7 +68,7 @@ beforeEach(() => localStorage.clear())
 describe('films page', () => {
   it('lists films by week with year, kind, average and present people', async () => {
     renderPage()
-    const heading = await screen.findByRole('heading', { name: 'Week of Sat 14 Nov 2026' })
+    const heading = await screen.findByRole('heading', { name: '2026/11/14' })
     const row = within(heading.closest('section')!).getByRole('listitem')
     expect(row).toHaveTextContent('Glass River (2001)')
     expect(within(row).getByRole('img', { name: 'Chosen by Ada' })).toBeInTheDocument()
@@ -83,9 +83,9 @@ describe('films page', () => {
     expect(screen.getByText('Cinema', { selector: '.badge' })).toBeInTheDocument()
     expect(screen.getByText('Democrático', { selector: '.badge' })).toBeInTheDocument()
     expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual([
-      'Week of Sat 14 Nov 2026',
-      'Week of Sat 7 Nov 2026',
-      'Week of Sat 14 Jun 2025',
+      '2026/11/14',
+      '2026/11/07',
+      '2025/06/14',
     ])
   })
 
@@ -154,6 +154,42 @@ describe('films page', () => {
     const router = renderPage()
     await screen.findByText('3 films')
     expect(router.state.location.search).toBe('')
+  })
+
+  it('can show posters in one grid without week headings', async () => {
+    const router = renderPage('/?view=posters')
+    await screen.findByText('3 films')
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Group by week' }))
+    expect(router.state.location.search).toBe('?view=posters&weeks=0')
+    expect(screen.queryAllByRole('heading', { level: 2 })).toHaveLength(0)
+    expect(
+      screen
+        .getAllByRole('img', { name: /\(2001\)$/ })
+        .map((i) => i.getAttribute('aria-label') ?? i.getAttribute('alt')),
+    ).toEqual(['Glass River (2001)', 'Night Bus (2001)', 'Shark Joke (2001)'])
+    expect(localStorage.getItem('film-club-films')).toBe('view=posters&weeks=0')
+
+    // The list view ignores it and has no such option.
+    fireEvent.click(screen.getByRole('button', { name: 'List' }))
+    expect(screen.getAllByRole('heading', { level: 2 })).toHaveLength(3)
+    expect(screen.queryByRole('checkbox', { name: 'Group by week' })).not.toBeInTheDocument()
+  })
+
+  it('closes the present filter on a click outside or Escape', async () => {
+    renderPage()
+    const summary = await screen.findByText('Present', { selector: 'summary' })
+    const details = summary.closest('details')!
+    fireEvent.click(summary)
+    expect(details.open).toBe(true)
+    fireEvent.pointerDown(screen.getByText('Present at the screening'))
+    expect(details.open).toBe(true)
+    fireEvent.pointerDown(document.body)
+    expect(details.open).toBe(false)
+
+    fireEvent.click(summary)
+    fireEvent.keyDown(screen.getByRole('checkbox', { name: 'Bo' }), { key: 'Escape' })
+    expect(details.open).toBe(false)
+    expect(summary).toHaveFocus()
   })
 
   it('shows TMDB posters lazily, and a text placeholder without one', async () => {

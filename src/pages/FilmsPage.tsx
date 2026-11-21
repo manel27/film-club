@@ -88,7 +88,7 @@ export default function FilmsPage() {
       canScore,
     })
   }
-  const { view, sort, filters } = state
+  const { view, byWeek, sort, filters } = state
 
   const change = (next: Partial<PageState>) => {
     const nextSearch = toParams({ ...state, ...next }).toString()
@@ -137,18 +137,30 @@ export default function FilmsPage() {
     <main className="page films-page">
       <div className="films-head">
         <h1>Films</h1>
-        <div className="view-toggle" role="group" aria-label="View">
-          {(['list', 'posters'] as const).map((v) => (
-            <button
-              key={v}
-              type="button"
-              className="button button-secondary button-small"
-              aria-pressed={view === v}
-              onClick={() => change({ view: v })}
-            >
-              {v === 'list' ? 'List' : 'Posters'}
-            </button>
-          ))}
+        <div className="header-tools">
+          {view === 'posters' && (
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={byWeek}
+                onChange={(e) => change({ byWeek: e.target.checked })}
+              />
+              Group by week
+            </label>
+          )}
+          <div className="view-toggle" role="group" aria-label="View">
+            {(['list', 'posters'] as const).map((v) => (
+              <button
+                key={v}
+                type="button"
+                className="button button-secondary button-small"
+                aria-pressed={view === v}
+                onClick={() => change({ view: v })}
+              >
+                {v === 'list' ? 'List' : 'Posters'}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -229,24 +241,34 @@ export default function FilmsPage() {
               </div>
             ))}
 
-          {groups.map((g) => (
-            <section key={g.weekStart} className="week">
-              <h2>{g.heading}</h2>
-              {view === 'list' ? (
-                <ul className="film-list">
-                  {g.films.map((f) => (
-                    <FilmRow key={f.id} film={f} people={people} />
-                  ))}
-                </ul>
-              ) : (
-                <ul className="poster-grid">
-                  {g.films.map((f) => (
-                    <PosterTile key={f.id} film={f} />
-                  ))}
-                </ul>
-              )}
-            </section>
-          ))}
+          {view === 'posters' && !byWeek ? (
+            <ul className="poster-grid poster-grid-flat">
+              {groups
+                .flatMap((g) => g.films)
+                .map((f) => (
+                  <PosterTile key={f.id} film={f} />
+                ))}
+            </ul>
+          ) : (
+            groups.map((g) => (
+              <section key={g.weekStart} className="week">
+                <h2>{g.heading}</h2>
+                {view === 'list' ? (
+                  <ul className="film-list">
+                    {g.films.map((f) => (
+                      <FilmRow key={f.id} film={f} people={people} />
+                    ))}
+                  </ul>
+                ) : (
+                  <ul className="poster-grid">
+                    {g.films.map((f) => (
+                      <PosterTile key={f.id} film={f} />
+                    ))}
+                  </ul>
+                )}
+              </section>
+            ))
+          )}
         </>
       )}
     </main>
@@ -355,8 +377,24 @@ function PresentFilter(props: {
   onChange: (ids: string[]) => void
   onModeChange: (mode: 'any' | 'all') => void
 }) {
+  const ref = useRef<HTMLDetailsElement>(null)
+  useEffect(() => {
+    const close = (e: PointerEvent) => {
+      if (ref.current?.open && !ref.current.contains(e.target as Node)) ref.current.open = false
+    }
+    document.addEventListener('pointerdown', close)
+    return () => document.removeEventListener('pointerdown', close)
+  }, [])
   return (
-    <details className="present-filter">
+    <details
+      ref={ref}
+      className="present-filter"
+      onKeyDown={(e) => {
+        if (e.key !== 'Escape' || !ref.current?.open) return
+        ref.current.open = false
+        ref.current.querySelector('summary')?.focus()
+      }}
+    >
       <summary>Present{props.selected.length > 0 && ` (${props.selected.length})`}</summary>
       <fieldset>
         <legend>Present at the screening</legend>

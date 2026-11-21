@@ -61,34 +61,12 @@ export function weekStart(date: string): string {
   return new Date(t - daysSinceMonday * DAY_MS).toISOString().slice(0, 10)
 }
 
-const dateParts = new Intl.DateTimeFormat('en-GB', {
-  timeZone: 'Europe/Lisbon',
-  weekday: 'short',
-  day: 'numeric',
-  month: 'short',
-  year: 'numeric',
-})
-
-/** "Sat 14 Nov 2026", or "Sat 14 Nov" without the year. */
-export function formatDate(date: string, withYear = true): string {
-  const p = Object.fromEntries(
-    dateParts.formatToParts(noonUtc(date)).map((part) => [part.type, part.value]),
-  )
-  return `${p.weekday} ${p.day} ${p.month}${withYear ? ` ${p.year}` : ''}`
-}
-
-const andList = new Intl.ListFormat('en-GB', { type: 'conjunction' })
-
 /**
- * "Week of Sat 14 Nov 2026". A week with several screening dates names them all
- * ("Week of Fri 13 Nov and Sat 14 Nov 2026"); the year is written once unless
- * the dates span two years.
+ * The screening dates of a week as "2026/11/13 · 2026/11/14", in the order
+ * given (the current sort order). Calendar dates, so no time zone applies.
  */
 export function weekHeading(dates: string[]): string {
-  const sorted = [...new Set(dates)].sort()
-  const oneYear = sorted[0].slice(0, 4) === sorted[sorted.length - 1].slice(0, 4)
-  const parts = sorted.map((d, i) => formatDate(d, !oneYear || i === sorted.length - 1))
-  return `Week of ${andList.format(parts)}`
+  return [...new Set(dates)].map((d) => d.replaceAll('-', '/')).join(' · ')
 }
 
 export interface WeekGroup {
@@ -138,6 +116,8 @@ export const KINDS = Object.keys(KIND_LABELS) as FilmKind[]
 
 export interface PageState {
   view: 'list' | 'posters'
+  /** Posters view only: false shows one grid with no week headings. */
+  byWeek: boolean
   sort: Sort
   filters: Filters
 }
@@ -156,15 +136,17 @@ export function readParams(params: URLSearchParams): PageState {
   }
   return {
     view: params.get('view') === 'posters' ? 'posters' : 'list',
+    byWeek: params.get('weeks') !== '0',
     sort: params.get('sort') === 'oldest' ? 'oldest' : 'newest',
     filters,
   }
 }
 
 /** The page state as search params, defaults left out (known keys only). */
-export function toParams({ view, sort, filters: f }: PageState): URLSearchParams {
+export function toParams({ view, byWeek, sort, filters: f }: PageState): URLSearchParams {
   const p = new URLSearchParams()
   if (view === 'posters') p.set('view', view)
+  if (!byWeek) p.set('weeks', '0')
   if (sort === 'oldest') p.set('sort', sort)
   if (f.present.length > 0) p.set('present', f.present.join(','))
   if (f.presentMode === 'all') p.set('presentMode', 'all')

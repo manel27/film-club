@@ -1,7 +1,6 @@
 import { afterAll, describe, expect, it, vi } from 'vitest'
 import {
   filterFilms,
-  formatDate,
   groupByWeek,
   readParams,
   toParams,
@@ -57,8 +56,6 @@ describe('weekStart (Mon–Sun weeks)', () => {
     expect(weekStart('2026-03-30')).toBe('2026-03-30')
     expect(weekStart('2026-10-25')).toBe('2026-10-19')
     expect(weekStart('2026-10-26')).toBe('2026-10-26')
-    expect(formatDate('2026-03-29')).toBe('Sun 29 Mar 2026')
-    expect(formatDate('2026-10-25')).toBe('Sun 25 Oct 2026')
   })
 
   it('crosses month and year boundaries', () => {
@@ -73,26 +70,23 @@ describe('weekStart (Mon–Sun weeks)', () => {
       vi.stubEnv('TZ', 'Pacific/Kiritimati') // UTC+14
       expect(new Date(2026, 10, 15).getTimezoneOffset()).toBe(-840)
       expect(weekStart('2026-11-15')).toBe('2026-11-09')
-      expect(formatDate('2026-11-14')).toBe('Sat 14 Nov 2026')
       vi.stubEnv('TZ', 'America/Adak') // UTC-10
       expect(new Date(2026, 10, 15).getTimezoneOffset()).toBe(600)
       expect(weekStart('2026-11-16')).toBe('2026-11-16')
-      expect(formatDate('2026-11-14')).toBe('Sat 14 Nov 2026')
+      expect(weekHeading(['2026-11-14'])).toBe('2026/11/14')
     })
   })
 })
 
 describe('weekHeading', () => {
-  it('names the screening date', () => {
-    expect(weekHeading(['2026-11-14'])).toBe('Week of Sat 14 Nov 2026')
-    expect(weekHeading(['2026-11-14', '2026-11-14'])).toBe('Week of Sat 14 Nov 2026')
+  it('shows the screening date as YYYY/MM/DD', () => {
+    expect(weekHeading(['2026-11-14'])).toBe('2026/11/14')
+    expect(weekHeading(['2026-11-14', '2026-11-14'])).toBe('2026/11/14')
   })
 
-  it('names every date of a week with several', () => {
-    expect(weekHeading(['2026-11-15', '2026-11-13'])).toBe('Week of Fri 13 Nov and Sun 15 Nov 2026')
-    expect(weekHeading(['2026-12-31', '2027-01-02'])).toBe(
-      'Week of Thu 31 Dec 2026 and Sat 2 Jan 2027',
-    )
+  it('lists every date of a week with several, in the order given', () => {
+    expect(weekHeading(['2026-11-15', '2026-11-13'])).toBe('2026/11/15 · 2026/11/13')
+    expect(weekHeading(['2026-12-31', '2027-01-02'])).toBe('2026/12/31 · 2027/01/02')
   })
 })
 
@@ -109,13 +103,14 @@ describe('groupByWeek', () => {
     const groups = groupByWeek(films, 'newest')
     expect(groups.map((g) => g.weekStart)).toEqual(['2026-11-16', '2026-11-09', '2026-10-26'])
     expect(groups[1].films.map((f) => f.id)).toEqual([2, 1, 4])
-    expect(groups[1].heading).toBe('Week of Mon 9 Nov and Sat 14 Nov 2026')
+    expect(groups[1].heading).toBe('2026/11/14 · 2026/11/09')
   })
 
   it('sorts oldest first', () => {
     const groups = groupByWeek(films, 'oldest')
     expect(groups.map((g) => g.weekStart)).toEqual(['2026-10-26', '2026-11-09', '2026-11-16'])
     expect(groups[1].films.map((f) => f.id)).toEqual([4, 2, 1])
+    expect(groups[1].heading).toBe('2026/11/09 · 2026/11/14')
   })
 
   it('handles no films', () => {
@@ -164,10 +159,11 @@ describe('readParams', () => {
 
   it('reads every filter', () => {
     const p = new URLSearchParams(
-      'view=posters&sort=oldest&present=a,b&presentMode=all&genre=Drama&assigned=c&kind=cinema&year=2025&unscored=1',
+      'view=posters&weeks=0&sort=oldest&present=a,b&presentMode=all&genre=Drama&assigned=c&kind=cinema&year=2025&unscored=1',
     )
     expect(readParams(p)).toEqual({
       view: 'posters',
+      byWeek: false,
       sort: 'oldest',
       filters: {
         present: ['a', 'b'],
@@ -185,11 +181,13 @@ describe('readParams', () => {
 describe('toParams', () => {
   it('round-trips known keys and drops defaults and junk', () => {
     const p =
-      'view=posters&sort=oldest&present=a,b&presentMode=all&genre=Drama&assigned=c&kind=cinema&year=2025&unscored=1'
+      'view=posters&weeks=0&sort=oldest&present=a,b&presentMode=all&genre=Drama&assigned=c&kind=cinema&year=2025&unscored=1'
     expect(toParams(readParams(new URLSearchParams(p))).toString()).toBe(
-      'view=posters&sort=oldest&present=a%2Cb&presentMode=all&genre=Drama&assigned=c&kind=cinema&year=2025&unscored=1',
+      'view=posters&weeks=0&sort=oldest&present=a%2Cb&presentMode=all&genre=Drama&assigned=c&kind=cinema&year=2025&unscored=1',
     )
-    expect(toParams(readParams(new URLSearchParams('{bad json&sort=newest'))).toString()).toBe('')
+    expect(
+      toParams(readParams(new URLSearchParams('{bad json&sort=newest&weeks=1'))).toString(),
+    ).toBe('')
   })
 })
 

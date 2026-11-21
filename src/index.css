@@ -387,6 +387,10 @@ body {
   height: 0.625rem;
 }
 
+.poster-grid.poster-grid-flat {
+  margin-top: 1rem;
+}
+
 .poster-grid {
   list-style: none;
   margin: 0;

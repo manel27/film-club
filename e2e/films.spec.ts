@@ -18,7 +18,7 @@ test('a member browses the films by week, with averages and present people', asy
 
   // Same-day films are listed together, in day_order.
   const marathon = page.locator('section', {
-    has: page.getByRole('heading', { name: 'Week of Sat 31 Jan 2026' }),
+    has: page.getByRole('heading', { name: '2026/01/31' }),
   })
   await expect(marathon.getByRole('listitem')).toHaveText([
     /Midnight Marathon \(2015\)\s*Maratona/,
@@ -37,7 +37,7 @@ test('a member browses the films by week, with averages and present people', asy
   await expect(egg.getByText('Democrático')).toBeVisible()
 
   // Newest first by default.
-  await expect(page.getByRole('heading', { level: 2 }).first()).toHaveText('Week of Sat 5 Dec 2026')
+  await expect(page.getByRole('heading', { level: 2 }).first()).toHaveText('2026/12/05')
   for (const theme of ['letterboxd', 'superman', 'batman']) {
     await page.getByRole('banner').getByLabel('Theme').selectOption(theme)
     await page.screenshot({ path: `${SCREENSHOTS}/films-list-${theme}.png`, fullPage: true })
@@ -73,6 +73,42 @@ test('view and filters are kept in the URL and restored from localStorage', asyn
   await expect(page.getByText('8 films')).toBeVisible()
   // Sort and view are not filters: they stay.
   await expect(page).toHaveURL(/#\/\?view=posters&sort=oldest$/)
+})
+
+test('posters can be shown in one grid without week headings', async ({ page }) => {
+  await logIn(page, E2E_MEMBER.email, E2E_PASSWORD)
+  await page.getByRole('button', { name: 'Posters' }).click()
+  await expect(page.getByRole('heading', { level: 2 })).toHaveCount(7)
+
+  await page.getByRole('checkbox', { name: 'Group by week' }).click()
+  await expect(page).toHaveURL(/#\/\?view=posters&weeks=0$/)
+  await expect(page.getByRole('heading', { level: 2 })).toHaveCount(0)
+  await expect(page.locator('.poster')).toHaveCount(8)
+  await expect(page.locator('.poster').first()).toHaveAttribute(
+    'title',
+    "Tomorrow's Feature (2024)",
+  )
+  await page.screenshot({ path: `${SCREENSHOTS}/films-posters-flat.png`, fullPage: true })
+
+  await page.reload()
+  await expect(page.getByRole('checkbox', { name: 'Group by week' })).not.toBeChecked()
+})
+
+test('the present filter closes on a click outside or Escape', async ({ page }) => {
+  await logIn(page, E2E_MEMBER.email, E2E_PASSWORD)
+  const summary = page.getByText('Present', { exact: true })
+  const tamsin = page.getByRole('checkbox', { name: 'Tamsin' })
+
+  await summary.click()
+  await expect(tamsin).toBeVisible()
+  await page.getByRole('heading', { name: 'Films', exact: true }).click()
+  await expect(tamsin).toBeHidden()
+
+  await summary.click()
+  await tamsin.focus()
+  await page.keyboard.press('Escape')
+  await expect(tamsin).toBeHidden()
+  await expect(summary).toBeFocused()
 })
 
 test('a viewer can browse but has no "I haven\'t scored" filter', async ({ page }) => {
