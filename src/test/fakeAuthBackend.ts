@@ -36,6 +36,8 @@ interface Options {
   signOutError?: unknown
   /** What the server says about the stored session. */
   sessionCheck?: SessionCheck
+  /** The theme saved in user_settings. */
+  savedTheme?: string | null
 }
 
 /**
@@ -80,6 +82,8 @@ export function createFakeAuthBackend(options: Options = {}) {
       if (state.profile instanceof Error) throw state.profile
       return state.profile
     }),
+    fetchTheme: vi.fn(async () => options.savedTheme ?? null),
+    saveTheme: vi.fn(async () => ({ error: null })),
   } satisfies AuthBackend
 
   return {

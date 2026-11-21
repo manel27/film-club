@@ -1,5 +1,6 @@
 import type { Session } from '@supabase/supabase-js'
 import { createContext, useContext } from 'react'
+import type { Theme } from '../theme'
 import type { MyProfile } from './backend'
 
 /**
@@ -25,6 +26,10 @@ export interface AuthState {
   signOut(): Promise<string | null>
   /** Loads the profile again (after an `error`). */
   reloadProfile(): void
+  /** The theme on screen. */
+  theme: Theme
+  /** Applies a theme; saved to user_settings too, except for viewers (localStorage only). */
+  setTheme(theme: Theme): void
 }
 
 export const SIGN_OUT_INCOMPLETE_MESSAGE =
