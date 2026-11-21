@@ -5,9 +5,12 @@ import { fetchFilmsData, type FilmsData } from '../films/api'
 import {
   filterFilms,
   groupByWeek,
+  isDateSort,
   KIND_LABELS,
   KINDS,
   readParams,
+  sortFilms,
+  SORTS,
   toParams,
   validFilters,
   type FilmItem,
@@ -15,6 +18,8 @@ import {
   type Filters,
   type PageState,
   type Person,
+  type Sort,
+  weekHeading,
 } from '../films/films'
 
 const STORAGE_KEY = 'film-club-films'
@@ -36,7 +41,11 @@ function save(value: string) {
   }
 }
 
-/** The films page (#/): every film, grouped by week, with filters and two views. */
+/**
+ * The films page (#/): every film with filters, sorts and three views. Sorted by
+ * screening date, the list and posters views group films by week; other sorts
+ * show a flat list or the poster grid.
+ */
 export default function FilmsPage() {
   const { profile } = useAuth()
   const profileId = profile?.id
@@ -124,8 +133,22 @@ export default function FilmsPage() {
 
   // ~300 films: cheap enough to recompute on every render.
   const people = new Map(data?.people.map((p) => [p.id, p]))
-  const groups = data ? groupByWeek(filterFilms(data.films, filters, data.scored), sort) : []
-  const count = groups.reduce((n, g) => n + g.films.length, 0)
+  const films = data ? sortFilms(filterFilms(data.films, filters, data.scored), sort) : []
+  const count = films.length
+  // Weeks only make sense when sorted by screening date; otherwise lists are flat.
+  const byWeek = isDateSort(sort)
+  // Posters by week falls back to the grid when there are no weeks.
+  const shownView = view === 'posters' && !byWeek ? 'grid' : view
+  // In poster views, the value sorted on (other than title and date) is shown on each tile.
+  const note = (f: FilmItem) =>
+    sort.startsWith('score') ? (
+      <>
+        <span className="sr-only">Average </span>
+        {f.avgScore?.toFixed(2) ?? '–'}
+      </>
+    ) : sort.startsWith('year') ? (
+      (f.releaseYear ?? '–')
+    ) : undefined
   const { present, genre, assigned, kind, year, unscored } = filters
   const hasFilters = present.length > 0 || !!(genre || assigned || kind || year || unscored)
   const clearButton = (
@@ -144,30 +167,34 @@ export default function FilmsPage() {
           </Link>
         )}
         <div className="view-toggle" role="group" aria-label="View">
-          {VIEWS.map(([v, name, icon]) => (
-            <button
-              key={v}
-              type="button"
-              className="button button-secondary button-small"
-              aria-pressed={view === v}
-              aria-label={name}
-              title={name}
-              onClick={() => change({ view: v })}
-            >
-              <svg
-                viewBox="0 0 24 24"
-                width="20"
-                height="20"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-                aria-hidden="true"
+          {VIEWS.map(([v, name, icon]) => {
+            const off = v === 'posters' && !byWeek
+            return (
+              <button
+                key={v}
+                type="button"
+                className="button button-secondary button-small"
+                aria-pressed={shownView === v}
+                aria-disabled={off || undefined}
+                aria-label={name}
+                title={off ? `${name}: only when sorted by screening date` : name}
+                onClick={() => !off && change({ view: v })}
               >
-                {icon}
-              </svg>
-            </button>
-          ))}
+                <svg
+                  viewBox="0 0 24 24"
+                  width="20"
+                  height="20"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  aria-hidden="true"
+                >
+                  {icon}
+                </svg>
+              </button>
+            )
+          })}
         </div>
       </div>
 
@@ -180,14 +207,12 @@ export default function FilmsPage() {
           <form className="film-filters" aria-label="Filters" onSubmit={(e) => e.preventDefault()}>
             <label className="field">
               Sort
-              <select
-                value={sort}
-                onChange={(e) =>
-                  change({ sort: e.target.value === 'oldest' ? 'oldest' : 'newest' })
-                }
-              >
-                <option value="newest">Newest first</option>
-                <option value="oldest">Oldest first</option>
+              <select value={sort} onChange={(e) => change({ sort: e.target.value as Sort })}>
+                {Object.entries(SORTS).map(([value, text]) => (
+                  <option key={value} value={value}>
+                    {text}
+                  </option>
+                ))}
               </select>
             </label>
             <PresentFilter
@@ -248,34 +273,40 @@ export default function FilmsPage() {
               </div>
             ))}
 
-          {view === 'grid' ? (
-            <ul className="poster-grid poster-grid-flat">
-              {groups
-                .flatMap((g) => g.films)
-                .map((f) => (
-                  <PosterTile key={f.id} film={f} />
-                ))}
-            </ul>
-          ) : (
-            groups.map((g) => (
-              <section key={g.weekStart} className="week">
-                <h2>{g.heading}</h2>
-                {view === 'list' ? (
+          {shownView === 'grid'
+            ? count > 0 && (
+                <ul className="poster-grid poster-grid-flat">
+                  {films.map((f) => (
+                    <PosterTile key={f.id} film={f} note={note(f)} />
+                  ))}
+                </ul>
+              )
+            : !byWeek
+              ? count > 0 && (
                   <ul className="film-list">
-                    {g.films.map((f) => (
-                      <FilmRow key={f.id} film={f} people={people} />
+                    {films.map((f) => (
+                      <FilmRow key={f.id} film={f} people={people} showDate />
                     ))}
                   </ul>
-                ) : (
-                  <ul className="poster-grid">
-                    {g.films.map((f) => (
-                      <PosterTile key={f.id} film={f} />
-                    ))}
-                  </ul>
-                )}
-              </section>
-            ))
-          )}
+                )
+              : groupByWeek(films).map((g) => (
+                  <section key={g.weekStart} className="week">
+                    <h2>{g.heading}</h2>
+                    {view === 'list' ? (
+                      <ul className="film-list">
+                        {g.films.map((f) => (
+                          <FilmRow key={f.id} film={f} people={people} />
+                        ))}
+                      </ul>
+                    ) : (
+                      <ul className="poster-grid">
+                        {g.films.map((f) => (
+                          <PosterTile key={f.id} film={f} />
+                        ))}
+                      </ul>
+                    )}
+                  </section>
+                ))}
         </>
       )}
     </main>
@@ -323,11 +354,13 @@ function Dot({ person, label }: { person: Person | undefined; label?: string }) 
   )
 }
 
-function FilmRow({ film, people }: { film: FilmItem; people: Map<string, Person> }) {
+function FilmRow(props: { film: FilmItem; people: Map<string, Person>; showDate?: boolean }) {
+  const { film, people } = props
   const assigned = people.get(film.assignedId)
   const kind = KIND_LABELS[film.kind]
   return (
     <li className="film-row">
+      {props.showDate && <span className="muted film-date">{weekHeading([film.screenedOn])}</span>}
       <span className="film-title">
         <Dot person={assigned} label={`Chosen by ${assigned?.name ?? 'unknown'}`} />{' '}
         <Link to={`/films/${film.id}`}>{film.title}</Link>
@@ -359,7 +392,7 @@ function FilmRow({ film, people }: { film: FilmItem; people: Map<string, Person>
   )
 }
 
-function PosterTile({ film }: { film: FilmItem }) {
+function PosterTile({ film, note }: { film: FilmItem; note?: React.ReactNode }) {
   const name = withYear(film)
   return (
     <li className="poster" title={name}>
@@ -379,6 +412,7 @@ function PosterTile({ film }: { film: FilmItem }) {
           </div>
         )}
       </Link>
+      {note != null && <span className="muted poster-note">{note}</span>}
     </li>
   )
 }

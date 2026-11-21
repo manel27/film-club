@@ -3,6 +3,7 @@ import {
   filterFilms,
   groupByWeek,
   readParams,
+  sortFilms,
   toParams,
   validFilters,
   weekHeading,
@@ -90,6 +91,63 @@ describe('weekHeading', () => {
   })
 })
 
+describe('sortFilms', () => {
+  const ids = (films: FilmItem[], sort: Parameters<typeof sortFilms>[1]) =>
+    sortFilms(films, sort).map((f) => f.id)
+
+  it('sorts titles ignoring case, accents and a leading article', () => {
+    const films = [
+      film(1, '2026-01-01', { title: 'zebra' }),
+      film(2, '2026-01-01', { title: 'Élan' }),
+      film(3, '2026-01-01', { title: 'The Fly' }),
+      film(4, '2026-01-01', { title: 'eagle' }),
+      film(5, '2026-01-01', { title: 'An Apple' }),
+    ]
+    expect(ids(films, 'title')).toEqual([5, 4, 2, 3, 1])
+    expect(ids(films, 'title-desc')).toEqual([1, 3, 2, 4, 5])
+  })
+
+  it('sorts numbers by value and ignores leading punctuation', () => {
+    const films = [
+      film(1, '2026-01-01', { title: 'Rocky 10' }),
+      film(2, '2026-01-01', { title: '2001' }),
+      film(3, '2026-01-01', { title: 'Rocky 2' }),
+      film(4, '2026-01-01', { title: '10' }),
+      film(5, '2026-01-01', { title: '9' }),
+      film(6, '2026-01-01', { title: '"Quoted"' }),
+      film(7, '2026-01-01', { title: '¡Bang!' }),
+      film(8, '2026-01-01', { title: "'The Mole'" }),
+      film(9, '2026-01-01', { title: '(Cut)' }),
+    ]
+    expect(ids(films, 'title')).toEqual([5, 4, 2, 7, 9, 8, 6, 3, 1])
+  })
+
+  it('puts films with no year or average last in both directions', () => {
+    const films = [
+      film(1, '2026-01-01', { releaseYear: null, avgScore: 8 }),
+      film(2, '2026-01-01', { releaseYear: 1990, avgScore: null }),
+      film(3, '2026-01-01', { releaseYear: 2010, avgScore: 6.5 }),
+    ]
+    expect(ids(films, 'year')).toEqual([2, 3, 1])
+    expect(ids(films, 'year-desc')).toEqual([3, 2, 1])
+    expect(ids(films, 'score')).toEqual([3, 1, 2])
+    expect(ids(films, 'score-desc')).toEqual([1, 3, 2])
+  })
+
+  it('breaks ties by screening date (newest first), then title', () => {
+    const films = [
+      film(1, '2025-01-01', { title: 'B', avgScore: 7 }),
+      film(2, '2026-01-01', { title: 'C', avgScore: 7 }),
+      film(3, '2025-01-01', { title: 'A', avgScore: 7 }),
+      film(4, '2024-01-01', { title: 'D', avgScore: null }),
+      film(5, '2026-01-01', { title: 'E', avgScore: null }),
+    ]
+    expect(ids(films, 'score')).toEqual([2, 3, 1, 5, 4])
+    expect(ids(films, 'score-desc')).toEqual([2, 3, 1, 5, 4])
+    expect(ids(films, 'year')).toEqual([2, 5, 3, 1, 4]) // all 2000
+  })
+})
+
 describe('groupByWeek', () => {
   const films = [
     film(1, '2026-11-14', { dayOrder: 2 }),
@@ -100,21 +158,21 @@ describe('groupByWeek', () => {
   ]
 
   it('sorts newest first, keeping same-day films in day_order', () => {
-    const groups = groupByWeek(films, 'newest')
+    const groups = groupByWeek(sortFilms(films, 'newest'))
     expect(groups.map((g) => g.weekStart)).toEqual(['2026-11-16', '2026-11-09', '2026-10-26'])
     expect(groups[1].films.map((f) => f.id)).toEqual([2, 1, 4])
     expect(groups[1].heading).toBe('2026/11/14 · 2026/11/09')
   })
 
   it('sorts oldest first', () => {
-    const groups = groupByWeek(films, 'oldest')
+    const groups = groupByWeek(sortFilms(films, 'oldest'))
     expect(groups.map((g) => g.weekStart)).toEqual(['2026-10-26', '2026-11-09', '2026-11-16'])
     expect(groups[1].films.map((f) => f.id)).toEqual([4, 2, 1])
     expect(groups[1].heading).toBe('2026/11/09 · 2026/11/14')
   })
 
   it('handles no films', () => {
-    expect(groupByWeek([], 'newest')).toEqual([])
+    expect(groupByWeek([])).toEqual([])
   })
 })
 
@@ -155,6 +213,20 @@ describe('readParams', () => {
     expect(view).toBe('list')
     expect(sort).toBe('newest')
     expect(filters).toEqual(NO_FILTERS)
+    expect(readParams(new URLSearchParams('sort=toString')).sort).toBe('newest')
+  })
+
+  it('reads every sort', () => {
+    for (const sort of [
+      'oldest',
+      'title',
+      'title-desc',
+      'year',
+      'year-desc',
+      'score',
+      'score-desc',
+    ])
+      expect(readParams(new URLSearchParams({ sort })).sort).toBe(sort)
   })
 
   it('reads every filter', () => {
