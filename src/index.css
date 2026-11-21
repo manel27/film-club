@@ -320,6 +320,11 @@ a {
   border-color: var(--accent);
 }
 
+.view-toggle [aria-disabled='true'] {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 .film-filters {
   display: flex;
   flex-wrap: wrap;
@@ -420,7 +425,9 @@ a {
   font-weight: 400;
 }
 
-.film-avg {
+.film-avg,
+.film-date,
+.poster-note {
   font-variant-numeric: tabular-nums;
   color: var(--muted);
 }
@@ -434,6 +441,13 @@ a {
 .present-dots .colour-dot {
   width: 0.625rem;
   height: 0.625rem;
+}
+
+.poster-note {
+  display: block;
+  margin-top: 0.125rem;
+  font-size: 0.8125rem;
+  text-align: center;
 }
 
 .poster-grid.poster-grid-flat {
