@@ -1,9 +1,10 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { createMemoryRouter, RouterProvider } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { AuthProvider } from '../auth/AuthProvider'
 import RequireAuth from '../auth/RequireAuth'
 import type { FilmDetailData, FilmRecord } from '../films/api'
+import { NO_ROWS } from '../films/filmDetail'
 import { createFakeAuthBackend, fakeProfile, fakeSession } from '../test/fakeAuthBackend'
 import FilmPage from './FilmPage'
 
@@ -62,7 +63,7 @@ function detail(film: Partial<FilmRecord> = {}): FilmDetailData {
   }
 }
 
-const fetchFilm = vi.fn(async (): Promise<FilmDetailData | null> => detail())
+const fetchFilm = vi.fn<(id: number) => Promise<FilmDetailData | null>>(async () => detail())
 const writes = vi.hoisted(() => ({
   setPresent: vi.fn(async () => {}),
   saveScore: vi.fn(async () => {}),
@@ -71,7 +72,10 @@ const writes = vi.hoisted(() => ({
   editComment: vi.fn(async () => {}),
   deleteComment: vi.fn(async () => {}),
 }))
-vi.mock('../films/api', () => ({ fetchFilm: () => fetchFilm(), filmWrites: writes }))
+vi.mock('../films/api', () => ({
+  fetchFilm: (id: number) => fetchFilm(id),
+  filmWrites: writes,
+}))
 
 function renderPage(
   role: 'admin' | 'moderator' | 'member' | 'viewer' = 'member',
@@ -101,6 +105,7 @@ function renderPage(
 }
 
 const commentItem = (text: string) => screen.getByText(text).closest('li')!
+const findComment = async (text: string) => (await screen.findByText(text)).closest('li')!
 
 beforeEach(() => vi.clearAllMocks())
 
@@ -143,7 +148,6 @@ describe('film page', () => {
     await screen.findByRole('heading', { name: /Glass River/ })
     expect(screen.queryByRole('button')).not.toBeInTheDocument()
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
-    expect(screen.queryByRole('spinbutton')).not.toBeInTheDocument()
     expect(screen.queryByText('Edit attendance')).not.toBeInTheDocument()
   })
 
@@ -164,7 +168,7 @@ describe('film page', () => {
   it('validates the score before saving it', async () => {
     renderPage('member')
     const input = await screen.findByLabelText('Your score')
-    expect(input).toHaveValue(7.5)
+    expect(input).toHaveValue('7.50')
     fireEvent.change(input, { target: { value: '7.255' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save score' }))
     expect(screen.getByText('Use at most two decimals.')).toBeInTheDocument()
@@ -195,6 +199,8 @@ describe('film page', () => {
     const item = commentItem('Great.')
     fireEvent.click(within(item).getByRole('button', { name: 'Delete' }))
     expect(writes.deleteComment).toHaveBeenCalledWith(1)
+    // One write at a time: wait for the delete (and reload) to finish.
+    await waitFor(() => expect(within(item).getByRole('button', { name: 'Delete' })).toBeEnabled())
     fireEvent.click(within(item).getByRole('button', { name: 'Edit' }))
     fireEvent.change(screen.getByLabelText('Edit comment'), { target: { value: 'Fixed.' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
@@ -206,11 +212,100 @@ describe('film page', () => {
     renderPage('member')
     fireEvent.change(await screen.findByLabelText('Add a comment'), { target: { value: 'Hi' } })
     fireEvent.click(screen.getByRole('button', { name: 'Post' }))
-    expect(await screen.findByRole('alert')).toHaveTextContent("You can't change that.")
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent("You can't change that.")
+    // Shown next to the section that ran the write.
+    expect(alert.closest('section')).toHaveTextContent(/^Comments/)
+  })
+
+  it('accepts a decimal comma', async () => {
+    renderPage('member')
+    fireEvent.change(await screen.findByLabelText('Your score'), { target: { value: '0,5' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save score' }))
+    expect(writes.saveScore).toHaveBeenCalledWith(5, ME, 0.5)
+  })
+
+  it('shows "not found" for an id too large to be real, without asking the server', async () => {
+    renderPage('member', '/films/99999999999999999999')
+    expect(await screen.findByRole('heading', { name: 'Film not found' })).toBeInTheDocument()
+    expect(fetchFilm).not.toHaveBeenCalled()
+  })
+
+  it('starts afresh when only the film id changes', async () => {
+    fetchFilm.mockImplementation(async (id) =>
+      id === 6
+        ? detail({ id: 6, title: 'Night Bus', scores: [{ profile_id: ME, score: 3 }] })
+        : detail(),
+    )
+    const router = renderPage('member')
+    fireEvent.change(await screen.findByLabelText('Add a comment'), { target: { value: 'Draft' } })
+    await act(() => router.navigate('/films/6'))
+    expect(await screen.findByRole('heading', { name: 'Night Bus' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Your score')).toHaveValue('3.00')
+    expect(screen.getByLabelText('Add a comment')).toHaveValue('')
+    fetchFilm.mockImplementation(async () => detail())
+  })
+
+  it('offers a retry when the film fails to load, and a good id loads after a bad one', async () => {
+    fetchFilm.mockRejectedValueOnce(new Error('offline'))
+    const router = renderPage('member', '/films/9')
+    expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't load the film")
+    await act(() => router.navigate('/films/5'))
+    expect(await screen.findByRole('heading', { name: 'Glass River' })).toBeInTheDocument()
+  })
+
+  it('keeps the page when the reload after a write fails', async () => {
+    renderPage('member')
+    fireEvent.change(await screen.findByLabelText('Add a comment'), { target: { value: 'Hi' } })
+    fetchFilm.mockRejectedValueOnce(new Error('offline'))
+    fireEvent.click(screen.getByRole('button', { name: 'Post' }))
+    await waitFor(() => expect(fetchFilm).toHaveBeenCalledTimes(2))
+    expect(screen.getByRole('heading', { name: 'Glass River' })).toBeInTheDocument()
+  })
+
+  it('follows the saved score: a deleted score empties the input', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    renderPage('member')
+    expect(await screen.findByLabelText('Your score')).toHaveValue('7.50')
+    fetchFilm.mockResolvedValueOnce(detail({ scores: [{ profile_id: 'p-ada', score: 9 }] }))
+    fireEvent.click(screen.getByRole('button', { name: "Delete Quinn's score" }))
+    await waitFor(() => expect(screen.getByLabelText('Your score')).toHaveValue(''))
+    expect(screen.getByLabelText('Your score')).toHaveFocus()
+  })
+
+  it('runs one write at a time (no double posts)', async () => {
+    renderPage('member')
+    fireEvent.change(await screen.findByLabelText('Add a comment'), { target: { value: 'Hi' } })
+    const post = screen.getByRole('button', { name: 'Post' })
+    fireEvent.click(post)
+    fireEvent.click(post)
+    const away = screen.getByRole('button', { name: "I wasn't there" })
+    fireEvent.click(away)
+    await waitFor(() => expect(screen.getByLabelText('Add a comment')).toHaveValue(''))
+    expect(writes.addComment).toHaveBeenCalledOnce()
+    expect(writes.setPresent).not.toHaveBeenCalled()
+  })
+
+  it('says so when the comment was changed or removed elsewhere', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    writes.deleteComment.mockRejectedValueOnce(NO_ROWS)
+    renderPage('member')
+    fireEvent.click(within(await findComment('Mine.')).getByRole('button', { name: 'Delete' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'This was changed or removed elsewhere.',
+    )
+  })
+
+  it('moves focus sensibly when editing a comment', async () => {
+    renderPage('member')
+    fireEvent.click(within(await findComment('Mine.')).getByRole('button', { name: 'Edit' }))
+    expect(screen.getByLabelText('Edit comment')).toHaveFocus()
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(within(commentItem('Mine.')).getByRole('button', { name: 'Edit' })).toHaveFocus()
   })
 
   it('shows the easter egg with its locked 11s', async () => {
-    fetchFilm.mockResolvedValue(
+    fetchFilm.mockResolvedValueOnce(
       detail({
         is_easter_egg: true,
         scores_locked: true,
@@ -225,7 +320,6 @@ describe('film page', () => {
     expect(screen.getByText(/These scores are locked/)).toBeInTheDocument()
     expect(screen.getByRole('row', { name: 'Average 11.00' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /score/ })).not.toBeInTheDocument()
-    expect(screen.queryByRole('spinbutton')).not.toBeInTheDocument()
-    fetchFilm.mockImplementation(async () => detail())
+    expect(screen.queryByLabelText('Your score')).not.toBeInTheDocument()
   })
 })

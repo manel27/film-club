@@ -580,7 +580,6 @@ a {
   border-radius: var(--radius);
 }
 
-.edit-attendance summary,
 .film-page summary {
   cursor: pointer;
 }

@@ -25,7 +25,6 @@ test('a viewer sees everything and can change nothing', async ({ page }) => {
   const main = page.getByRole('main')
   await expect(main.getByRole('button')).toHaveCount(0)
   await expect(main.getByRole('textbox')).toHaveCount(0)
-  await expect(main.getByRole('spinbutton')).toHaveCount(0)
   await page.screenshot({ path: `${SCREENSHOTS}/film-viewer.png`, fullPage: true })
 
   await page.setViewportSize({ width: 360, height: 740 })
@@ -58,6 +57,13 @@ test("a member changes their own presence, score and comments, never others'", a
   await score.fill('7.255')
   await page.getByRole('button', { name: 'Save score' }).click()
   await expect(page.getByText('Use at most two decimals.')).toBeVisible()
+  // A decimal comma works (number inputs used to drop it).
+  await score.fill('0,5')
+  await page.getByRole('button', { name: 'Save score' }).click()
+  await expect(page.getByRole('row', { name: /^Kwame 0\.50/ })).toBeVisible()
+  await score.fill('7,5')
+  await page.getByRole('button', { name: 'Save score' }).click()
+  await expect(page.getByRole('row', { name: /^Kwame 7\.50/ })).toBeVisible()
   await score.fill('6.5')
   await page.getByRole('button', { name: 'Save score' }).click()
   await expect(page.getByRole('row', { name: /^Kwame 6\.50/ })).toBeVisible()
@@ -118,7 +124,7 @@ test('the easter egg: you just lost the game, and its 11s are locked', async ({ 
   await expect(page.getByRole('row', { name: 'Orla 11.00' })).toBeVisible()
   await expect(page.getByRole('row', { name: 'Average 11.00' })).toBeVisible()
   await expect(page.getByRole('button', { name: /score/i })).toHaveCount(0)
-  await expect(page.getByRole('spinbutton')).toHaveCount(0)
+  await expect(page.getByLabel('Your score')).toHaveCount(0)
   await page.screenshot({ path: `${SCREENSHOTS}/film-easter-egg.png`, fullPage: true })
 })
 

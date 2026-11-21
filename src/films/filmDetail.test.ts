@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { textOn } from '../lib/colour'
 import { fakeProfile } from '../test/fakeAuthBackend'
-import { parseScore, permissions } from './filmDetail'
+import { errorMessage, NO_ROWS, parseScore, permissions } from './filmDetail'
 
 describe('parseScore', () => {
   it.each([
@@ -65,11 +64,20 @@ describe('permissions', () => {
   })
 })
 
-describe('textOn', () => {
-  it('picks readable text for a person colour', () => {
-    expect(textOn('#ffffff')).toBe('#000000')
-    expect(textOn('#ffd200')).toBe('#000000')
-    expect(textOn('#0b3d91')).toBe('#ffffff')
-    expect(textOn('#000000')).toBe('#ffffff')
+describe('errorMessage', () => {
+  it.each([
+    [
+      { code: '42501', message: 'new row violates row-level security policy' },
+      "You can't change that.",
+    ],
+    [{ code: '42501', message: 'Scores for this film are locked' }, 'These scores are locked.'],
+    [{ code: '23505', message: 'duplicate key value' }, 'That was already saved — refreshed.'],
+    [{ code: '23514', message: 'Score must be between 0 and 10' }, "That value isn't allowed."],
+    [{ code: '22P02', message: 'invalid input syntax' }, "That value isn't allowed."],
+    [{ code: '', message: 'TypeError: Failed to fetch' }, "Couldn't reach the server. Try again."],
+    [{ code: 'XX000', message: 'internal' }, 'Something went wrong. Try again.'],
+    [NO_ROWS, 'This was changed or removed elsewhere.'],
+  ])('never shows raw database text (%j)', (error, message) => {
+    expect(errorMessage(error)).toBe(message)
   })
 })

@@ -1,19 +1,14 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link, useParams } from 'react-router'
 import { useAuth } from '../auth/authContext'
 import { fetchFilm, filmWrites, type FilmDetailData, type FilmRecord } from '../films/api'
-import { parseScore, permissions } from '../films/filmDetail'
+import { errorMessage, parseScore, permissions } from '../films/filmDetail'
 import { KIND_LABELS, type Person } from '../films/films'
 import { textOn } from '../lib/colour'
 
-type Perms = ReturnType<typeof permissions>
-type Run = (write: () => Promise<void>) => Promise<boolean>
-
-function errorMessage(error: unknown): string {
-  const { code, message } = (error ?? {}) as { code?: string; message?: string }
-  if (code === '42501') return message?.includes('locked') ? message : "You can't change that."
-  return message || 'Something went wrong. Try again.'
-}
+type Section = 'attendance' | 'scores' | 'comments'
+/** Runs one write at a time, then reloads the film. Resolves true on success. */
+type Run = (section: Section, write: () => Promise<void>) => Promise<boolean>
 
 const BackLink = () => (
   // The films page brings back its last view and filters by itself.
@@ -22,41 +17,74 @@ const BackLink = () => (
   </Link>
 )
 
-/** A film's page (#/films/:id): details, attendance, scores and comments. */
+/** Focuses the element with this id after the next render (once it exists). */
+function useFocusLater() {
+  const target = useRef('')
+  useEffect(() => {
+    if (target.current) document.getElementById(target.current)?.focus()
+    target.current = ''
+  })
+  return (id: string) => {
+    target.current = id
+  }
+}
+
+/** A film's page (#/films/:id). Keyed by id, so nothing carries over between films. */
 export default function FilmPage() {
-  const { id } = useParams()
-  const filmId = /^\d+$/.test(id ?? '') ? Number(id) : null
+  const { id = '' } = useParams()
+  return <Film key={id} id={id} />
+}
+
+function Film({ id }: { id: string }) {
+  const n = Number(id)
+  const filmId = /^\d+$/.test(id) && Number.isSafeInteger(n) && n > 0 ? n : null
   const { profile } = useAuth()
   // undefined = loading, null = no such film
   const [data, setData] = useState<FilmDetailData | null | undefined>(undefined)
   const [failed, setFailed] = useState(false)
-  const [error, setError] = useState('')
+  const [error, setError] = useState<{ section: Section; message: string } | null>(null)
+  const [busy, setBusy] = useState(false)
+  const busyRef = useRef(false)
+  const people = useRef<Person[] | undefined>(undefined)
 
-  const load = useCallback(
-    async () => filmId !== null && fetchFilm(filmId).then(setData, () => setFailed(true)),
-    [filmId],
-  )
+  // Only the first load can fail the page; a failed reload keeps what is shown.
+  const load = useCallback(async () => {
+    if (filmId === null) return
+    try {
+      const d = await fetchFilm(filmId, people.current)
+      people.current = d?.people
+      setData(d)
+      setFailed(false)
+    } catch {
+      setFailed(true)
+    }
+  }, [filmId])
   useEffect(() => {
     void load()
   }, [load])
 
-  const run: Run = async (write) => {
-    setError('')
+  const run: Run = async (section, write) => {
+    if (busyRef.current) return false
+    busyRef.current = true
+    setBusy(true)
+    setError(null)
     try {
       await write()
       return true
     } catch (e) {
-      setError(errorMessage(e))
+      setError({ section, message: errorMessage(e) })
       return false
     } finally {
       await load()
+      busyRef.current = false
+      setBusy(false)
     }
   }
 
-  if (failed || data === null || filmId === null) {
+  if (filmId === null || data === null) {
     return (
       <main className="page">
-        <h1>{failed ? "Couldn't load the film" : 'Film not found'}</h1>
+        <h1>Film not found</h1>
         <p>
           <BackLink />
         </p>
@@ -66,19 +94,49 @@ export default function FilmPage() {
   if (data === undefined) {
     return (
       <main className="page">
-        <p role="status" className="muted">
-          Loading film…
-        </p>
+        {failed ? (
+          <>
+            <p role="alert" className="form-error">
+              Couldn't load the film. Check your connection.
+            </p>
+            <button
+              type="button"
+              className="button"
+              onClick={() => {
+                setFailed(false)
+                void load()
+              }}
+            >
+              Try again
+            </button>
+          </>
+        ) : (
+          <p role="status" className="muted">
+            Loading film…
+          </p>
+        )}
       </main>
     )
   }
 
-  const { film, people } = data
-  const byId = new Map(people.map((p) => [p.id, p]))
-  const perms = permissions(profile, film.scores_locked)
+  const { film } = data
+  const byId = new Map(data.people.map((p) => [p.id, p]))
   const kind = KIND_LABELS[film.kind]
   const assigned = byId.get(film.assigned_id)
   const turnHolder = film.turn_holder_id ? byId.get(film.turn_holder_id) : undefined
+  const props: SectionProps = {
+    byId,
+    perms: permissions(profile, film.scores_locked),
+    me: profile?.id,
+    run,
+    busy,
+    errorFor: (section) =>
+      error?.section === section && (
+        <p role="alert" className="form-error">
+          {error.message}
+        </p>
+      ),
+  }
 
   return (
     <main className="page film-page">
@@ -95,12 +153,11 @@ export default function FilmPage() {
           />
         )}
         <div>
-          <h1>
-            {film.title} {kind && <span className="badge">{kind}</span>}
-          </h1>
+          <h1>{film.title}</h1>
           {film.original_title && film.original_title !== film.title && (
             <p className="muted">{film.original_title}</p>
           )}
+          {kind && <span className="badge">{kind}</span>}
           <dl className="film-facts">
             <Fact label="Year" value={film.release_year} />
             <Fact label="Directed by" value={film.directors.join(', ')} />
@@ -114,22 +171,9 @@ export default function FilmPage() {
         </div>
       </div>
 
-      {error && (
-        <p role="alert" className="form-error">
-          {error}
-        </p>
-      )}
-
-      <Attendance
-        film={film}
-        people={people}
-        byId={byId}
-        perms={perms}
-        me={profile?.id}
-        run={run}
-      />
-      <Scores data={data} byId={byId} perms={perms} me={profile?.id} run={run} />
-      <Comments film={film} byId={byId} perms={perms} me={profile?.id} run={run} />
+      <Attendance film={film} people={data.people} {...props} />
+      <Scores data={data} {...props} />
+      <Comments film={film} {...props} />
     </main>
   )
 }
@@ -161,9 +205,12 @@ const byName = (a: Person | undefined, b: Person | undefined) =>
 
 interface SectionProps {
   byId: Map<string, Person>
-  perms: Perms
+  perms: ReturnType<typeof permissions>
   me: string | undefined
   run: Run
+  busy: boolean
+  /** The last write error, if it came from this section. */
+  errorFor: (section: Section) => React.ReactNode
 }
 
 function Attendance({
@@ -173,9 +220,12 @@ function Attendance({
   perms,
   me,
   run,
+  busy,
+  errorFor,
 }: SectionProps & { film: FilmRecord; people: Person[] }) {
   const present = new Set(film.attendance.map((a) => a.profile_id))
-  const toggle = (id: string, on: boolean) => run(() => filmWrites.setPresent(film.id, id, on))
+  const toggle = (id: string, on: boolean) =>
+    run('attendance', () => filmWrites.setPresent(film.id, id, on))
   return (
     <section className="film-section">
       <h2>Present</h2>
@@ -196,7 +246,7 @@ function Attendance({
       {perms.isStaff ? (
         <details className="edit-attendance">
           <summary>Edit attendance</summary>
-          <fieldset>
+          <fieldset disabled={busy}>
             <legend className="sr-only">Who was present</legend>
             {people
               .filter((p) => !p.isSystem)
@@ -219,12 +269,14 @@ function Attendance({
           <button
             type="button"
             className="button button-secondary button-small"
+            disabled={busy}
             onClick={() => toggle(me, !present.has(me))}
           >
             {present.has(me) ? "I wasn't there" : 'I was there'}
           </button>
         )
       )}
+      {errorFor('attendance')}
     </section>
   )
 }
@@ -244,8 +296,10 @@ const LockIcon = () => (
   </svg>
 )
 
-function Scores({ data, byId, perms, me, run }: SectionProps & { data: FilmDetailData }) {
+function Scores({ data, ...props }: SectionProps & { data: FilmDetailData }) {
+  const { byId, perms, me, run, busy, errorFor } = props
   const { film } = data
+  const focusLater = useFocusLater()
   const scores = [...film.scores].sort((a, b) =>
     byName(byId.get(a.profile_id), byId.get(b.profile_id)),
   )
@@ -254,9 +308,10 @@ function Scores({ data, byId, perms, me, run }: SectionProps & { data: FilmDetai
     film.is_easter_egg && scores.length > 0
       ? scores.reduce((sum, s) => sum + s.score, 0) / scores.length
       : data.avgScore
-  const remove = (profileId: string) => {
-    if (confirm(`Delete ${byId.get(profileId)?.name ?? 'this'}'s score?`)) {
-      void run(() => filmWrites.deleteScore(film.id, profileId))
+  const remove = async (profileId: string) => {
+    if (!confirm(`Delete ${byId.get(profileId)?.name ?? 'this'}'s score?`)) return
+    if (await run('scores', () => filmWrites.deleteScore(film.id, profileId))) {
+      focusLater('score-input')
     }
   }
 
@@ -292,7 +347,8 @@ function Scores({ data, byId, perms, me, run }: SectionProps & { data: FilmDetai
                       type="button"
                       className="button button-secondary button-small"
                       aria-label={`Delete ${byId.get(s.profile_id)?.name ?? ''}'s score`}
-                      onClick={() => remove(s.profile_id)}
+                      disabled={busy}
+                      onClick={() => void remove(s.profile_id)}
                     >
                       Delete
                     </button>
@@ -310,32 +366,37 @@ function Scores({ data, byId, perms, me, run }: SectionProps & { data: FilmDetai
           </tfoot>
         </table>
       )}
-      {me && perms.score(me) && (
-        <ScoreForm film={film} people={[...byId.values()]} perms={perms} me={me} run={run} />
-      )}
+      {me && perms.score(me) && <ScoreForm film={film} {...props} me={me} />}
+      {errorFor('scores')}
     </section>
   )
 }
 
 function ScoreForm({
   film,
-  people,
+  byId,
   perms,
   me,
   run,
-}: Omit<SectionProps, 'byId' | 'me'> & { film: FilmRecord; people: Person[]; me: string }) {
-  const current = (id: string) =>
-    film.scores.find((s) => s.profile_id === id)?.score.toFixed(2) ?? ''
+  busy,
+}: SectionProps & { film: FilmRecord; me: string }) {
   const [who, setWho] = useState(me)
-  const [value, setValue] = useState(() => current(me))
+  const saved = film.scores.find((s) => s.profile_id === who)?.score.toFixed(2) ?? ''
+  const [value, setValue] = useState(saved)
   const [invalid, setInvalid] = useState('')
+  // Follow the saved score when it changes (saved, deleted, changed elsewhere, other person).
+  const [shown, setShown] = useState(saved)
+  if (shown !== saved) {
+    setShown(saved)
+    setValue(saved)
+  }
 
-  const submit = async (e: FormEvent) => {
+  const submit = (e: FormEvent) => {
     e.preventDefault()
     const parsed = parseScore(value)
     if ('error' in parsed) return setInvalid(parsed.error)
     setInvalid('')
-    await run(() => filmWrites.saveScore(film.id, who, parsed.score))
+    void run('scores', () => filmWrites.saveScore(film.id, who, parsed.score))
   }
 
   return (
@@ -347,11 +408,10 @@ function ScoreForm({
             value={who}
             onChange={(e) => {
               setWho(e.target.value)
-              setValue(current(e.target.value))
               setInvalid('')
             }}
           >
-            {people
+            {[...byId.values()]
               .filter((p) => !p.isSystem)
               .sort(byName)
               .map((p) => (
@@ -364,23 +424,23 @@ function ScoreForm({
       )}
       <label className="field">
         {who === me ? 'Your score' : 'Score'}
+        {/* Text, not number: number inputs drop a decimal comma ("7,5"). */}
         <input
-          type="number"
+          id="score-input"
+          type="text"
           inputMode="decimal"
-          min={0}
-          max={10}
-          step={0.01}
+          autoComplete="off"
           value={value}
           onChange={(e) => setValue(e.target.value)}
           aria-invalid={!!invalid}
           aria-describedby={invalid ? 'score-error' : undefined}
         />
       </label>
-      <button type="submit" className="button button-small">
+      <button type="submit" className="button button-small" disabled={busy}>
         Save score
       </button>
       {invalid && (
-        <p id="score-error" className="form-error">
+        <p id="score-error" role="alert" className="form-error">
           {invalid}
         </p>
       )}
@@ -388,100 +448,131 @@ function ScoreForm({
   )
 }
 
-const when = (iso: string) =>
+const when = (iso: string, legacy: boolean) =>
   new Date(iso).toLocaleString('en-GB', {
     timeZone: 'Europe/Lisbon',
     dateStyle: 'medium',
-    timeStyle: 'short',
+    // Sheet notes have a date only; their time is made up.
+    ...(legacy ? {} : { timeStyle: 'short' }),
   })
 
-function Comments({ film, byId, perms, me, run }: SectionProps & { film: FilmRecord }) {
+function Comments({
+  film,
+  byId,
+  perms,
+  me,
+  run,
+  busy,
+  errorFor,
+}: SectionProps & { film: FilmRecord }) {
   const [draft, setDraft] = useState('')
   const [editing, setEditing] = useState<{ id: number; body: string } | null>(null)
+  const focusLater = useFocusLater()
 
   const post = async (e: FormEvent) => {
     e.preventDefault()
-    if (me && (await run(() => filmWrites.addComment(film.id, me, draft.trim())))) setDraft('')
+    if (me && (await run('comments', () => filmWrites.addComment(film.id, me, draft.trim())))) {
+      setDraft('')
+    }
+  }
+  const stopEditing = (id: number) => {
+    setEditing(null)
+    focusLater(`edit-${id}-button`)
   }
   const saveEdit = async (e: FormEvent) => {
     e.preventDefault()
-    if (editing && (await run(() => filmWrites.editComment(editing.id, editing.body.trim())))) {
-      setEditing(null)
+    if (
+      editing &&
+      (await run('comments', () => filmWrites.editComment(editing.id, editing.body.trim())))
+    ) {
+      stopEditing(editing.id)
+    }
+  }
+  const remove = async (id: number) => {
+    if (
+      confirm('Delete this comment?') &&
+      (await run('comments', () => filmWrites.deleteComment(id)))
+    ) {
+      focusLater('comments-heading')
     }
   }
 
   return (
     <section className="film-section">
-      <h2>Comments</h2>
-      {film.comments.length === 0 && <p className="muted">No comments yet.</p>}
-      <ul className="comments">
-        {film.comments.map((c) => (
-          <li key={c.id} className="comment">
-            <p className="comment-meta">
-              <Chip person={byId.get(c.author_id)} />{' '}
-              <span className="muted">
-                {when(c.created_at)}
-                {c.edited_at && ' (edited)'}
-              </span>
-            </p>
-            {editing?.id === c.id ? (
-              <form onSubmit={saveEdit} className="comment-form">
-                <label className="sr-only" htmlFor={`edit-${c.id}`}>
-                  Edit comment
-                </label>
-                <textarea
-                  id={`edit-${c.id}`}
-                  value={editing.body}
-                  maxLength={4000}
-                  onChange={(e) => setEditing({ id: c.id, body: e.target.value })}
-                />
-                <div className="comment-actions">
-                  <button
-                    type="submit"
-                    className="button button-small"
-                    disabled={!editing.body.trim()}
-                  >
-                    Save
-                  </button>
-                  <button
-                    type="button"
-                    className="button button-secondary button-small"
-                    onClick={() => setEditing(null)}
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </form>
-            ) : (
-              <>
-                <p className="comment-body">{c.body}</p>
-                {perms.comment(c.author_id) && (
+      <h2 id="comments-heading" tabIndex={-1}>
+        Comments
+      </h2>
+      {film.comments.length === 0 ? (
+        <p className="muted">No comments yet.</p>
+      ) : (
+        <ul className="comments">
+          {film.comments.map((c) => (
+            <li key={c.id} className="comment">
+              <p className="comment-meta">
+                <Chip person={byId.get(c.author_id)} />{' '}
+                <span className="muted">
+                  {when(c.created_at, c.is_legacy)}
+                  {c.edited_at && ' (edited)'}
+                </span>
+              </p>
+              {editing?.id === c.id ? (
+                <form onSubmit={saveEdit} className="comment-form">
+                  <label className="sr-only" htmlFor={`edit-${c.id}`}>
+                    Edit comment
+                  </label>
+                  <textarea
+                    id={`edit-${c.id}`}
+                    value={editing.body}
+                    maxLength={4000}
+                    autoFocus
+                    onChange={(e) => setEditing({ id: c.id, body: e.target.value })}
+                  />
                   <div className="comment-actions">
                     <button
-                      type="button"
-                      className="button button-secondary button-small"
-                      onClick={() => setEditing({ id: c.id, body: c.body })}
+                      type="submit"
+                      className="button button-small"
+                      disabled={busy || !editing.body.trim()}
                     >
-                      Edit
+                      Save
                     </button>
                     <button
                       type="button"
                       className="button button-secondary button-small"
-                      onClick={() => {
-                        if (confirm('Delete this comment?')) {
-                          void run(() => filmWrites.deleteComment(c.id))
-                        }
-                      }}
+                      onClick={() => stopEditing(c.id)}
                     >
-                      Delete
+                      Cancel
                     </button>
                   </div>
-                )}
-              </>
-            )}
-          </li>
-        ))}
-      </ul>
+                </form>
+              ) : (
+                <>
+                  <p className="comment-body">{c.body}</p>
+                  {perms.comment(c.author_id) && (
+                    <div className="comment-actions">
+                      <button
+                        id={`edit-${c.id}-button`}
+                        type="button"
+                        className="button button-secondary button-small"
+                        onClick={() => setEditing({ id: c.id, body: c.body })}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        className="button button-secondary button-small"
+                        disabled={busy}
+                        onClick={() => void remove(c.id)}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
       {perms.canWrite && (
         <form onSubmit={post} className="comment-form">
           <label htmlFor="new-comment">Add a comment</label>
@@ -491,11 +582,12 @@ function Comments({ film, byId, perms, me, run }: SectionProps & { film: FilmRec
             maxLength={4000}
             onChange={(e) => setDraft(e.target.value)}
           />
-          <button type="submit" className="button button-small" disabled={!draft.trim()}>
+          <button type="submit" className="button button-small" disabled={busy || !draft.trim()}>
             Post
           </button>
         </form>
       )}
+      {errorFor('comments')}
     </section>
   )
 }

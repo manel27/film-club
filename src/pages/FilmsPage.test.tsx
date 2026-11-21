@@ -178,8 +178,7 @@ describe('films page', () => {
 
   it('closes the present filter on a click outside or Escape', async () => {
     renderPage()
-    await screen.findByText('3 films')
-    const summary = screen.getByText('Present', { selector: 'summary' })
+    const summary = await screen.findByText('Present', { selector: 'summary' })
     const details = summary.closest('details')!
     fireEvent.click(summary)
     expect(details.open).toBe(true)

@@ -28,3 +28,20 @@ export function permissions(me: MyProfile | null, scoresLocked: boolean) {
     comment: (authorId: string) => role === 'admin' || (canWrite && authorId === me?.id),
   }
 }
+
+/** Thrown by a write when an update or delete matched no row (changed elsewhere, or not allowed). */
+export const NO_ROWS = { code: 'no-rows' }
+
+/** Friendly text for a failed write; raw database messages are never shown. */
+export function errorMessage(error: unknown): string {
+  if (error === NO_ROWS) return 'This was changed or removed elsewhere.'
+  const { code, message } = (error ?? {}) as { code?: string; message?: string }
+  if (code === '42501') {
+    return message?.includes('locked') ? 'These scores are locked.' : "You can't change that."
+  }
+  if (code === '23505') return 'That was already saved — refreshed.'
+  if (code === '23514' || code === '22P02') return "That value isn't allowed."
+  // supabase-js reports a failed fetch as an error without a Postgres code.
+  if (!code) return "Couldn't reach the server. Try again."
+  return 'Something went wrong. Try again.'
+}
