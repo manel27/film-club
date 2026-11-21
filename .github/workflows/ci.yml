@@ -76,10 +76,17 @@ jobs:
       # its own dev keys from `supabase status`), never the hosted project.
       # Playwright builds a separate copy of the app into dist-e2e/ pointed
       # at it. Output is discarded: it only lists local URLs and demo keys.
+      # The Edge Functions call a fake TMDB that the e2e setup starts
+      # (e2e/tmdbStub.ts); the token is a placeholder, real TMDB is never used.
+      - name: Point the local Edge Functions at the fake TMDB
+        run: |
+          printf 'TMDB_TOKEN=%s\nTMDB_BASE_URL=%s\n' \
+            placeholder-not-a-real-token http://host.docker.internal:54399 \
+            > supabase/functions/.env
       - name: Start local Supabase (for e2e)
         run: >-
           npx supabase start
-          -x realtime,storage-api,imgproxy,mailpit,studio,edge-runtime,logflare,vector,supavisor
+          -x realtime,storage-api,imgproxy,mailpit,studio,logflare,vector,supavisor
           > /dev/null
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
@@ -129,6 +136,15 @@ jobs:
         run: npx supabase db lint -s public,app --level warning --fail-on warning
       - name: pgTAP tests (RLS, permissions, duplicates, score lock)
         run: npx supabase test db
+      # Edge Functions: run in-process against this stack, TMDB replaced by a
+      # stub server inside the test (supabase/functions/tests).
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.5.6
+      - name: Edge Functions format and type check (Deno)
+        run: npm run functions:check
+      - name: Edge Functions tests (Deno, fake TMDB)
+        run: npm run functions:test
       - name: Generated types are up to date
         run: |
           npm run db:types

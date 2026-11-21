@@ -41,6 +41,7 @@ export default function FilmsPage() {
   const { profile } = useAuth()
   const profileId = profile?.id
   const canScore = !!profile && profile.role !== 'viewer'
+  const isStaff = profile?.role === 'admin' || profile?.role === 'moderator'
   const [data, setData] = useState<FilmsData | null>(null)
   const [failed, setFailed] = useState(false)
   const [attempt, setAttempt] = useState(0)
@@ -137,6 +138,11 @@ export default function FilmsPage() {
     <main className="page films-page">
       <div className="films-head">
         <h1>Films</h1>
+        {isStaff && (
+          <Link to="/films/new" className="button button-small">
+            Add film
+          </Link>
+        )}
         <div className="view-toggle" role="group" aria-label="View">
           {VIEWS.map(([v, name, icon]) => (
             <button

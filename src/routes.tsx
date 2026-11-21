@@ -1,6 +1,7 @@
 import type { RouteObject } from 'react-router'
 import RequireAuth from './auth/RequireAuth'
 import AppShell from './components/AppShell'
+import FilmFormPage from './pages/FilmFormPage'
 import FilmPage from './pages/FilmPage'
 import FilmsPage from './pages/FilmsPage'
 import LoginPage from './pages/LoginPage'
@@ -17,7 +18,9 @@ export const routes: RouteObject[] = [
     ),
     children: [
       { path: '/', element: <FilmsPage /> },
+      { path: '/films/new', element: <FilmFormPage /> },
       { path: '/films/:id', element: <FilmPage /> },
+      { path: '/films/:id/edit', element: <FilmFormPage /> },
       { path: '*', element: <NotFoundPage /> },
     ],
   },

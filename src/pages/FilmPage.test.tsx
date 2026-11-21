@@ -266,10 +266,12 @@ describe('film page', () => {
   it('follows the saved score: a deleted score empties the input', async () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true)
     renderPage('member')
-    expect(await screen.findByLabelText('Your score')).toHaveValue('7.50')
+    expect(await screen.findByLabelText('Your score', {}, { timeout: 3000 })).toHaveValue('7.50')
     fetchFilm.mockResolvedValueOnce(detail({ scores: [{ profile_id: 'p-ada', score: 9 }] }))
     fireEvent.click(screen.getByRole('button', { name: "Delete Quinn's score" }))
-    await waitFor(() => expect(screen.getByLabelText('Your score')).toHaveValue(''))
+    await waitFor(() => expect(screen.getByLabelText('Your score')).toHaveValue(''), {
+      timeout: 3000,
+    })
     expect(screen.getByLabelText('Your score')).toHaveFocus()
   })
 

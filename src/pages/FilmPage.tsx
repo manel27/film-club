@@ -154,6 +154,11 @@ function Film({ id }: { id: string }) {
         )}
         <div>
           <h1>{film.title}</h1>
+          {permissions(profile, false).isStaff && (
+            <Link to={`/films/${film.id}/edit`} className="button button-secondary button-small">
+              Edit
+            </Link>
+          )}
           {film.original_title && film.original_title !== film.title && (
             <p className="muted">{film.original_title}</p>
           )}
