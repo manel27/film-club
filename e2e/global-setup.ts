@@ -8,13 +8,17 @@ import {
   ensureLinkedLogin,
   ensureLogin,
 } from './fixtures'
+import { assertFunctionsUseStub, startTmdbStub } from './tmdbStub'
 
 /**
  * Seeds the e2e logins on the local stack: an admin (through the bootstrap
  * script, so every run also exercises it), a member, and a bare login with no
- * profile for the "not linked" page. Safe to re-run.
+ * profile for the "not linked" page. Safe to re-run. Also starts the fake
+ * TMDB that the local Edge Functions call; the returned function stops it.
  */
 export default async function globalSetup() {
+  assertFunctionsUseStub()
+  const stub = await startTmdbStub()
   const client = adminClient()
 
   await bootstrapAdmin({
@@ -28,4 +32,10 @@ export default async function globalSetup() {
   })
   await ensureLinkedLogin(client, { ...E2E_MEMBER, role: 'member' })
   await ensureLogin(client, E2E_UNLINKED.email)
+
+  return () =>
+    new Promise<void>((resolve) => {
+      stub.closeAllConnections()
+      stub.close(() => resolve())
+    })
 }

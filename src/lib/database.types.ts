@@ -780,6 +780,7 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      tmdb_search_hit: { Args: Record<PropertyKey, never>; Returns: boolean }
     }
     Enums: {
       film_kind: 'normal' | 'democratico' | 'cinema' | 'maratona'

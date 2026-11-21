@@ -724,3 +724,93 @@ a {
     display: none;
   }
 }
+
+/* ---------------------------------------------------------------- add / edit film */
+
+a.button {
+  display: inline-block;
+  text-decoration: none;
+}
+
+.film-form-page {
+  text-align: left;
+  padding-top: 1.5rem;
+}
+
+.film-form fieldset {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.film-form fieldset .field {
+  align-self: stretch;
+}
+
+.film-form select {
+  font: inherit;
+  padding: 0.5rem 0.625rem;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.tmdb-results {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tmdb-result {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  width: 100%;
+  padding: 0.375rem;
+  font: inherit;
+  text-align: left;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.tmdb-result:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+/* Already watched: greyed out and not selectable. */
+.tmdb-result:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.tmdb-result img,
+.tmdb-no-poster {
+  flex: none;
+  width: 46px;
+  height: 69px;
+  object-fit: cover;
+  border-radius: 2px;
+  background: var(--border);
+}
+
+.tmdb-directors,
+.tmdb-watched {
+  display: block;
+  font-size: 0.875rem;
+}
+
+.tmdb-watched {
+  font-weight: 600;
+}

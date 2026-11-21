@@ -405,6 +405,18 @@ deno_version = 2
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 
+# The film functions verify the caller's JWT themselves (Supabase Auth) and
+# re-check the role in the database; the gateway's legacy JWT check is off
+# because it does not understand the new asymmetric signing keys.
+[functions.tmdb-search]
+verify_jwt = false
+
+[functions.film-save]
+verify_jwt = false
+
+[functions.film-relink-tmdb]
+verify_jwt = false
+
 [analytics]
 enabled = true
 port = 54327

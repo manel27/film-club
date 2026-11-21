@@ -77,6 +77,39 @@ npm run db:reset   # drop the local database, re-apply all migrations, re-seed
 4. Add pgTAP tests for any new table or policy: one assertion per role
    (admin, moderator, member, viewer, not logged in), allowed and denied.
 
+## Edge Functions
+
+`functions/` holds the film functions (plan 2.2). Each one verifies the
+caller's JWT, re-reads their role from the database (`my_profile()`) and writes
+with the caller's JWT, so RLS and the triggers apply. None uses the secret key.
+
+| Function           | Who                           | What                                                                 |
+| ------------------ | ----------------------------- | -------------------------------------------------------------------- |
+| `tmdb-search`      | logged-in, not viewers        | TMDB search (60 a minute per person, `tmdb_search_hit()`); marks films already watched |
+| `film-save`        | moderators, admins            | adds or edits a film, from TMDB or without it (title + year)          |
+| `film-relink-tmdb` | moderators, admins            | links a film to a TMDB id (or refreshes it) and replaces its details  |
+
+**Local secrets.** `supabase start` reads `functions/.env` (git-ignored). Copy
+`functions/.env.example` and fill in:
+
+```bash
+TMDB_TOKEN=<your TMDB API Read Access Token>   # never commit it, never paste it anywhere
+TMDB_BASE_URL=                                   # empty = api.themoviedb.org
+```
+
+For the e2e tests use a placeholder token and
+`TMDB_BASE_URL=http://host.docker.internal:54399` (the fake TMDB the e2e setup
+starts; the setup refuses to run otherwise), then restart the stack.
+
+**Tests.** `npm run functions:test` runs the handlers in-process against the
+local stack with TMDB replaced by a stub (Deno 2 needed; `npm run
+functions:check` checks format and types).
+
+**Production** (not done by any agent): `supabase secrets set TMDB_TOKEN=…`,
+then `supabase functions deploy tmdb-search film-save film-relink-tmdb`.
+`config.toml` turns the gateway's legacy JWT check off for them
+(`verify_jwt = false`) because they verify the JWT themselves.
+
 ## Rules baked into the schema
 
 - **RLS on every table, deny by default.** Not-logged-in visitors (`anon`) have
