@@ -90,7 +90,7 @@ function Film({ id }: { id: string }) {
     setError(null)
     try {
       await filmWrites.deleteFilm(film.id)
-      navigate('/', { state: { notice: `Deleted "${film.title}".` } })
+      navigate('/', { replace: true, state: { notice: `Deleted "${film.title}".` } })
     } catch (e) {
       setError({ section: 'delete', message: errorMessage(e) })
     } finally {
@@ -103,6 +103,12 @@ function Film({ id }: { id: string }) {
     return (
       <main className="page">
         <h1>Film not found</h1>
+        {/* E.g. "This film was deleted." from a write that found it gone. */}
+        {error && (
+          <p role="alert" className="form-error">
+            {error.message}
+          </p>
+        )}
         <p>
           <BackLink />
         </p>
@@ -143,19 +149,13 @@ function Film({ id }: { id: string }) {
   const assigned = byId.get(film.assigned_id)
   const turnHolder = film.turn_holder_id ? byId.get(film.turn_holder_id) : undefined
   const perms = permissions(profile, film.scores_locked)
-  const props: SectionProps = {
-    byId,
-    perms,
-    me: profile?.id,
-    run,
-    busy,
-    errorFor: (section) =>
-      error?.section === section && (
-        <p role="alert" className="form-error">
-          {error.message}
-        </p>
-      ),
-  }
+  const errorFor = (section: Section) =>
+    error?.section === section && (
+      <p role="alert" className="form-error">
+        {error.message}
+      </p>
+    )
+  const props: SectionProps = { byId, perms, me: profile?.id, run, busy, errorFor }
 
   return (
     <main className="page film-page">
@@ -184,15 +184,13 @@ function Film({ id }: { id: string }) {
               busy={busy}
               error={error?.section === 'delete' ? error.message : ''}
               onDelete={() => void deleteFilm(film)}
-              onClose={() => {
-                // After a failed delete, show what is there now (maybe "Film not found").
-                if (error?.section === 'delete') {
-                  setError(null)
-                  void load()
-                }
-              }}
+              // Fresh counts on open; after a failed delete, what is there now
+              // (maybe "Film not found", which keeps the message).
+              reload={() => void load()}
             />
           )}
+          {/* Also outside the dialog, so closing it never hides a failure. */}
+          {errorFor('delete')}
           {film.original_title && film.original_title !== film.title && (
             <p className="muted">{film.original_title}</p>
           )}
@@ -225,21 +223,26 @@ function DeleteFilm({
   busy,
   error,
   onDelete,
-  onClose,
+  reload,
 }: {
   film: FilmRecord
   busy: boolean
   error: string
   onDelete: () => void
-  onClose: () => void
+  reload: () => void
 }) {
   const dialog = useRef<HTMLDialogElement>(null)
+  const cancel = useRef<HTMLButtonElement>(null)
   return (
     <>
       <button
         type="button"
         className="button button-danger button-small"
-        onClick={() => dialog.current?.showModal()}
+        onClick={() => {
+          dialog.current?.showModal()
+          cancel.current?.focus()
+          reload()
+        }}
       >
         Delete film
       </button>
@@ -247,15 +250,20 @@ function DeleteFilm({
         ref={dialog}
         className="confirm-dialog"
         aria-labelledby="delete-film-heading"
-        onClose={onClose}
+        aria-describedby="delete-film-loss"
+        // Escape can't close it while the delete runs: its outcome must be seen.
+        onCancel={(e) => busy && e.preventDefault()}
+        onClose={() => error && reload()}
       >
         <h2 id="delete-film-heading">Delete "{film.title}"?</h2>
-        <p>This also deletes, for good:</p>
-        <ul>
-          <li>{count(film.scores.length, 'score', 'scores')}</li>
-          <li>{count(film.attendance.length, 'attendance mark', 'attendance marks')}</li>
-          <li>{count(film.comments.length, 'comment', 'comments')}</li>
-        </ul>
+        <div id="delete-film-loss">
+          <p>This also deletes, for good:</p>
+          <ul>
+            <li>{count(film.scores.length, 'score', 'scores')}</li>
+            <li>{count(film.attendance.length, 'attendance mark', 'attendance marks')}</li>
+            <li>{count(film.comments.length, 'comment', 'comments')}</li>
+          </ul>
+        </div>
         {error && (
           <p role="alert" className="form-error">
             {error}
@@ -264,14 +272,16 @@ function DeleteFilm({
         <div className="actions">
           {/* First, so showModal() focuses it rather than the destructive button. */}
           <button
+            ref={cancel}
             type="button"
             className="button button-secondary"
+            disabled={busy}
             onClick={() => dialog.current?.close()}
           >
             Cancel
           </button>
           <button type="button" className="button button-danger" disabled={busy} onClick={onDelete}>
-            Yes, delete film
+            {busy ? 'Deleting…' : 'Yes, delete film'}
           </button>
         </div>
       </dialog>

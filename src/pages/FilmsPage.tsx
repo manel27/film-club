@@ -48,6 +48,14 @@ export default function FilmsPage() {
   // E.g. "Deleted …" after deleting a film. Kept in state: restoring the saved view replaces the URL and its state.
   const { state: navState } = useLocation()
   const [notice] = useState((navState as { notice?: string } | null)?.notice)
+  const noticeRef = useRef<HTMLParagraphElement>(null)
+  useEffect(() => {
+    if (!notice) return
+    noticeRef.current?.focus()
+    // Shown once: drop it from the history entry (React Router keeps it in
+    // `usr`), so a reload or Back doesn't show it again.
+    window.history.replaceState({ ...window.history.state, usr: null }, '')
+  }, [notice])
 
   useEffect(() => {
     if (!profileId) return
@@ -174,7 +182,7 @@ export default function FilmsPage() {
         </div>
       </div>
       {notice && (
-        <p role="status" className="form-notice">
+        <p ref={noticeRef} role="status" className="form-notice" tabIndex={-1}>
           {notice}
         </p>
       )}

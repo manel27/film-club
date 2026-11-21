@@ -143,6 +143,7 @@ describe('films page', () => {
     const router = renderPage({ pathname: '/', state: { notice: 'Deleted "Old Film".' } })
     await waitFor(() => expect(router.state.location.search).toBe('?view=posters'))
     expect(screen.getByText('Deleted "Old Film".')).toHaveAttribute('role', 'status')
+    expect(screen.getByText('Deleted "Old Film".')).toHaveFocus()
   })
 
   it('does not bring the saved choice back when the visitor empties the URL', async () => {

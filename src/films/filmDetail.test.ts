@@ -79,6 +79,7 @@ describe('errorMessage', () => {
     ],
     [{ code: '42501', message: 'Scores for this film are locked' }, 'These scores are locked.'],
     [{ code: '23505', message: 'duplicate key value' }, 'That was already saved — refreshed.'],
+    [{ code: '23503', message: 'violates foreign key constraint' }, 'This film was deleted.'],
     [{ code: '23514', message: 'Score must be between 0 and 10' }, "That value isn't allowed."],
     [{ code: '22P02', message: 'invalid input syntax' }, "That value isn't allowed."],
     [{ code: '', message: 'TypeError: Failed to fetch' }, "Couldn't reach the server. Try again."],

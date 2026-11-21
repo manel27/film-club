@@ -345,11 +345,18 @@ describe('film page', () => {
 
   it('asks before deleting, says what goes with it, then goes to the films with a notice', async () => {
     const router = renderPage('admin')
-    fireEvent.click(await screen.findByRole('button', { name: 'Delete film' }))
+    const open = await screen.findByRole('button', { name: 'Delete film' })
+    // Opening reloads the film, so the counts are current (a comment was added elsewhere).
+    const fresh = detail()
+    fresh.film.comments.push({ ...fresh.film.comments[0], id: 3 })
+    fetchFilm.mockResolvedValueOnce(fresh)
+    fireEvent.click(open)
     const dialog = screen.getByRole('dialog', { name: 'Delete "Glass River"?' })
-    expect(dialog).toHaveTextContent('2 scores')
-    expect(dialog).toHaveTextContent('2 attendance marks')
-    expect(dialog).toHaveTextContent('2 comments')
+    expect(within(dialog).getByRole('button', { name: 'Cancel' })).toHaveFocus()
+    expect(await within(dialog).findByText('3 comments')).toBeInTheDocument()
+    expect(dialog).toHaveAccessibleDescription(
+      'This also deletes, for good: 2 scores 2 attendance marks 3 comments',
+    )
     // Cancel deletes nothing.
     fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
     expect(dialog).not.toHaveAttribute('open')
@@ -360,6 +367,41 @@ describe('film page', () => {
     expect(writes.deleteFilm).toHaveBeenCalledWith(5)
     await waitFor(() => expect(router.state.location.pathname).toBe('/'))
     expect(router.state.location.state).toEqual({ notice: 'Deleted "Glass River".' })
+    // Replaced: Back doesn't return to the deleted film.
+    expect(router.state.historyAction).toBe('REPLACE')
+  })
+
+  it('sends one delete for a double click on confirm', async () => {
+    renderPage('admin')
+    fireEvent.click(await screen.findByRole('button', { name: 'Delete film' }))
+    const confirm = within(screen.getByRole('dialog')).getByRole('button', {
+      name: 'Yes, delete film',
+    })
+    fireEvent.click(confirm)
+    fireEvent.click(confirm)
+    expect(writes.deleteFilm).toHaveBeenCalledOnce()
+  })
+
+  it('keeps a failure visible even if the dialog closes while deleting', async () => {
+    let reject: (e: unknown) => void = () => {}
+    writes.deleteFilm.mockImplementationOnce(() => new Promise((_, r) => (reject = r)))
+    renderPage('admin')
+    fireEvent.click(await screen.findByRole('button', { name: 'Delete film' }))
+    const dialog = screen.getByRole('dialog') as HTMLDialogElement
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Yes, delete film' }))
+    expect(within(dialog).getByRole('button', { name: 'Deleting…' })).toBeDisabled()
+    expect(within(dialog).getByRole('button', { name: 'Cancel' })).toBeDisabled()
+    // Escape is refused while the delete runs...
+    const escape = new Event('cancel', { cancelable: true })
+    dialog.dispatchEvent(escape)
+    expect(escape.defaultPrevented).toBe(true)
+    // ...but a browser may close it anyway (e.g. a second Escape).
+    act(() => dialog.close())
+    await act(async () => reject({ code: '42501', message: 'row-level security' }))
+    const alerts = await screen.findAllByRole('alert')
+    expect(
+      alerts.some((a) => !dialog.contains(a) && /can't change that/.test(a.textContent!)),
+    ).toBe(true)
   })
 
   it('says so in the dialog when the film was already removed, then shows "not found"', async () => {
@@ -375,6 +417,17 @@ describe('film page', () => {
     fetchFilm.mockResolvedValueOnce(null)
     fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
     expect(await screen.findByRole('heading', { name: 'Film not found' })).toBeInTheDocument()
+    expect(screen.getByRole('alert')).toHaveTextContent('This was changed or removed elsewhere.')
+  })
+
+  it('says the film was deleted when a write finds it gone, on the "not found" page', async () => {
+    writes.addComment.mockRejectedValueOnce({ code: '23503', message: 'foreign key' })
+    renderPage('member')
+    fireEvent.change(await screen.findByLabelText('Add a comment'), { target: { value: 'Hi' } })
+    fetchFilm.mockResolvedValueOnce(null)
+    fireEvent.click(screen.getByRole('button', { name: 'Post' }))
+    expect(await screen.findByRole('heading', { name: 'Film not found' })).toBeInTheDocument()
+    expect(screen.getByRole('alert')).toHaveTextContent('This film was deleted.')
   })
 
   it('shows a refused delete in the dialog', async () => {

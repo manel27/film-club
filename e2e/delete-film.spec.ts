@@ -70,7 +70,14 @@ test('the admin deletes a film after confirming, with its scores, attendance and
   await dialog.getByRole('button', { name: 'Yes, delete film' }).click()
   await expect(page.getByRole('heading', { name: 'Films', exact: true })).toBeVisible()
   await expect(page.getByRole('status').filter({ hasText: `Deleted "${TITLE}".` })).toBeVisible()
+  await expect(page.getByRole('status').filter({ hasText: `Deleted "${TITLE}".` })).toBeFocused()
+  // Wait for the list itself before checking the film is gone from it.
+  await expect(page.getByText('The Quiet Orchard').first()).toBeVisible()
   await expect(page.getByText(TITLE)).toHaveCount(1) // only the notice
+  // Shown once: not again after a reload.
+  await page.reload()
+  await expect(page.getByText('The Quiet Orchard').first()).toBeVisible()
+  await expect(page.getByText(`Deleted "${TITLE}".`)).toHaveCount(0)
 
   const db = adminClient()
   for (const table of ['films', 'scores', 'attendance', 'comments']) {

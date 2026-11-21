@@ -41,6 +41,8 @@ export function errorMessage(error: unknown): string {
   if (code === '42501') {
     return message?.includes('locked') ? 'These scores are locked.' : "You can't change that."
   }
+  // The film's row is gone (deleted in another tab or by someone else).
+  if (code === '23503') return 'This film was deleted.'
   if (code === '23505') return 'That was already saved — refreshed.'
   if (code === '23514' || code === '22P02') return "That value isn't allowed."
   // supabase-js reports a failed fetch as an error without a Postgres code.

@@ -84,7 +84,7 @@ select tests.login_as('admin');
 select throws_ok($$update public.films set scores_locked = false where id = 7$$,
   '42501', 'scores_locked cannot be unset', 'admin cannot unlock the film');
 select throws_ok($$delete from public.films where id = 7$$,
-  '42501', null, 'admin cannot delete the locked film');
+  '42501', 'This film''s scores are locked; the film cannot be deleted', 'admin cannot delete the locked film');
 reset role;
 select tests.login_as('moderator');
 -- Moderators can't delete any film (RLS hides it from the delete).
@@ -95,14 +95,14 @@ select tests.login_service_role();
 select throws_ok($$update public.films set scores_locked = false where id = 7$$,
   '42501', 'scores_locked cannot be unset', 'secret key cannot unlock the film');
 select throws_ok($$delete from public.films where id = 7$$,
-  '42501', null, 'secret key cannot delete the locked film');
+  '42501', 'This film''s scores are locked; the film cannot be deleted', 'secret key cannot delete the locked film');
 reset role;
 select throws_ok($$update public.films set scores_locked = false where id = 7$$,
   '42501', 'scores_locked cannot be unset', 'postgres cannot unlock the film');
 select throws_ok($$update public.films set is_easter_egg = false where id = 7$$,
   '23514', null, 'the locked film cannot stop being the easter egg');
 select throws_ok($$delete from public.films where id = 7$$,
-  '42501', null, 'postgres cannot delete the locked film');
+  '42501', 'This film''s scores are locked; the film cannot be deleted', 'postgres cannot delete the locked film');
 
 -- TRUNCATE skips row triggers: the statement-level guard stops it, even for postgres
 select throws_ok($$truncate public.scores$$, '42501', null, 'postgres cannot truncate scores while a film is locked');

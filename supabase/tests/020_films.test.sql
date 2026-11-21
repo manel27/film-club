@@ -2,7 +2,7 @@
 -- and "Delete films": A ✔ Mo ✘ Me ✘ V ✘ — ✘
 -- plus film constraints and import-only columns.
 begin;
-select plan(40);
+select plan(45);
 
 -- ---------------------------------------------------------------- add
 select tests.login_as('admin');
@@ -99,6 +99,19 @@ select is((select count(*)::int from public.scores where film_id = 2)
         + (select count(*)::int from public.comments where film_id = 2), 0,
   'its attendance, scores and comments are deleted with it');
 
+-- One film per statement from the browser (no bulk wipe)
+select tests.login_as('admin');
+select throws_ok($$delete from public.films where id in (3, 4)$$,
+  '42501', 'Films can only be deleted one at a time', 'admin cannot delete two films in one statement');
+select throws_ok($$delete from public.films where id <> 7$$,
+  '42501', 'Films can only be deleted one at a time', 'admin cannot delete every film in one statement');
+reset role;
+select is((select count(*)::int from public.films where id in (3, 4)), 2, 'the refused bulk delete removed nothing');
+select tests.login_as('moderator');
+select is(tests.affected($$delete from public.films where id in (3, 4)$$), 0,
+  'a moderator''s bulk delete matches no rows');
+reset role;
+
 -- ---------------------------------------------------------------- constraints
 select tests.login_as('admin');
 select throws_ok($$insert into public.films (title, screened_on, assigned_id)
@@ -152,6 +165,12 @@ select throws_ok($$insert into public.films (tmdb_id, title, release_year, scree
 -- A profile with films can't be deleted (history is kept)
 select throws_ok($$delete from public.profiles where id = '00000000-0000-4000-8000-0000000000a4'$$,
   '23503', null, 'a profile that chose films cannot be deleted');
+
+-- The import (secret key) is not limited to one film per statement
+select tests.login_service_role();
+select is(tests.affected($$delete from public.films where id in (3, 4)$$), 2,
+  'the secret key can delete several films in one statement');
+reset role;
 
 select * from finish();
 rollback;
