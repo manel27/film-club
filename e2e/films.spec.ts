@@ -134,13 +134,19 @@ test('films can be sorted by title, release year and average, without week headi
     'Megashark Rising 2',
   ])
 
-  await page.getByRole('button', { name: 'Posters by week' }).click()
-  await expect(page).toHaveURL(/#\/\?view=posters&sort=score-desc$/)
-  await expect(page.getByRole('heading', { level: 2 })).toHaveCount(0)
-  await expect(page.locator('.poster').first()).toHaveAttribute(
-    'title',
-    'Paper Moons Over the River (2018)',
+  // Flat lists show each film's screening date.
+  await expect(page.locator('.film-date').first()).toHaveText('2026/01/24')
+
+  await expect(page.getByRole('button', { name: 'Posters by week' })).toHaveAttribute(
+    'aria-disabled',
+    'true',
   )
+  await page.getByRole('button', { name: 'Poster grid' }).click()
+  await expect(page).toHaveURL(/#\/\?view=grid&sort=score-desc$/)
+  await expect(page.getByRole('heading', { level: 2 })).toHaveCount(0)
+  const first = page.locator('.poster').first()
+  await expect(first).toHaveAttribute('title', 'Paper Moons Over the River (2018)')
+  await expect(first.locator('.poster-note')).toHaveText('Average 8.75')
 })
 
 test('the present filter closes on a click outside or Escape', async ({ page }) => {

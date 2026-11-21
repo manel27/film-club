@@ -107,6 +107,21 @@ describe('sortFilms', () => {
     expect(ids(films, 'title-desc')).toEqual([1, 3, 2, 4, 5])
   })
 
+  it('sorts numbers by value and ignores leading punctuation', () => {
+    const films = [
+      film(1, '2026-01-01', { title: 'Rocky 10' }),
+      film(2, '2026-01-01', { title: '2001' }),
+      film(3, '2026-01-01', { title: 'Rocky 2' }),
+      film(4, '2026-01-01', { title: '10' }),
+      film(5, '2026-01-01', { title: '9' }),
+      film(6, '2026-01-01', { title: '"Quoted"' }),
+      film(7, '2026-01-01', { title: '¡Bang!' }),
+      film(8, '2026-01-01', { title: "'The Mole'" }),
+      film(9, '2026-01-01', { title: '(Cut)' }),
+    ]
+    expect(ids(films, 'title')).toEqual([5, 4, 2, 7, 9, 8, 6, 3, 1])
+  })
+
   it('puts films with no year or average last in both directions', () => {
     const films = [
       film(1, '2026-01-01', { releaseYear: null, avgScore: 8 }),

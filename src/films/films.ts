@@ -90,9 +90,9 @@ export interface WeekGroup {
   films: FilmItem[]
 }
 
-const collator = new Intl.Collator(undefined, { sensitivity: 'base' })
-// Ignores a leading English article, so "The Thing" sorts under T.
-const sortTitle = (title: string) => title.replace(/^(the|an?)\s+/i, '')
+const collator = new Intl.Collator(undefined, { sensitivity: 'base', numeric: true })
+// Ignores leading punctuation and an English article, so '"The Thing"' sorts under T.
+const sortTitle = (title: string) => title.replace(/^[\p{P}\s]+/u, '').replace(/^(the|an?)\s+/i, '')
 
 /** Compares possibly missing numbers in `dir` (1 = ascending); missing values always go last. */
 function byValue(a: number | null, b: number | null, dir: number): number {
@@ -155,7 +155,10 @@ export function filterFilms(films: FilmItem[], f: Filters, scored: Set<number>):
 export const KINDS = Object.keys(KIND_LABELS) as FilmKind[]
 
 export interface PageState {
-  /** posters = grouped by week; grid = one continuous poster grid with no dates. */
+  /**
+   * posters = grouped by week (only with a screening-date sort, otherwise shown
+   * as the grid); grid = one continuous poster grid with no dates.
+   */
   view: 'list' | 'posters' | 'grid'
   sort: Sort
   filters: Filters

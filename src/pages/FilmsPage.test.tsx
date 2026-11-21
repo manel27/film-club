@@ -176,22 +176,59 @@ describe('films page', () => {
     expect(localStorage.getItem('film-club-films')).toBe('view=grid')
   })
 
-  it('sorts by average as a flat list, and posters without week headings', async () => {
+  it('sorts by average as a flat list with screening dates', async () => {
     const router = renderPage()
     fireEvent.change(await screen.findByLabelText('Sort'), { target: { value: 'score-desc' } })
     expect(router.state.location.search).toBe('?sort=score-desc')
     expect(localStorage.getItem('film-club-films')).toBe('sort=score-desc')
     expect(screen.queryAllByRole('heading', { level: 2 })).toHaveLength(0)
+    expect(
+      screen.getAllByRole('listitem').map((r) => r.querySelector('.film-date')?.textContent),
+    ).toEqual(['2026/11/14', '2026/11/07', '2025/06/14'])
     expect(screen.getAllByRole('link').map((l) => l.textContent)).toEqual([
       'Glass River',
       'Night Bus',
       'Shark Joke',
     ])
+  })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Posters by week' }))
-    expect(router.state.location.search).toBe('?view=posters&sort=score-desc')
+  it('shows posters by week as the grid, with the averages, when not sorted by date', async () => {
+    const router = renderPage('/?view=posters&sort=score-desc')
+    await screen.findByText('3 films')
+    const byWeek = screen.getByRole('button', { name: 'Posters by week' })
+    expect(byWeek).toHaveAttribute('aria-disabled', 'true')
+    expect(byWeek).toHaveAttribute('aria-pressed', 'false')
+    expect(byWeek).toHaveAttribute('title', 'Posters by week: only when sorted by screening date')
+    expect(screen.getByRole('button', { name: 'Poster grid' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
     expect(screen.queryAllByRole('heading', { level: 2 })).toHaveLength(0)
-    expect(screen.getAllByRole('img', { name: /\(2001\)$/ })).toHaveLength(3)
+    expect(
+      screen
+        .getAllByRole('listitem')
+        .map((t) => [t.title, t.querySelector('.poster-note')?.textContent]),
+    ).toEqual([
+      ['Glass River (2001)', 'Average 7.50'],
+      ['Night Bus (2001)', 'Average –'],
+      ['Shark Joke (2001)', 'Average –'],
+    ])
+
+    fireEvent.click(byWeek)
+    expect(router.state.location.search).toBe('?view=posters&sort=score-desc')
+
+    // Back to a date sort, the weeks return.
+    fireEvent.change(screen.getByLabelText('Sort'), { target: { value: 'newest' } })
+    expect(byWeek).not.toHaveAttribute('aria-disabled')
+    expect(byWeek).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getAllByRole('heading', { level: 2 })).toHaveLength(3)
+    expect(document.querySelector('.poster-note')).toBeNull()
+  })
+
+  it('renders no empty list when nothing matches a flat sort', async () => {
+    renderPage('/?sort=title&kind=maratona')
+    expect(await screen.findByText('No films match these filters.')).toBeInTheDocument()
+    expect(document.querySelector('.film-list, .poster-grid')).toBeNull()
   })
 
   it('falls back to the default sort for an unknown value', async () => {
