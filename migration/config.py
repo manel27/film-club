@@ -82,6 +82,7 @@ class Config:
     expected: dict[str, int] = field(default_factory=dict)
     expected_notes: dict[str, str] = field(default_factory=dict)
     today: dt.date | None = None
+    tmdb: dict[str, dict[str, Any]] = field(default_factory=dict)  # legacy_key -> {tmdb_id} | {no_tmdb, year}
 
     def person(self, name: str) -> Person | None:
         return next((p for p in self.people if p.name == name), None)
@@ -168,7 +169,7 @@ def from_dict(data: dict[str, Any] | None, sheet_people: list[dict[str, Any]] | 
     data = data or {}
     if not isinstance(data, dict):
         raise ConfigError("the overrides file must be a mapping")
-    known = {"people", "system_profiles", "rules", "films", "expected", "expected_notes", "today"}
+    known = {"people", "system_profiles", "rules", "films", "expected", "expected_notes", "today", "tmdb"}
     unknown = set(data) - known
     if unknown:
         raise ConfigError(f"unknown top-level keys: {sorted(unknown)}")
@@ -300,6 +301,21 @@ def from_dict(data: dict[str, Any] | None, sheet_people: list[dict[str, Any]] | 
             raise ConfigError(f"expected.{key} must be a whole number")
         cfg.expected[str(key)] = value
     cfg.expected_notes = {str(k): str(v) for k, v in _mapping(data.get("expected_notes"), "expected_notes").items()}
+    for key, raw in _mapping(data.get("tmdb"), "tmdb").items():
+        where = f"tmdb[{key!r}]"
+        raw = _mapping(raw, where)
+        raw = {k: v for k, v in raw.items() if k != "reason"}
+        if set(raw) - {"tmdb_id", "no_tmdb", "year", "confirm"}:
+            raise ConfigError(f"{where}: unknown keys {sorted(set(raw) - {'tmdb_id', 'no_tmdb', 'year', 'confirm'})}")
+        tmdb_id = raw.get("tmdb_id")
+        if raw == {"confirm": True}:
+            cfg.tmdb[str(key)] = {"confirm": True}
+        elif set(raw) == {"no_tmdb", "year"} and raw["no_tmdb"] is True and _year(raw.get("year"), f"{where}.year"):
+            cfg.tmdb[str(key)] = {"no_tmdb": True, "year": raw["year"]}
+        elif set(raw) == {"tmdb_id"} and isinstance(tmdb_id, int) and not isinstance(tmdb_id, bool) and tmdb_id > 0:
+            cfg.tmdb[str(key)] = {"tmdb_id": tmdb_id}
+        else:
+            raise ConfigError(f"{where} needs exactly one of: tmdb_id (a positive number), no_tmdb: true with a year, or confirm: true")
     if data.get("today") is not None:
         cfg.today = dt.date.fromisoformat(_date(data["today"], "today"))
     return cfg

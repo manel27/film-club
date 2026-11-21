@@ -73,3 +73,16 @@ expected_notes:
 # Optional: the "as of" date; films after it count as planned. Set it for
 # reproducible runs. --today on the command line wins; default: the current date.
 today: 2026-12-01
+
+# Optional: TMDB match corrections, from the preview's "Check these matches"
+# list. Keyed by the film key shown there ("<date>|<normalised title>").
+# The import refuses to run until every film on that list has an entry here.
+# Each entry is exactly one of:
+#   confirm: true      the suggested match is right (no need to look up its id)
+#   tmdb_id: <number>  the right film (the number in themoviedb.org/movie/<id>)
+#   no_tmdb: true + year: <yyyy>   not on TMDB (a film without TMDB needs a year)
+# An optional reason is kept for your own notes.
+tmdb:
+  '2026-10-24|hollow kite': { tmdb_id: 123456, reason: 'The 1999 film, not the remake' }
+  '2026-11-07|copper lantern': { no_tmdb: true, year: 2011 }
+  '2026-10-31|amber signal': { confirm: true }

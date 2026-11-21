@@ -1,8 +1,9 @@
-# Sheet migration (phase 4a: parse, interpret, preview)
+# Sheet migration (parse, interpret, preview, TMDB matching, import)
 
 Turns the club's Google Sheet export (File → Download → Web page, HTML)
 into data shaped like the platform's tables, plus a readable preview for the
-owner to approve. **Nothing is imported into the database in this phase.**
+owner to approve, then (after approval) matches every film on TMDB and imports
+it (see "TMDB" and "Import" below).
 
 Real data never enters the repository:
 
@@ -82,7 +83,7 @@ them).
     `democratico`, `cinema`, `maratona`), `assigned`, `turn_holder` (null
     for history), `is_easter_egg`, `scores_locked` (always false here; see
     below), `is_planned`, `labels`, `source_url`, `tmdb_query` and `tmdb`
-    (null until phase 4c);
+    (always null: matches live in `matches.json`, see TMDB below);
   - `attendance`, `scores` (strings with two decimals) and `comments`
     (sheet notes, authored by "Sheet archive", `is_legacy: true`,
     `created_at` = the film's `screened_on`). Each row's `film` is the
@@ -164,6 +165,8 @@ the fixture against that example. Sections:
 - `expected` / `expected_notes`: counts for the sanity section, with
   optional explanations.
 - `today`: the cut-off for planned films.
+- `tmdb`: TMDB match corrections per `legacy_key` (`tmdb_id`, or
+  `no_tmdb: true` + `year`); see TMDB below.
 
 Malformed YAML, wrongly typed values, unknown keys, unknown people and
 overrides that match zero or several rows stop the run with an `error:`
@@ -171,11 +174,76 @@ line, so a typo can't silently do nothing.
 
 ## TMDB (phase 4c)
 
-Not part of this phase. Each film carries `tmdb_query` (`query`, `year`,
-`language`, `alternative_queries` taken from the linked Wikipedia or
-Letterboxd page) and `tmdb: null`, built by `migration/tmdb.py`. Phase 4c
-runs the searches, fills `tmdb` and re-runs the duplicate check on
-`tmdb_id`.
+```bash
+python3 -I migration/run.py tmdb --out migration/out --overrides migration/overrides.yaml
+python3 -I migration/run.py preview --out migration/out
+```
+
+`tmdb` searches TMDB for every film in `import.json` (its `tmdb_query`:
+the title with the year hint, then the linked Wikipedia/Letterboxd title),
+fetches the chosen film's details and credits, and writes
+`matches.json` (keyed by `legacy_key`). The token is read from
+`migration/.env` (`TMDB_TOKEN=<v4 read token>`, git-ignored; `--tmdb-env`
+for another file) only when a response isn't cached yet, sent as
+`Authorization: Bearer` and never printed. Every response is cached in
+`migration/out/tmdb_cache/`, so re-runs make no requests and give the same
+result. Requests are spaced to stay under 20 per second and retried on
+429/5xx.
+
+Each match gets a confidence (rules at the top of `tmdb.py`): **high**
+(exact normalised title or original title + the year hint; with no year
+hint, the match must equal the sheet title, have at least 50 TMDB votes and
+be the clear favourite), **medium**, **low** or
+**none**. Films released after the screening year are never picked. Then the
+duplicate check runs again on the matched films (same `tmdb_id`, or a film
+without TMDB with the same title + year as another); duplicates exit with
+code 3.
+
+The preview then shows each film's poster, TMDB title, year, director and a
+confidence badge, and a **Check these matches** list (every medium, low and
+none match that isn't pinned). The import refuses to run until that list is
+empty. Answer each one under `tmdb:` in the overrides file: `confirm: true`
+(the suggestion is right), `tmdb_id` (the right film), or `no_tmdb: true` +
+`year` (see the example file), then run `tmdb` and `preview` again.
+
+## Import
+
+```bash
+python3 -I migration/run.py import --out migration/out --env <file> --dry-run
+python3 -I migration/run.py import --out migration/out --env <file>
+```
+
+`--env` is a git-ignored env file (keep it outside the repo) with
+`SUPABASE_URL` and `SUPABASE_SECRET_KEY`; the key is never printed. Writes go
+through PostgREST with the secret key (`importer.py`, stdlib only).
+
+- **Local only by default.** A non-local `SUPABASE_URL` is refused unless
+  `--production` is passed **and** the host is typed at a terminal prompt.
+  Production is an owner gate (plan §10, 4d).
+- **The import is a one-off before go-live; a re-run after go-live overwrites
+  admin edits** to the imported films (title, date, kind, assigned person…).
+- **Refuses to run** while `needs_decision` is not empty, a film has no
+  entry in `matches.json`, a match is still on the "Check these matches"
+  list, or a film has neither a TMDB match nor a year. It also refuses,
+  before writing anything, when two sheet films resolve to the same database
+  film or a match points at a film that wasn't imported from the sheet (the
+  error names the film's `legacy_key`).
+- **Order:** profiles (existing ones, e.g. made by `create-admin`, are kept;
+  only their empty keyword/colour are filled) → films → attendance → scores →
+  legacy comments → lock the easter egg (scores first, then the lock).
+- **Idempotent:** it reads what is there and only inserts what is missing or
+  patches what differs, so a second run writes nothing. Films are found by
+  TMDB id, then title + year (films without TMDB), then sheet row + date (a
+  re-pinned film). Sheet rows that moved (rows added to the sheet) are freed
+  first, then rewritten. It never deletes anything.
+- Films with a TMDB match get TMDB's title, original title, release date and
+  year (`USE_TMDB_TITLE` in `importer.py` switches to the sheet title); films
+  without one keep the sheet title and the year from the overrides file or
+  the sheet's year hint.
+- `--dry-run` prints what would be written. A real run ends by counting
+  what the database holds, for the imported films and for every film with a
+  sheet row (orphans from an earlier import are listed), and comparing it
+  with the preview's counts; a mismatch exits with code 4.
 
 ## Tests
 

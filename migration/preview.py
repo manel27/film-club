@@ -30,6 +30,26 @@ SANITY_LABELS = {
     "average_mismatches": ("average_mismatches", "Rows where the sheet's Média differs from the recomputed average"),
 }
 _SAFE_COLOUR = re.compile(r"^#[0-9a-f]{6}$")
+_SAFE_POSTER = re.compile(r"^/[A-Za-z0-9_.-]+$")
+CONFIDENCE_LEVELS = ("high", "medium", "low", "none")
+
+
+def _match_text(m: dict[str, Any] | None) -> str:
+    """'TMDB title (year), dir. X' or a short reason when there is no match."""
+    if not m:
+        return "not matched yet"
+    if not m.get("tmdb_id"):
+        return f"no TMDB match (year {m.get('release_year') or 'missing'})"
+    directors = ", ".join(m.get("directors") or [])
+    return f"{m['title']} ({m.get('release_year') or '?'})" + (f", dir. {directors}" if directors else "")
+
+
+def _check_list(data: dict[str, Any], matches: dict[str, Any]) -> list[tuple[dict[str, Any], dict[str, Any]]]:
+    """Medium/low/none matches that aren't pinned in the overrides file, weakest first."""
+    from .tmdb import to_check
+
+    films = {f["legacy_key"]: f for f in data["films"]}
+    return [(films[k], matches["matches"][k]) for k in to_check(matches["matches"]) if k in films]
 
 
 def _e(value: Any) -> str:
@@ -152,7 +172,10 @@ white-space:nowrap}.chip.score{background:var(--chip);color:var(--text)}
 .decide{background:var(--warn-bg);border:1px solid var(--warn);border-radius:10px;padding:12px 16px}
 .decide h2{border:0;margin-top:0;color:var(--warn)}.ok{color:var(--ok)}.bad{color:var(--bad);font-weight:600}
 .note{font-size:13px;color:var(--muted);margin-top:4px;white-space:pre-wrap}
-.lock{font-weight:600;color:var(--bad)}details{margin:6px 0}summary{cursor:pointer}
+.lock{font-weight:600;color:var(--bad)}
+.conf{font-size:12px;padding:1px 7px;border-radius:6px;white-space:nowrap}.conf.high{background:#dcf3e2;color:#17602f}
+.conf.medium{background:#fdecc8;color:#7a4d00}.conf.low,.conf.none{background:#fbe0de;color:#8c1d18}
+img.poster{width:46px;border-radius:4px;float:left;margin-right:8px}details{margin:6px 0}summary{cursor:pointer}
 @media (max-width:700px){th,td{padding:6px}}
 """
 
@@ -187,7 +210,23 @@ def _entries_table(entries: list[dict[str, Any]], show_label: bool) -> str:
     )
 
 
-def render_html(data: dict[str, Any]) -> str:
+def _tmdb_cell(m: dict[str, Any] | None) -> str:
+    if not m:
+        return "<span class='muted'>not matched yet</span>"
+    poster = m.get("poster_path") or ""
+    img = (
+        f"<img class='poster' src='https://image.tmdb.org/t/p/w92{_e(poster)}' alt='' loading='lazy' referrerpolicy='no-referrer'>"
+        if _SAFE_POSTER.match(poster)
+        else ""
+    )
+    text = _e(_match_text(m))
+    if m.get("tmdb_id"):
+        text = f"<a href='https://www.themoviedb.org/movie/{int(m['tmdb_id'])}' rel='noreferrer noopener'>{text}</a>"
+    pinned = " <span class='muted'>(pinned)</span>" if m.get("pinned") else ""
+    return f"{img}{text}<br><span class='conf {_e(m['confidence'])}'>{_e(m['confidence'])}</span>{pinned}"
+
+
+def render_html(data: dict[str, Any], matches: dict[str, Any] | None = None) -> str:
     s = summarise(data)
     colours = s["colours"]
     c = data["counts"]
@@ -204,7 +243,9 @@ def render_html(data: dict[str, Any]) -> str:
         "Nothing has been imported yet.</p>"
     )
     w(
-        "<nav><a href='#decide'>Needs your decision</a><a href='#sanity'>Sanity counts</a>"
+        "<nav><a href='#decide'>Needs your decision</a>"
+        + ("<a href='#check'>Check these matches</a>" if matches else "")
+        + "<a href='#sanity'>Sanity counts</a>"
         "<a href='#people'>People</a><a href='#fixes'>Automatic fixes</a><a href='#films'>Films</a>"
         "<a href='#observations'>Observations</a></nav>"
     )
@@ -232,6 +273,29 @@ def render_html(data: dict[str, Any]) -> str:
     else:
         w("<p class='ok'>Nothing: every row was resolved by the rules and the overrides file.</p>")
     w("</section>")
+
+    if matches:
+        check = _check_list(data, matches)
+        mc = matches["counts"]
+        w(f"<section id='check' class='decide'><h2>Check these matches ({len(check)})</h2>")
+        w(
+            "<p>TMDB matches: "
+            + " · ".join(f"<span class='conf {lvl}'>{lvl}</span> {mc[lvl]}" for lvl in CONFIDENCE_LEVELS)
+            + f" · pinned in the overrides file {mc['pinned']}. Confirm each film below, or give its "
+            "<code>tmdb_id</code> (or <code>no_tmdb</code> + <code>year</code>) under <code>tmdb:</code> in "
+            "<code>migration/overrides.yaml</code>, keyed by the film key shown.</p>"
+        )
+        if check:
+            w("<div class='wrap'><table><thead><tr><th>Date</th><th>Sheet title</th><th>TMDB match</th>")
+            w("<th>Why</th><th>Film key</th></tr></thead><tbody>")
+            for f, m in check:
+                hint = f" <span class='muted'>({_e(f['year_hint'])})</span>" if f["year_hint"] else ""
+                w(
+                    f"<tr><td>{_e(f['screened_on'])}</td><td>{_e(f['title'])}{hint}</td><td>{_tmdb_cell(m)}</td>"
+                    f"<td>{_e(m['reason'])}</td><td><code>{_e(f['legacy_key'])}</code></td></tr>"
+                )
+            w("</tbody></table></div>")
+        w("</section>")
 
     w("<h2 id='sanity'>Sanity counts</h2><div class='wrap'><table><thead><tr><th>Check</th>")
     w("<th class='num'>Actual</th><th class='num'>Expected</th><th>Status</th><th>Explanation</th></tr></thead><tbody>")
@@ -288,7 +352,8 @@ def render_html(data: dict[str, Any]) -> str:
         by_year[f["screened_on"][:4]].append(f)
     for year, films in by_year.items():
         w(f"<h3>{_e(year)} · {len(films)} films</h3><div class='wrap'><table><thead><tr><th class='num'>Row</th>")
-        w("<th>Date</th><th>Title</th><th>Kind</th><th>Assigned</th><th>Present</th><th>Scores</th></tr></thead><tbody>")
+        w("<th>Date</th><th>Title</th><th>Kind</th><th>Assigned</th><th>Present</th><th>Scores</th>"
+          + ("<th>TMDB</th>" if matches else "") + "</tr></thead><tbody>")
         for f in films:
             ref = f["legacy_sheet_row"]
             key = f["legacy_key"]
@@ -318,7 +383,9 @@ def render_html(data: dict[str, Any]) -> str:
                 f"<tr><td class='num'>{_e(ref)}</td><td>{_e(f['screened_on'])}{_e(day)}</td>"
                 f"<td>{title} {' '.join(extra)}{notes}</td>"
                 f"<td><span class='kind {_e(f['kind'])}'>{_e(KIND_LABELS[f['kind']])}</span></td>"
-                f"<td>{_person(f['assigned'], colours)}</td><td>{chips}</td><td>{score_chips}</td></tr>"
+                f"<td>{_person(f['assigned'], colours)}</td><td>{chips}</td><td>{score_chips}</td>"
+                + (f"<td>{_tmdb_cell(matches['matches'].get(key))}</td>" if matches else "")
+                + "</tr>"
             )
         w("</tbody></table></div>")
 
@@ -328,8 +395,11 @@ def render_html(data: dict[str, Any]) -> str:
         w(f"<details><summary><b>{_e(label)}</b> — {len(entries)}</summary>")
         w(_entries_table(entries, show_label=False))
         w("</details>")
-    w("<p class='muted'>TMDB matching (posters, confidence) comes in the import phase; each film already "
-      "carries its search query and year hint.</p>")
+    if not matches:
+        w("<p class='muted'>No TMDB matches yet: run the <code>tmdb</code> step, then the preview again.</p>")
+    else:
+        w("<p class='muted'>Posters and film data from TMDB. This product uses the TMDB API but is not "
+          "endorsed or certified by TMDB.</p>")
     w("</main></body></html>")
     return "\n".join(out)
 
@@ -348,7 +418,7 @@ def _md_entries(entries: list[dict[str, Any]], show_label: bool) -> list[str]:
     return lines
 
 
-def render_markdown(data: dict[str, Any]) -> str:
+def render_markdown(data: dict[str, Any], matches: dict[str, Any] | None = None) -> str:
     s = summarise(data)
     c = data["counts"]
     L: list[str] = []
@@ -369,6 +439,24 @@ def render_markdown(data: dict[str, Any]) -> str:
         L += _md_entries(data["needs_decision"], show_label=True)
     else:
         L += ["Nothing: every row was resolved by the rules and the overrides file."]
+    if matches:
+        check = _check_list(data, matches)
+        mc = matches["counts"]
+        L += ["", f"## Check these matches ({len(check)})", ""]
+        L += [
+            "TMDB matches: " + " · ".join(f"{lvl} {mc[lvl]}" for lvl in CONFIDENCE_LEVELS)
+            + f" · pinned {mc['pinned']}. Confirm each one, or set `tmdb_id` (or `no_tmdb` + `year`) "
+            "under `tmdb:` in `migration/overrides.yaml`, keyed by the film key.",
+            "",
+            "| Date | Sheet title | TMDB match | Confidence | Why | Film key |",
+            "|---|---|---|---|---|---|",
+        ]
+        for f, m in check:
+            title = f["title"] + (f" ({f['year_hint']})" if f["year_hint"] else "")
+            L.append(
+                f"| {_md(f['screened_on'])} | {_md(title)} | {_md(_match_text(m))} | {m['confidence']} | "
+                f"{_md(m['reason'])} | `{_md(f['legacy_key'])}` |"
+            )
     L += ["", "## Sanity counts", "", "| Check | Actual | Expected | Status | Explanation |", "|---|---|---|---|---|"]
     for row in s["sanity"]:
         status = "" if row["ok"] is None else ("match" if row["ok"] else "**differs**")
@@ -399,7 +487,11 @@ def render_markdown(data: dict[str, Any]) -> str:
         L += [""]
 
     L += [f"## Films ({len(data['films'])})", "", "Newest first. Scores marked `*` were given without being present.", ""]
-    L += ["| Row | Date | Title | Kind | Assigned | Present | Scores | Notes |", "|---|---|---|---|---|---|---|---|"]
+    tmdb_head = (" TMDB | Confidence |", "---|---|") if matches else ("", "")
+    L += [
+        "| Row | Date | Title | Kind | Assigned | Present | Scores | Notes |" + tmdb_head[0],
+        "|---|---|---|---|---|---|---|---|" + tmdb_head[1],
+    ]
     for f in reversed(data["films"]):
         ref = f["legacy_sheet_row"]
         key = f["legacy_key"]
@@ -416,6 +508,11 @@ def render_markdown(data: dict[str, Any]) -> str:
         L.append(
             f"| {ref} | {_md(f['screened_on'])} | {_md(title)} | {KIND_LABELS[f['kind']]} | {_md(f['assigned'])} | "
             f"{_md(', '.join(sorted(present)))} | {_md(scores)} | {_md(notes)} |"
+            + (
+                f" {_md(_match_text(matches['matches'].get(key)))} | {(matches['matches'].get(key) or {}).get('confidence', '')} |"
+                if matches
+                else ""
+            )
         )
     L += ["", f"## Observations ({len(data['observations'])})", ""]
     for label, entries in _group(data["observations"]):
