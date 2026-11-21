@@ -40,7 +40,7 @@ test('admin logs in and sees the app shell', async ({ page }) => {
   await expect(header.getByText(E2E_ADMIN.name)).toBeVisible()
   await expect(header.getByText('Admin', { exact: true })).toBeVisible()
   await expect(header.locator('.colour-dot')).toHaveCSS('background-color', 'rgb(230, 145, 56)')
-  await expect(page.getByText('Films coming soon.')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Films', exact: true })).toBeVisible()
   await page.screenshot({ path: `${SCREENSHOTS}/home-admin.png` })
 
   // The session survives a reload.
@@ -76,7 +76,7 @@ test('after logging in, the visitor returns to the page they asked for', async (
 test('logging out returns to the login page and protects the app again', async ({ page }) => {
   await page.goto('./#/login')
   await logIn(page, E2E_ADMIN.email, E2E_PASSWORD)
-  await expect(page.getByText('Films coming soon.')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Films', exact: true })).toBeVisible()
 
   await page.getByRole('button', { name: 'Log out' }).click()
   await expect(page).toHaveURL(/#\/login$/)
@@ -93,7 +93,7 @@ test('a login without a profile sees the "not linked" page and can log out', asy
   await logIn(page, E2E_UNLINKED.email, E2E_PASSWORD)
   await expect(page.getByRole('heading', { name: "Your account isn't linked yet" })).toBeVisible()
   await expect(page.getByText(/Ask Manel to link it/)).toBeVisible()
-  await expect(page.getByText('Films coming soon.')).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: 'Films', exact: true })).toHaveCount(0)
   await page.screenshot({ path: `${SCREENSHOTS}/unlinked.png` })
 
   await page.getByRole('button', { name: 'Log out' }).click()

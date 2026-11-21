@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { createMemoryRouter, RouterProvider } from 'react-router'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { AuthProvider } from './auth/AuthProvider'
 import { routes } from './routes'
 import {
@@ -10,6 +10,11 @@ import {
   TEST_EMAIL,
   TEST_PASSWORD,
 } from './test/fakeAuthBackend'
+
+// The films page's data comes from Supabase; these tests are about routing.
+vi.mock('./films/api', () => ({
+  fetchFilmsData: async () => ({ films: [], people: [], scored: new Set() }),
+}))
 
 function renderApp(path: string, fake = createFakeAuthBackend()) {
   const router = createMemoryRouter(routes, { initialEntries: [path] })
@@ -34,7 +39,7 @@ describe('route guard', () => {
   it('shows a loading state until the session is known', async () => {
     renderApp('/', signedIn())
     expect(screen.getByRole('status')).toHaveTextContent('Loading')
-    expect(await screen.findByText('Films coming soon.')).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Films' })).toBeInTheDocument()
   })
 
   it('sends logged-out visitors to the login page', async () => {
@@ -68,7 +73,7 @@ describe('route guard', () => {
       await screen.findByRole('heading', { name: "Your account isn't linked yet" }),
     ).toBeInTheDocument()
     expect(screen.getByText(/Ask Manel to link it/)).toBeInTheDocument()
-    expect(screen.queryByText('Films coming soon.')).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Films' })).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Log out' }))
     expect(fake.backend.signOut).toHaveBeenCalledOnce()
@@ -85,16 +90,16 @@ describe('route guard', () => {
 
     fake.state.profile = fakeProfile()
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
-    expect(await screen.findByText('Films coming soon.')).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Films' })).toBeInTheDocument()
     expect(fake.backend.fetchMyProfile).toHaveBeenCalledTimes(2)
   })
 
   it('does not reload the profile on a token refresh', async () => {
     const fake = signedIn()
     renderApp('/', fake)
-    await screen.findByText('Films coming soon.')
+    await screen.findByRole('heading', { name: 'Films' })
     act(() => fake.refreshToken())
-    await screen.findByText('Films coming soon.')
+    await screen.findByRole('heading', { name: 'Films' })
     expect(fake.backend.fetchMyProfile).toHaveBeenCalledOnce()
   })
 })
@@ -129,21 +134,21 @@ describe('login page', () => {
     const fake = createFakeAuthBackend()
     renderApp('/login', fake)
     await logIn(`  ${TEST_EMAIL} `, TEST_PASSWORD)
-    await screen.findByText('Films coming soon.')
+    await screen.findByRole('heading', { name: 'Films' })
     expect(fake.backend.signIn).toHaveBeenCalledWith(TEST_EMAIL, TEST_PASSWORD)
   })
 
   it('goes home after logging in without a destination', async () => {
     const { router } = renderApp('/login')
     await logIn(TEST_EMAIL, TEST_PASSWORD)
-    expect(await screen.findByText('Films coming soon.')).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Films' })).toBeInTheDocument()
     expect(router.state.location.pathname).toBe('/')
   })
 
   it('ignores an off-site destination', async () => {
     const { router } = renderApp('/login?next=//evil.example')
     await logIn(TEST_EMAIL, TEST_PASSWORD)
-    await screen.findByText('Films coming soon.')
+    await screen.findByRole('heading', { name: 'Films' })
     expect(router.state.location.pathname).toBe('/')
   })
 
@@ -206,7 +211,7 @@ describe('session checks and logout edge cases', () => {
   it('keeps the session when the check cannot reach the server', async () => {
     const fake = createFakeAuthBackend({ session: fakeSession(), sessionCheck: 'unknown' })
     renderApp('/', fake)
-    expect(await screen.findByText('Films coming soon.')).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Films' })).toBeInTheDocument()
     expect(fake.backend.signOut).not.toHaveBeenCalled()
   })
 
@@ -216,7 +221,7 @@ describe('session checks and logout edge cases', () => {
   ])('re-checks on %s and signs out a revoked session', async (_, fire) => {
     const fake = signedIn()
     renderApp('/', fake)
-    await screen.findByText('Films coming soon.')
+    await screen.findByRole('heading', { name: 'Films' })
     expect(fake.backend.validateSession).toHaveBeenCalledOnce()
 
     fake.state.sessionCheck = 'invalid'
