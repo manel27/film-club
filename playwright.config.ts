@@ -24,7 +24,16 @@ export default defineConfig({
     baseURL: `http://localhost:${PORT}/film-club/`,
     trace: 'on-first-retry',
   },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  projects: [
+    { name: 'chromium', use: { ...devices['Desktop Chrome'] }, testIgnore: /add-film/ },
+    // Adds films, which other tests count: runs alone, after them.
+    {
+      name: 'chromium-writes',
+      use: { ...devices['Desktop Chrome'] },
+      testMatch: /add-film/,
+      dependencies: ['chromium'],
+    },
+  ],
   webServer: {
     command:
       `npx vite build --outDir dist-e2e --emptyOutDir --logLevel warn && ` +

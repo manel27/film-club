@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase'
 import { NO_ROWS } from './filmDetail'
+import type { FilmSaveBody, FunctionError, TmdbResult } from './filmForm'
 import type { FilmItem, Person } from './films'
 
 export interface FilmsData {
@@ -66,7 +67,7 @@ function queryFilm(id: number) {
   return supabase
     .from('films')
     .select(
-      'id, title, original_title, release_year, poster_path, directors, genres, runtime_min, overview, screened_on, kind, assigned_id, turn_holder_id, is_easter_egg, scores_locked, attendance(profile_id), scores(profile_id, score), comments(id, author_id, body, created_at, edited_at, is_legacy)',
+      'id, tmdb_id, title, original_title, release_year, poster_path, directors, genres, runtime_min, overview, screened_on, kind, assigned_id, turn_holder_id, is_easter_egg, scores_locked, attendance(profile_id), scores(profile_id, score), comments(id, author_id, body, created_at, edited_at, is_legacy)',
     )
     .eq('id', id)
     .order('created_at', { referencedTable: 'comments' })
@@ -127,4 +128,45 @@ export const filmWrites = {
     check(supabase.from('comments').update({ body }).eq('id', id).select('id'), true),
   deleteComment: (id: number) =>
     check(supabase.from('comments').delete().eq('id', id).select('id'), true),
+}
+
+/** Everyone, for the add/edit film form's choosers. */
+export async function fetchPeopleList(): Promise<Person[]> {
+  const { data, error } = await fetchPeople()
+  if (error) throw error
+  return toPeople(data)
+}
+
+/** Calls an Edge Function with the session's JWT; a refusal throws a FunctionError. */
+async function invoke<T>(name: string, body: object): Promise<T> {
+  const { data, error } = await supabase.functions.invoke(name, { body })
+  if (!error) return data as T
+  // FunctionsHttpError carries the Response; a network failure has none (status 0).
+  const res = (error as { context?: unknown }).context
+  const payload = res instanceof Response ? await res.json().catch(() => ({})) : {}
+  throw { ...payload, status: res instanceof Response ? res.status : 0 } satisfies FunctionError
+}
+
+export const searchTmdb = (query: string) =>
+  invoke<{ results: TmdbResult[] }>('tmdb-search', { query }).then((d) => d.results)
+
+/** Adds or edits a film (film-save). Resolves with its id. */
+export const saveFilm = (body: FilmSaveBody) =>
+  invoke<{ id: number }>('film-save', body).then((d) => d.id)
+
+/** Films this one would duplicate (the same check the database makes). */
+export async function findDuplicates(film: {
+  title: string
+  year: number | null
+  tmdbId: number | null
+  originalTitle: string | null
+}) {
+  const { data, error } = await supabase.rpc('film_duplicate_check', {
+    p_title: film.title,
+    p_release_year: film.year ?? undefined,
+    p_tmdb_id: film.tmdbId ?? undefined,
+    p_original_title: film.originalTitle ?? undefined,
+  })
+  if (error) throw error
+  return data
 }
