@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { createMemoryRouter, RouterProvider } from 'react-router'
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AuthProvider } from '../auth/AuthProvider'
@@ -77,6 +77,8 @@ vi.mock('../films/api', () => ({
   fetchFilm: (id: number) => fetchFilm(id),
   filmWrites: writes,
 }))
+const fetchEpoch = vi.fn(async (): Promise<string | null> => null)
+vi.mock('../rotation/api', () => ({ fetchEpoch: () => fetchEpoch() }))
 
 function renderPage(
   role: 'admin' | 'moderator' | 'member' | 'viewer' = 'member',
@@ -369,6 +371,33 @@ describe('film page', () => {
     expect(router.state.location.state).toEqual({ notice: 'Deleted "Glass River".' })
     // Replaced: Back doesn't return to the deleted film.
     expect(router.state.historyAction).toBe('REPLACE')
+  })
+
+  it('warns that rotation points change only for a counted screening since go-live', async () => {
+    const warning = 'Rotation points will be recalculated without this screening.'
+    const open = async (film: Partial<FilmRecord>, epoch: string | null) => {
+      cleanup()
+      fetchEpoch.mockResolvedValue(epoch)
+      fetchFilm.mockResolvedValue(detail(film))
+      renderPage('admin')
+      fireEvent.click(await screen.findByRole('button', { name: 'Delete film' }))
+      await waitFor(() => expect(fetchEpoch).toHaveBeenCalled())
+      await act(async () => {})
+      return screen.getByRole('dialog')
+    }
+    expect(await open({ kind: 'democratico' }, '2026-01-05')).toHaveTextContent(warning)
+    expect(
+      await open({ kind: 'normal', screened_on: '2026-01-05' }, '2026-01-05'),
+    ).toHaveTextContent(warning)
+    // Before go-live, before the epoch, a planned film, Cinema/Maratona: nothing changes.
+    expect(await open({ kind: 'normal' }, null)).not.toHaveTextContent(warning)
+    expect(await open({ kind: 'normal' }, '2026-11-15')).not.toHaveTextContent(warning)
+    expect(
+      await open({ kind: 'normal', screened_on: '2099-01-03' }, '2026-01-05'),
+    ).not.toHaveTextContent(warning)
+    expect(await open({ kind: 'cinema' }, '2026-01-05')).not.toHaveTextContent(warning)
+    fetchEpoch.mockResolvedValue(null)
+    fetchFilm.mockImplementation(async () => detail())
   })
 
   it('sends one delete for a double click on confirm', async () => {

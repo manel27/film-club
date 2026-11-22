@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { createMemoryRouter, RouterProvider } from 'react-router'
 import { describe, expect, it, vi } from 'vitest'
 import { AuthProvider } from './auth/AuthProvider'
@@ -15,6 +15,12 @@ import {
 vi.mock('./films/api', () => ({
   fetchFilmsData: async () => ({ films: [], people: [], scored: new Set() }),
   fetchFilm: async () => null,
+}))
+vi.mock('./rotation/api', () => ({
+  fetchRotation: async () => ({
+    ...{ epoch: null, weekStart: null, standings: [], passes: [], decisions: [] },
+    ...{ adjustments: [], chosen: [], people: [] },
+  }),
 }))
 
 function renderApp(path: string, fake = createFakeAuthBackend()) {
@@ -179,6 +185,20 @@ describe('app shell', () => {
     renderApp('/', signedIn(fakeProfile({ role })))
     await screen.findByText('Quinn')
     expect(screen.queryByText(/admin|moderator/i)).not.toBeInTheDocument()
+  })
+
+  it('links Films and Rotation in the header, marking the current page', async () => {
+    const { router } = renderApp('/', signedIn())
+    const nav = await screen.findByRole('navigation', { name: 'Main' })
+    expect(within(nav).getByRole('link', { name: 'Films' })).toHaveAttribute('aria-current', 'page')
+    fireEvent.click(within(nav).getByRole('link', { name: 'Rotation' }))
+    expect(await screen.findByRole('heading', { name: 'Rotation', level: 1 })).toBeInTheDocument()
+    expect(router.state.location.pathname).toBe('/rotation')
+    expect(within(nav).getByRole('link', { name: 'Rotation' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    )
+    expect(await screen.findByText(/starts at go-live/)).toBeInTheDocument()
   })
 
   it('copes with a profile that has no colour yet', async () => {

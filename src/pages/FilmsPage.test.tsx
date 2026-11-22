@@ -49,6 +49,8 @@ const DATA: FilmsData = {
 
 const fetchFilmsData = vi.fn(async (): Promise<FilmsData> => DATA)
 vi.mock('../films/api', () => ({ fetchFilmsData: () => fetchFilmsData() }))
+// The card has its own tests (NextUp.test.tsx).
+vi.mock('../components/NextUp', () => ({ default: () => <p>Next up card</p> }))
 
 function renderPage(
   path: string | { pathname: string; state: unknown } = '/',

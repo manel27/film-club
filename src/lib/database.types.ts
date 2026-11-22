@@ -741,6 +741,17 @@ export type Database = {
         }
         Relationships: []
       }
+      rotation_standings: {
+        Row: {
+          owed_rank: number | null
+          owed_since: string | null
+          points: number | null
+          profile_id: string | null
+          week_start: string | null
+        }
+        ComputedFields: never
+        Relationships: []
+      }
     }
     Functions: {
       film_duplicate_check: {
