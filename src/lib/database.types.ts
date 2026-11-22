@@ -785,7 +785,8 @@ export type Database = {
           watched: number
         }[]
       }
-      invite_rate_hit: { Args: { p_ip: string }; Returns: boolean }
+      invite_rate_fail: { Args: { p_ip: string }; Returns: undefined }
+      invite_rate_ok: { Args: { p_ip: string }; Returns: boolean }
       invite_redeem: {
         Args: { p_auth_user_id?: string; p_kind: string; p_token_hash: string }
         Returns: {

@@ -99,9 +99,16 @@ exception: they use the secret key through service-role-only RPCs
 
 Links are single use and revocable (admins revoke them from the browser: RLS
 allows only that). Only the token's SHA-256 hash is stored. The public ones
-allow 10 attempts per IP per hour, and say the same thing for every bad link.
+count only failed attempts (10 an hour per IP, 100 an hour from everyone),
+and say the same thing for every bad link. Setting a password from a reset
+link ends the person's sessions on every device (decision I3).
 A link's origin is the admin page's own (the site, or localhost locally), so
 no configuration is needed.
+
+**Orphaned login.** If `invite-claim` dies between creating the login and
+linking it, the invite stays open and the email is taken by a login with no
+profile: delete that user in the dashboard (Authentication → Users) and the
+invitee can claim again.
 
 **Local secrets.** `supabase start` reads `functions/.env` (git-ignored). Copy
 `functions/.env.example` and fill in:

@@ -207,18 +207,35 @@ Deno.test(
           .eq('id', r2.id).select('id')
         assertEquals(revoked.data?.length, 1)
         assertEquals((await call(preview, null, { token: t2 })).body, INVALID, 'revoked')
+        const claimRevoked = await call(claim, null, {
+          token: t2,
+          email: 'deno-bob@example.test',
+          password: 'long-enough',
+        })
+        assertEquals(
+          [claimRevoked.status, claimRevoked.body],
+          [404, INVALID],
+          'claim a revoked link',
+        )
+        assertEquals(await userIdOf('deno-bob@example.test'), null)
       })
 
       await t.step('invite-claim: bad email or short password keeps the link open', async () => {
+        const ok = 'deno-ana@example.test'
         for (
-          const body of [
-            { email: 'not-an-email', password: 'long-enough' },
-            { email: 'deno-ana@example.test', password: 'short' },
-            { email: 'deno-ana@example.test' },
-          ]
+          const [body, error] of [
+            [{ email: 'not-an-email', password: 'long-enough' }, 'invalid_email'],
+            [{ email: ok, password: 'short' }, 'invalid_password'],
+            [{ email: ok }, 'invalid_password'],
+            [{ email: ok, password: ' \t'.repeat(5) }, 'invalid_password'],
+            // 37 characters but 74 UTF-8 bytes: over bcrypt's 72.
+            [{ email: ok, password: 'é'.repeat(37) }, 'invalid_password'],
+          ] as const
         ) {
-          assertEquals((await call(claim, null, { token: anaToken, ...body })).status, 400)
+          const res = await call(claim, null, { token: anaToken, ...body })
+          assertEquals([res.status, res.body], [400, { error }], JSON.stringify(body))
         }
+        assertEquals(await userIdOf(ok), null)
         // An email that already has a login: refused, and the link stays open.
         const taken = await call(claim, null, {
           token: anaToken,
@@ -273,6 +290,39 @@ Deno.test(
         assertEquals(await userIdOf(loser), null, 'the losing login was deleted')
       })
 
+      await t.step('invite-claim: person claimed meanwhile, the new login is deleted', async () => {
+        const dee = await addPerson('Deno Dee')
+        const token = tokenOf((await call(invite, 'orla', { profile_id: dee })).body.link)
+        const other = 'deno-dee-other@example.test'
+        const email = 'deno-dee@example.test'
+        emails.push(other, email)
+        const { data: made } = await admin.auth.admin.createUser({
+          email: other,
+          password: 'x-12345678',
+        })
+        // Right after the function creates its login, Dee gets a login some other way.
+        const realFetch = globalThis.fetch
+        globalThis.fetch = async (input, init) => {
+          const res = await realFetch(input, init)
+          if (String(input).endsWith('/auth/v1/admin/users') && init?.method === 'POST') {
+            globalThis.fetch = realFetch
+            const { error } = await admin.from('profiles')
+              .update({ auth_user_id: made.user!.id, claimed_at: new Date().toISOString() })
+              .eq('id', dee)
+            if (error) throw error
+          }
+          return res
+        }
+        try {
+          const res = await call(claim, null, { token, email, password: 'dee-password' })
+          assertEquals([res.status, res.body], [404, INVALID])
+        } finally {
+          globalThis.fetch = realFetch
+        }
+        assertEquals(await userIdOf(email), null, 'the new login was deleted')
+        assertEquals((await linkRow(token)).used_at, null, 'the invite was left as it was')
+      })
+
       await t.step(
         'admin-reset-link + reset-claim: new password, 24 hours, single use',
         async () => {
@@ -293,7 +343,20 @@ Deno.test(
             INVALID,
           )
 
-          assertEquals((await call(resetClaim, null, { token, password: 'short' })).status, 400)
+          // Ana is logged in elsewhere: that session must end (decision I3).
+          const old = await signIn('deno-ana@example.test', 'ana-password')
+          if (old.error) throw old.error
+
+          for (const password of ['short', ' '.repeat(10), 'é'.repeat(37)]) {
+            const bad = await call(resetClaim, null, { token, password })
+            assertEquals([bad.status, bad.body], [400, { error: 'invalid_password' }])
+          }
+          // The reset page checks the link first.
+          assertEquals((await call(preview, null, { token, kind: 'reset' })).body, {
+            name: 'Deno Ana',
+            colour: '#123456',
+            watched: 0,
+          })
           assertEquals(
             (await call(resetClaim, null, { token: 'nope', password: 'short' })).body,
             INVALID,
@@ -308,6 +371,14 @@ Deno.test(
 
           const again = await call(resetClaim, null, { token, password: 'third-password' })
           assertEquals([again.status, again.body], [404, INVALID], 'used')
+
+          const client = createClient(apiUrl, env.PUBLISHABLE_KEY, noSession)
+          const refreshed = await client.auth.refreshSession({
+            refresh_token: old.data.session!.refresh_token,
+          })
+          assert(refreshed.error, 'the old session can still be refreshed')
+          const user = await client.auth.getUser(old.data.session!.access_token)
+          assert(user.error, 'the old access token still works')
         },
       )
 
@@ -334,7 +405,27 @@ Deno.test(
         assertEquals((await signIn('deno-ana@example.test', 'new-ana-password')).error, null)
       })
 
-      await t.step('public links: 10 attempts per IP per hour', async () => {
+      await t.step('reset-claim: if the password cannot be set, the link stays open', async () => {
+        const token = tokenOf((await call(reset, 'orla', { profile_id: ana })).body.link)
+        const realFetch = globalThis.fetch
+        globalThis.fetch = (input, init) =>
+          /\/auth\/v1\/admin\/users\/[\w-]+$/.test(String(input)) && init?.method === 'PUT'
+            ? Promise.resolve(Response.json({ msg: 'down' }, { status: 500 }))
+            : realFetch(input, init)
+        try {
+          const res = await call(resetClaim, null, { token, password: 'never-set-pass' })
+          assertEquals(res.status, 500)
+        } finally {
+          globalThis.fetch = realFetch
+        }
+        assertEquals((await linkRow(token)).used_at, null, 'the link was reopened')
+        const done = await call(resetClaim, null, { token, password: 'final-ana-password' })
+        assertEquals(done.status, 200)
+        assertEquals((await signIn('deno-ana@example.test', 'final-ana-password')).error, null)
+      })
+
+      await t.step('public links: only failures count, per IP and overall', async () => {
+        await admin.from('rate_limits').delete().eq('bucket', 'invite-link')
         const ip = { 'cf-connecting-ip': '198.51.100.23' }
         for (let i = 0; i < 10; i++) {
           const fn = [preview, claim, resetClaim][i % 3]
@@ -343,8 +434,33 @@ Deno.test(
         for (const fn of [preview, claim, resetClaim]) {
           assertEquals((await call(fn, null, { token: 'guess' }, ip)).status, 429)
         }
-        const other = { 'cf-connecting-ip': '198.51.100.24' }
-        assertEquals((await call(preview, null, { token: 'guess' }, other)).status, 404)
+
+        // Reloading a good link never uses up the allowance.
+        const eve = await addPerson('Deno Eve')
+        const token = tokenOf((await call(invite, 'orla', { profile_id: eve })).body.link)
+        const home = { 'cf-connecting-ip': '198.51.100.24' }
+        for (let i = 0; i < 15; i++) {
+          assertEquals((await call(preview, null, { token }, home)).status, 200)
+        }
+
+        // A new (spoofed) address for every guess still hits the overall cap of 100.
+        let n = 0
+        while (
+          n < 200 &&
+          (await call(preview, null, { token: 'guess' }, { 'cf-connecting-ip': `x-${n}` }))
+              .status === 404
+        ) n++
+        assertEquals(n, 90, 'failures allowed before the overall cap (10 already used)')
+        assertEquals((await call(preview, null, { token }, home)).status, 429, 'everyone is capped')
+
+        // A huge header is clipped, not stored whole.
+        await admin.from('rate_limits').delete().eq('bucket', 'invite-link')
+        await call(preview, null, { token: 'guess' }, { 'cf-connecting-ip': 'z'.repeat(500) })
+        const { data } = await admin.from('rate_limits').select('subject').eq(
+          'bucket',
+          'invite-link',
+        )
+        assertEquals(data!.map((r) => r.subject.length).sort(), [1, 64])
       })
     } finally {
       for (const email of emails) {

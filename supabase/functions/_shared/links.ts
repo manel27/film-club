@@ -4,16 +4,16 @@
 // These are the only functions that use the secret key (supabase/README.md):
 // invites can't be inserted or claimed from a browser. The admin ones check
 // the caller's JWT and re-read their role from the database first; the public
-// ones are rate-limited per IP and every token failure gets the same answer.
+// ones are rate-limited (failures only) and every bad link gets the same answer.
 // Raw tokens are never stored or logged: only their SHA-256 hash.
 import { createClient } from 'npm:@supabase/supabase-js@2.119.0'
 import { corsHeaders, fail, getCaller, json, readBody, SITE_ORIGIN } from './common.ts'
 
 export type LinkKind = 'invite' | 'reset'
 
-/** Same minimum as auth.minimum_password_length in config.toml; 72 is bcrypt's limit. */
+/** Same minimum as auth.minimum_password_length in config.toml; 72 bytes is bcrypt's limit. */
 export const PASSWORD_MIN = 8
-const PASSWORD_MAX = 72
+const PASSWORD_MAX_BYTES = 72
 const TOKEN = /^[A-Za-z0-9_-]{43}$/
 const UUID = /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -54,8 +54,9 @@ export async function tokenHash(token: string): Promise<string> {
 
 /**
  * The visitor's IP, as the platform's proxy reports it.
- * shortcut: trusts cf-connecting-ip / the first x-forwarded-for entry; if the hosted
- * proxy turns out to pass a client-set value through, key on the proxy-appended entry.
+ * shortcut: cf-connecting-ip / the first x-forwarded-for entry may be client-set (unverified
+ * on the hosted proxy); the global cap of 100 failures an hour (invite_rate_fail) bounds
+ * spoofing. Once the hosted headers are confirmed, key on the proxy-set one only.
  */
 export function clientIp(req: Request): string {
   return req.headers.get('cf-connecting-ip') ??
@@ -108,33 +109,61 @@ type Public = (
   hash: string,
 ) => Promise<Response>
 
-/** Public endpoint: POST, rate limit (10 per IP per hour, plan 7.5), a well-formed token. */
+/** Answers that count against the rate limit: a bad link or a refused claim. */
+const FAILED = new Set([400, 404, 409])
+
+/**
+ * Public endpoint: POST, a well-formed token, and the rate limit (plan 7.5):
+ * only failed attempts count, 10 an hour per IP and 100 an hour overall
+ * (invite_rate_ok / invite_rate_fail), so reloading a good link never locks
+ * anyone out.
+ */
 function publicLink(handle: Public) {
   return async (req: Request): Promise<Response> => {
     if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders(req) })
     if (req.method !== 'POST') return json(req, 405, { error: 'method_not_allowed' })
     try {
       const db = serviceClient()
-      const { data: allowed, error } = await db.rpc('invite_rate_hit', { p_ip: clientIp(req) })
+      const ip = clientIp(req)
+      const { data: allowed, error } = await db.rpc('invite_rate_ok', { p_ip: ip })
       if (error) throw error
       if (!allowed) return json(req, 429, { error: 'rate_limited' })
       const body = await readBody(req)
-      if (!body || typeof body.token !== 'string' || !TOKEN.test(body.token)) {
-        return json(req, 404, INVALID)
+      const res = !body || typeof body.token !== 'string' || !TOKEN.test(body.token)
+        ? json(req, 404, INVALID)
+        : await handle(req, db, body, await tokenHash(body.token))
+      if (FAILED.has(res.status)) {
+        const counted = await db.rpc('invite_rate_fail', { p_ip: ip })
+        if (counted.error) throw counted.error
       }
-      return await handle(req, db, body, await tokenHash(body.token))
+      return res
     } catch (e) {
       return fail(req, e)
     }
   }
 }
 
+/** Same rules as the pages (src/invites/links.ts): 8+ characters, at most 72 UTF-8 bytes, not only whitespace. */
 const validPassword = (v: unknown): v is string =>
-  typeof v === 'string' && v.length >= PASSWORD_MIN && v.length <= PASSWORD_MAX
+  typeof v === 'string' && v.length >= PASSWORD_MIN && /\S/.test(v) &&
+  new TextEncoder().encode(v).length <= PASSWORD_MAX_BYTES
 
-/** POST { token } -> { name, colour, watched }: only who the invite is for. */
-export const invitePreview = publicLink(async (req, db, _body, hash) => {
-  const { data, error } = await db.rpc('invite_peek', { p_token_hash: hash, p_kind: 'invite' })
+/** Supabase Auth refused the email or password: a 400 the page can explain, or null. */
+function authRefusal(req: Request, code: string | undefined): Response | null {
+  if (code === 'email_address_invalid') return json(req, 400, { error: 'invalid_email' })
+  if (code === 'weak_password' || code === 'validation_failed') {
+    return json(req, 400, { error: 'invalid_password' })
+  }
+  return null
+}
+
+/**
+ * POST { token, kind? } -> { name, colour, watched }: only who an open link is
+ * for. kind 'reset' checks a reset link (the reset page), else an invite.
+ */
+export const invitePreview = publicLink(async (req, db, body, hash) => {
+  const kind: LinkKind = body.kind === 'reset' ? 'reset' : 'invite'
+  const { data, error } = await db.rpc('invite_peek', { p_token_hash: hash, p_kind: kind })
     .maybeSingle<{ display_name: string; colour: string; watched: number }>()
   if (error) throw error
   if (!data) return json(req, 404, INVALID)
@@ -144,17 +173,18 @@ export const invitePreview = publicLink(async (req, db, _body, hash) => {
 /**
  * POST { token, email, password } -> { ok }. Creates the login (confirmed, no
  * email sent) and links it to the invite's profile. If linking fails (the
- * link was used or revoked meanwhile, e.g. a second simultaneous claim), the
- * new login is deleted again. The page then signs in.
+ * link was used or revoked meanwhile, a second simultaneous claim, or the
+ * person got a login some other way), the new login is deleted again. If the
+ * function dies between the two steps, see supabase/README.md (orphaned
+ * login). The page then signs in.
  */
 export const inviteClaim = publicLink(async (req, db, body, hash) => {
   const peek = await db.rpc('invite_peek', { p_token_hash: hash, p_kind: 'invite' }).maybeSingle()
   if (peek.error) throw peek.error
   if (!peek.data) return json(req, 404, INVALID)
   const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : ''
-  if (!EMAIL.test(email) || email.length > 254 || !validPassword(body.password)) {
-    return json(req, 400, { error: 'invalid' })
-  }
+  if (!EMAIL.test(email) || email.length > 254) return json(req, 400, { error: 'invalid_email' })
+  if (!validPassword(body.password)) return json(req, 400, { error: 'invalid_password' })
 
   const created = await db.auth.admin.createUser({
     email,
@@ -163,7 +193,8 @@ export const inviteClaim = publicLink(async (req, db, body, hash) => {
   })
   if (created.error) {
     if (created.error.code === 'email_exists') return json(req, 409, { error: 'email_taken' })
-    if (created.error.code === 'weak_password') return json(req, 400, { error: 'invalid' })
+    const refused = authRefusal(req, created.error.code)
+    if (refused) return refused
     throw created.error
   }
   const userId = created.data.user.id
@@ -175,7 +206,8 @@ export const inviteClaim = publicLink(async (req, db, body, hash) => {
   if (linked.error || !linked.data) {
     const undo = await db.auth.admin.deleteUser(userId)
     if (undo.error) console.error('invite-claim: could not delete the new login', undo.error.code)
-    if (linked.error) throw linked.error
+    // 23514: the person can no longer take this invite (claimed meanwhile).
+    if (linked.error && linked.error.code !== '23514') throw linked.error
     return json(req, 404, INVALID)
   }
   return json(req, 200, { ok: true })
@@ -183,8 +215,9 @@ export const inviteClaim = publicLink(async (req, db, body, hash) => {
 
 /**
  * POST { token, password } -> { email }. Sets a new password for the reset
- * link's person and uses the link up. If the password can't be set, the link
- * stays usable. The page then signs in with the returned email.
+ * link's person, uses the link up and ends the person's sessions on every
+ * device (decision I3). If the password can't be set, the link stays usable.
+ * The page then signs in with the returned email.
  */
 export const resetClaim = publicLink(async (req, db, body, hash) => {
   if (!validPassword(body.password)) {
@@ -192,11 +225,11 @@ export const resetClaim = publicLink(async (req, db, body, hash) => {
     const peek = await db.rpc('invite_peek', { p_token_hash: hash, p_kind: 'reset' })
       .maybeSingle()
     if (peek.error) throw peek.error
-    return peek.data ? json(req, 400, { error: 'invalid' }) : json(req, 404, INVALID)
+    return peek.data ? json(req, 400, { error: 'invalid_password' }) : json(req, 404, INVALID)
   }
   const used = await db.rpc('invite_redeem', { p_token_hash: hash, p_kind: 'reset' })
     .maybeSingle<{ invite_id: string; auth_user_id: string }>()
-  if (used.error) throw used.error
+  if (used.error && used.error.code !== '23514') throw used.error
   if (!used.data) return json(req, 404, INVALID)
   const updated = await db.auth.admin.updateUserById(used.data.auth_user_id, {
     password: body.password,
@@ -204,7 +237,8 @@ export const resetClaim = publicLink(async (req, db, body, hash) => {
   if (updated.error) {
     const undo = await db.from('invites').update({ used_at: null }).eq('id', used.data.invite_id)
     if (undo.error) console.error('reset-claim: could not reopen the link', undo.error.code)
-    if (updated.error.code === 'weak_password') return json(req, 400, { error: 'invalid' })
+    const refused = authRefusal(req, updated.error.code)
+    if (refused) return refused
     throw updated.error
   }
   return json(req, 200, { email: updated.data.user.email })

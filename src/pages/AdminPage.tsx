@@ -16,6 +16,16 @@ import NotFoundPage from './NotFoundPage'
 
 type Role = NonNullable<Person['role']>
 const ROLES: Role[] = ['member', 'moderator', 'admin', 'viewer']
+const HEX = /^#[0-9a-f]{6}$/i
+/** The id of a person's create / regenerate button: focus comes back to it. */
+const buttonId = (p: Person) => `link-button-${p.id}`
+
+/** A regenerate or revoke waiting for the admin's yes: it kills a link that may have been sent. */
+interface Pending {
+  person: AdminPerson
+  link: OpenLink
+  action: 'regenerate' | 'revoke'
+}
 
 /**
  * Admin → People (#/admin, plan 9; decision I1): everyone with their login
@@ -29,11 +39,18 @@ export default function AdminPage() {
   const [attempt, setAttempt] = useState(0)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [fresh, setFresh] = useState<{ name: string; kind: OpenLink['kind']; link: string } | null>(
-    null,
-  )
+  const [fresh, setFresh] = useState<{
+    person: AdminPerson
+    kind: OpenLink['kind']
+    link: string
+  } | null>(null)
   const [copied, setCopied] = useState('')
+  const [pending, setPending] = useState<Pending | null>(null)
   const linkRef = useRef<HTMLInputElement>(null)
+  const dialog = useRef<HTMLDialogElement>(null)
+  const cancel = useRef<HTMLButtonElement>(null)
+  // Where focus goes once the list has reloaded (never left on <body>).
+  const focusNext = useRef<string | null>(null)
   const isAdmin = profile?.role === 'admin'
 
   useEffect(() => {
@@ -49,16 +66,30 @@ export default function AdminPage() {
   }, [isAdmin, attempt])
 
   useEffect(() => {
-    if (fresh) linkRef.current?.select()
+    if (fresh) {
+      linkRef.current?.focus()
+      linkRef.current?.select()
+    }
   }, [fresh])
+
+  useEffect(() => {
+    if (!data || !focusNext.current) return
+    document.getElementById(focusNext.current)?.focus()
+    focusNext.current = null
+  }, [data])
 
   if (!isAdmin) return <NotFoundPage />
 
   const reload = () => setAttempt((n) => n + 1)
 
-  async function act(run: () => Promise<void>, message: (e: unknown) => string) {
+  async function act(
+    person: AdminPerson,
+    run: () => Promise<void>,
+    message: (e: unknown) => string,
+  ) {
     setBusy(true)
     setError(null)
+    focusNext.current = buttonId(person)
     try {
       await run()
     } catch (e) {
@@ -69,14 +100,37 @@ export default function AdminPage() {
   }
 
   const create = (person: AdminPerson, kind: OpenLink['kind']) =>
-    act(async () => {
-      setFresh(null)
-      setCopied('')
-      const { link } = await createLink(kind, person.id)
-      setFresh({ name: person.name, kind, link })
-    }, adminLinkErrorMessage)
+    act(
+      person,
+      async () => {
+        setFresh(null)
+        setCopied('')
+        const { link } = await createLink(kind, person.id)
+        // The new link's panel takes focus instead.
+        focusNext.current = null
+        setFresh({ person, kind, link })
+      },
+      adminLinkErrorMessage,
+    )
 
-  const revoke = (link: OpenLink) => act(() => revokeLink(link.id), errorMessage)
+  function ask(next: Pending) {
+    setPending(next)
+    dialog.current?.showModal()
+    cancel.current?.focus()
+  }
+
+  function confirmPending() {
+    if (!pending) return
+    dialog.current?.close()
+    const { person, link, action } = pending
+    if (action === 'regenerate') create(person, link.kind)
+    else act(person, () => revokeLink(link.id), errorMessage)
+  }
+
+  function done() {
+    if (fresh) document.getElementById(buttonId(fresh.person))?.focus()
+    setFresh(null)
+  }
 
   async function copy() {
     if (!fresh) return
@@ -96,7 +150,7 @@ export default function AdminPage() {
       {fresh && (
         <section className="rotation-form" aria-labelledby="fresh-heading">
           <h3 id="fresh-heading">
-            New {fresh.kind === 'invite' ? 'invite' : 'reset link'} for {fresh.name}
+            New {fresh.kind === 'invite' ? 'invite' : 'reset link'} for {fresh.person.name}
           </h3>
           <p>
             Copy it now and send it privately: it is shown only this once and can't be shown again.
@@ -112,11 +166,7 @@ export default function AdminPage() {
             <button type="button" className="button button-small" onClick={copy}>
               Copy link
             </button>
-            <button
-              type="button"
-              className="button button-secondary button-small"
-              onClick={() => setFresh(null)}
-            >
+            <button type="button" className="button button-secondary button-small" onClick={done}>
               Done
             </button>
           </div>
@@ -151,7 +201,7 @@ export default function AdminPage() {
       ) : (
         <>
           <div className="table-scroll" role="region" aria-label="People" tabIndex={0}>
-            <table className="rotation-table">
+            <table className="rotation-table people-table">
               <thead>
                 <tr>
                   <th scope="col">Person</th>
@@ -171,20 +221,25 @@ export default function AdminPage() {
                       <td>
                         <Chip person={p} />
                       </td>
-                      <td>{p.role && ROLE_NAMES[p.role]}</td>
-                      <td>{p.isClaimed ? 'Has a login' : 'Not claimed yet'}</td>
-                      <td>{link ? linkLabel(link) : '—'}</td>
+                      <td data-label="Role">{p.role && ROLE_NAMES[p.role]}</td>
+                      <td data-label="Login">{p.isClaimed ? 'Has a login' : 'Not claimed yet'}</td>
+                      <td data-label="Link">{link ? linkLabel(link) : '—'}</td>
                       <td>
                         <div className="actions">
                           {!p.isClaimed && !p.colour ? (
                             <span className="muted">Needs a colour before an invite</span>
                           ) : (
                             <button
+                              id={buttonId(p)}
                               type="button"
                               className="button button-small"
                               disabled={busy}
                               aria-label={`${link ? 'Regenerate' : 'Create'} ${what} for ${p.name}`}
-                              onClick={() => create(p, kind)}
+                              onClick={() =>
+                                link
+                                  ? ask({ person: p, link, action: 'regenerate' })
+                                  : create(p, kind)
+                              }
                             >
                               {link ? `Regenerate ${what}` : `Create ${what}`}
                             </button>
@@ -195,7 +250,7 @@ export default function AdminPage() {
                               className="button button-secondary button-small"
                               disabled={busy}
                               aria-label={`Revoke ${what} for ${p.name}`}
-                              onClick={() => revoke(link)}
+                              onClick={() => ask({ person: p, link, action: 'revoke' })}
                             >
                               Revoke
                             </button>
@@ -211,6 +266,39 @@ export default function AdminPage() {
           <AddPerson people={data.people} onAdded={reload} />
         </>
       )}
+      <dialog
+        ref={dialog}
+        className="confirm-dialog"
+        aria-labelledby="confirm-link-heading"
+        onClose={() => setPending(null)}
+      >
+        {pending && (
+          <>
+            <h2 id="confirm-link-heading">
+              {pending.action === 'revoke' ? 'Revoke' : 'Regenerate'} the{' '}
+              {pending.link.kind === 'invite' ? 'invite' : 'reset link'} for {pending.person.name}?
+            </h2>
+            <p>
+              The link already made stops working, even if it was sent.
+              {pending.action === 'regenerate' && ' A new one is made to send instead.'}
+            </p>
+          </>
+        )}
+        <div className="actions">
+          {/* First, so showModal() focuses it rather than the destructive button. */}
+          <button
+            ref={cancel}
+            type="button"
+            className="button button-secondary"
+            onClick={() => dialog.current?.close()}
+          >
+            Cancel
+          </button>
+          <button type="button" className="button button-danger" onClick={confirmPending}>
+            {pending?.action === 'revoke' ? 'Yes, revoke' : 'Yes, regenerate'}
+          </button>
+        </div>
+      </dialog>
     </main>
   )
 }
@@ -218,24 +306,29 @@ export default function AdminPage() {
 /** Add a person (decision I1): name, colour (needed for an invite), role. */
 function AddPerson({ people, onAdded }: { people: Person[]; onAdded: () => void }) {
   const [name, setName] = useState('')
-  const [colour, setColour] = useState('#4a86e8')
+  // No preselected colour: it's how people tell each other apart, so pick one on purpose.
+  const [colour, setColour] = useState('')
   const [role, setRole] = useState<Role>('member')
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState('')
   const [busy, setBusy] = useState(false)
+  const nameRef = useRef<HTMLInputElement>(null)
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setNotice('')
     const parsed = parseName(name, people, '')
     if ('error' in parsed) return setError(parsed.error)
+    if (!HEX.test(colour)) return setError('Pick a colour.')
     setError(null)
     setBusy(true)
     try {
       await addPerson(parsed.name, colour, role)
       setNotice(`${parsed.name} added. Create their invite above.`)
       setName('')
+      setColour('')
       onAdded()
+      nameRef.current?.focus()
     } catch (e) {
       setError(renameError(e))
     }
@@ -248,6 +341,7 @@ function AddPerson({ people, onAdded }: { people: Person[]; onAdded: () => void 
       <label className="field">
         Name
         <input
+          ref={nameRef}
           value={name}
           onChange={(e) => setName(e.target.value)}
           required
@@ -255,10 +349,22 @@ function AddPerson({ people, onAdded }: { people: Person[]; onAdded: () => void 
           aria-describedby={error ? 'add-error' : undefined}
         />
       </label>
-      <label className="field">
-        Colour
-        <input type="color" value={colour} onChange={(e) => setColour(e.target.value)} required />
-      </label>
+      <div className="field">
+        <label htmlFor="add-colour">Colour</label>
+        <span className="colour-choice">
+          {/* A colour input always shows some colour: black until one is picked. */}
+          <input
+            id="add-colour"
+            type="color"
+            value={colour || '#000000'}
+            onChange={(e) => setColour(e.target.value)}
+            aria-describedby="add-colour-state"
+          />
+          <span id="add-colour-state" className={colour ? undefined : 'muted'}>
+            {colour || 'Not chosen yet'}
+          </span>
+        </span>
+      </div>
       <label className="field">
         Role
         <select value={role} onChange={(e) => setRole(e.target.value as Role)}>

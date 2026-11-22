@@ -2,8 +2,8 @@ import type { FunctionError } from '../films/filmForm'
 
 /** Same as auth.minimum_password_length (supabase/config.toml) and the functions. */
 export const PASSWORD_MIN = 8
-/** bcrypt's limit; Supabase Auth refuses longer passwords. */
-export const PASSWORD_MAX = 72
+/** bcrypt's limit, in UTF-8 bytes; Supabase Auth refuses longer passwords. */
+export const PASSWORD_MAX_BYTES = 72
 
 export const INVALID_LINK_MESSAGE =
   'This link is invalid, has expired or was already used. Ask Manel for a new link.'
@@ -16,6 +16,8 @@ export function linkErrorMessage(e: unknown): string {
   if (status === 409 && error === 'email_taken') {
     return 'That email already has an account. Use another one, or ask Manel.'
   }
+  if (status === 400 && error === 'invalid_email') return "That email address isn't valid."
+  if (status === 400 && error === 'invalid_password') return PASSWORD_RULE
   if (status === 400) return 'Check the email and password and try again.'
   if (!status) return "Couldn't reach the server. Try again."
   return 'Something went wrong. Try again.'
@@ -32,10 +34,19 @@ export function adminLinkErrorMessage(e: unknown): string {
   return 'Something went wrong. Try again.'
 }
 
-/** Why a new password can't be used, or null. */
+const PASSWORD_RULE = `Use ${PASSWORD_MIN} or more characters, not only spaces (very long passwords are refused).`
+
+/**
+ * Why a new password can't be used, or null. Same rules as the functions
+ * (supabase/functions/_shared/links.ts): 8+ characters, not only whitespace,
+ * at most 72 UTF-8 bytes.
+ */
 export function passwordProblem(password: string, confirm: string): string | null {
   if (password.length < PASSWORD_MIN) return `Use at least ${PASSWORD_MIN} characters.`
-  if (password.length > PASSWORD_MAX) return `Use at most ${PASSWORD_MAX} characters.`
+  if (!/\S/.test(password)) return "A password can't be only spaces."
+  if (new TextEncoder().encode(password).length > PASSWORD_MAX_BYTES) {
+    return 'That password is too long. Use a shorter one.'
+  }
   if (password !== confirm) return "The passwords don't match."
   return null
 }
@@ -55,15 +66,17 @@ export interface OpenLink {
 
 const when = (iso: string) =>
   new Date(iso).toLocaleString('en-GB', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
     timeZone: 'Europe/Lisbon',
   })
 
-/** E.g. "Invite open until 6 Dec 2026, 20:10" or "Reset link expired 1 Dec 2026, 09:00". */
+/** Short, for a phone: "Invite until 6 Dec, 20:10" or "Reset link expired 1 Jul, 10:00". */
 export function linkLabel(link: OpenLink, now = new Date()): string {
   const name = link.kind === 'invite' ? 'Invite' : 'Reset link'
   return Date.parse(link.expiresAt) > now.getTime()
-    ? `${name} open until ${when(link.expiresAt)}`
+    ? `${name} until ${when(link.expiresAt)}`
     : `${name} expired ${when(link.expiresAt)}`
 }

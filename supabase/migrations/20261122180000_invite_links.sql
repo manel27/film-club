@@ -28,6 +28,11 @@ as $$
 declare
   target record;
 begin
+  -- A future created_at would stretch invites_lifetime: refused for everyone.
+  if new.created_at > now() then
+    raise exception 'An invite cannot be created in the future' using errcode = '23514';
+  end if;
+
   if tg_op = 'INSERT' then
     select p.is_system, p.is_claimed, p.colour into target
     from public.profiles p where p.id = new.profile_id;
@@ -131,9 +136,11 @@ as $$
 $$;
 
 -- Marks an open link used; for an invite, also links the profile to the new
--- login. All or nothing: the row lock on the invite means two claims of one
--- link can't both win (the second finds it used and gets no row). Returns the
--- link's id and the profile's login, or no row when the link isn't open.
+-- login. All or nothing: the row locks mean two claims of one link can't both
+-- win (the second finds it used and gets no row). Locks the profile before the
+-- invite, in the same order as invite_issue, so the two never deadlock.
+-- Returns the link's id and the profile's login, or no row when the link
+-- isn't open; raises 23514 when the person can no longer take it.
 create function public.invite_redeem(p_token_hash bytea, p_kind text, p_auth_user_id uuid default null)
 returns table (invite_id uuid, auth_user_id uuid)
 language plpgsql
@@ -145,6 +152,10 @@ declare
   link record;
   login uuid;
 begin
+  perform 1 from public.profiles p
+  where p.id = (select i.profile_id from public.invites i where i.token_hash = p_token_hash)
+  for update;
+
   update public.invites i set used_at = now()
   where i.token_hash = p_token_hash
     and i.kind = p_kind
@@ -168,10 +179,28 @@ begin
 end;
 $$;
 
--- Counts one attempt on a public link endpoint for this IP; false when over
--- 10 an hour (plan 7.5). Shared by invite-preview, invite-claim, reset-claim.
-create function public.invite_rate_hit(p_ip text)
+-- Rate limit for the public link endpoints (plan 7.5): only FAILED attempts
+-- (bad links, refused claims) count, so a person reloading their invite never
+-- locks themselves out. 10 failures an hour per IP, and 100 an hour from
+-- everyone together (subject '*'), so a spoofed IP header can't buy unlimited
+-- guesses. Per-IP subjects are 'ip:<address>', clipped to 64 characters.
+-- invite_rate_ok asks; invite_rate_fail records one failure.
+
+create function public.invite_rate_ok(p_ip text)
 returns boolean
+language sql
+stable
+security invoker
+set search_path = ''
+as $$
+  select coalesce(sum(r.count) filter (where r.subject = left('ip:' || p_ip, 64)), 0) < 10
+     and coalesce(sum(r.count) filter (where r.subject = '*'), 0) < 100
+  from public.rate_limits r
+  where r.bucket = 'invite-link' and r.window_start = date_trunc('hour', now());
+$$;
+
+create function public.invite_rate_fail(p_ip text)
+returns void
 language plpgsql
 volatile
 security invoker
@@ -179,26 +208,23 @@ set search_path = ''
 as $$
 declare
   win timestamptz := date_trunc('hour', now());
-  hits integer;
 begin
-  -- Old windows are never read again.
-  delete from public.rate_limits
-  where bucket = 'invite-link' and subject = p_ip and window_start < win;
+  -- Old windows are never read again (every subject, so the table stays small).
+  delete from public.rate_limits where bucket = 'invite-link' and window_start < win;
 
   insert into public.rate_limits as r (bucket, subject, window_start, count)
-  values ('invite-link', p_ip, win, 1)
-  on conflict (bucket, subject, window_start) do update set count = r.count + 1
-  returning r.count into hits;
-
-  return hits <= 10;
+  values ('invite-link', left('ip:' || p_ip, 64), win, 1), ('invite-link', '*', win, 1)
+  on conflict (bucket, subject, window_start) do update set count = r.count + 1;
 end;
 $$;
 
 revoke execute on function public.invite_issue(uuid, text, bytea, uuid) from public, anon, authenticated;
 revoke execute on function public.invite_peek(bytea, text) from public, anon, authenticated;
 revoke execute on function public.invite_redeem(bytea, text, uuid) from public, anon, authenticated;
-revoke execute on function public.invite_rate_hit(text) from public, anon, authenticated;
+revoke execute on function public.invite_rate_ok(text) from public, anon, authenticated;
+revoke execute on function public.invite_rate_fail(text) from public, anon, authenticated;
 grant execute on function public.invite_issue(uuid, text, bytea, uuid) to service_role;
 grant execute on function public.invite_peek(bytea, text) to service_role;
 grant execute on function public.invite_redeem(bytea, text, uuid) to service_role;
-grant execute on function public.invite_rate_hit(text) to service_role;
+grant execute on function public.invite_rate_ok(text) to service_role;
+grant execute on function public.invite_rate_fail(text) to service_role;

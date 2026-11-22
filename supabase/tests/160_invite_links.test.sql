@@ -1,7 +1,7 @@
 -- Invite and reset links (phase 11, plan 7; decisions I1, I2): the kind
 -- column and its guards, and the Edge Function RPCs (secret key only).
 begin;
-select plan(42);
+select plan(55);
 
 -- ---------------------------------------------------------------- RPCs: secret key only
 select tests.login_as('admin');
@@ -11,7 +11,7 @@ select throws_ok($$select * from public.invite_peek(extensions.digest('local-dev
   '42501', null, 'admin cannot peek at links');
 select throws_ok($$select * from public.invite_redeem(extensions.digest('local-dev-invite-viggo', 'sha256'), 'invite', null)$$,
   '42501', null, 'admin cannot redeem links');
-select throws_ok($$select public.invite_rate_hit('1.2.3.4')$$, '42501', null, 'admin cannot touch the link rate limit');
+select throws_ok($$select public.invite_rate_fail('1.2.3.4')$$, '42501', null, 'admin cannot touch the link rate limit');
 reset role;
 select tests.login_as('moderator');
 select throws_ok($$select public.invite_issue(tests.profile_id('placeholder'), 'invite', extensions.digest('t', 'sha256'), null)$$,
@@ -30,7 +30,8 @@ select throws_ok($$select * from public.invite_peek(extensions.digest('local-dev
   '42501', null, 'anon cannot peek at links (invite-preview only)');
 select throws_ok($$select * from public.invite_redeem(extensions.digest('local-dev-invite-viggo', 'sha256'), 'invite', null)$$,
   '42501', null, 'anon cannot redeem links (invite-claim only)');
-select throws_ok($$select public.invite_rate_hit('1.2.3.4')$$, '42501', null, 'anon cannot touch the link rate limit');
+select throws_ok($$select public.invite_rate_fail('1.2.3.4')$$, '42501', null, 'anon cannot touch the link rate limit');
+select throws_ok($$select public.invite_rate_ok('1.2.3.4')$$, '42501', null, 'anon cannot read the link rate limit');
 select throws_ok($$select kind from public.invites$$, '42501', null, 'anon cannot read invites');
 reset role;
 
@@ -134,10 +135,36 @@ select throws_ok($$select * from public.invite_redeem(extensions.digest('wren', 
 select ok((select used_at is null from public.invites where token_hash = extensions.digest('wren', 'sha256')),
   'and the invite is left as it was');
 
--- ---------------------------------------------------------------- invite_rate_hit
-select is((select count(*)::integer from generate_series(1, 10) where public.invite_rate_hit('198.51.100.7')), 10,
-  '10 attempts an hour per IP are allowed');
-select ok(not public.invite_rate_hit('198.51.100.7'), 'the 11th is refused');
+-- ---------------------------------------------------------------- created_at
+reset role;
+select throws_ok($$update public.invites set created_at = now() + interval '1 year', expires_at = now() + interval '1 year 1 hour'
+  where token_hash = extensions.digest('wren', 'sha256')$$,
+  '23514', 'An invite cannot be created in the future', 'a future created_at cannot stretch a link''s life, even for postgres');
+
+-- ---------------------------------------------------------------- rate limit (failures only)
+insert into public.rate_limits (bucket, subject, window_start, count) values
+  ('invite-link', 'ip:203.0.113.1', date_trunc('hour', now()) - interval '1 hour', 50),
+  ('invite-link', '*', date_trunc('hour', now()) - interval '2 hours', 500),
+  ('tmdb-search', 'someone', date_trunc('hour', now()) - interval '1 hour', 1);
+select tests.login_service_role();
+select ok(public.invite_rate_ok('198.51.100.7'), 'a new address is allowed');
+select is((select count(*)::integer from (select public.invite_rate_fail('198.51.100.7') from generate_series(1, 9)) x), 9, '9 failures recorded');
+select ok(public.invite_rate_ok('198.51.100.7'), '9 failures: still allowed');
+select lives_ok($$select public.invite_rate_fail('198.51.100.7')$$, 'a 10th failure');
+select ok(not public.invite_rate_ok('198.51.100.7'), '10 failures an hour per IP: refused');
+select ok(public.invite_rate_ok('198.51.100.8'), 'another address is still allowed');
+reset role;
+select is((select count(*)::integer from public.rate_limits where bucket = 'invite-link' and window_start < date_trunc('hour', now())), 0,
+  'old windows are deleted for every subject');
+select is((select count(*)::integer from public.rate_limits where bucket = 'tmdb-search'), 1, 'other buckets are left alone');
+select tests.login_service_role();
+select is((select count(*)::integer from (select public.invite_rate_fail('spoofed-' || n) from generate_series(1, 90) n) x), 90, '90 more failures from spoofed addresses');
+select ok(not public.invite_rate_ok('198.51.100.9'), '100 failures an hour from everyone: everyone is refused');
+select lives_ok($$select public.invite_rate_fail(repeat('z', 500))$$, 'a huge address is accepted');
+reset role;
+select is((select max(char_length(subject)) from public.rate_limits where bucket = 'invite-link'), 64, 'subjects are clipped to 64 characters');
+select tests.login_service_role();
+select lives_ok($$select public.invite_rate_fail('*')$$, 'an address of * never clashes with the overall count');
 reset role;
 
 select * from finish();

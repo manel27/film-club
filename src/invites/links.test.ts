@@ -20,6 +20,10 @@ describe('linkErrorMessage', () => {
       /already has an account/,
     )
     expect(linkErrorMessage({ status: 400 })).toMatch(/Check the email and password/)
+    expect(linkErrorMessage({ status: 400, error: 'invalid_email' })).toBe(
+      "That email address isn't valid.",
+    )
+    expect(linkErrorMessage({ status: 400, error: 'invalid_password' })).toMatch(/not only spaces/)
     expect(linkErrorMessage({ status: 0 })).toMatch(/Couldn't reach the server/)
     expect(linkErrorMessage({ status: 500 })).toBe('Something went wrong. Try again.')
   })
@@ -34,9 +38,17 @@ describe('adminLinkErrorMessage', () => {
 })
 
 describe('passwordProblem', () => {
-  it('needs 8 to 72 characters, typed the same twice', () => {
+  it('needs 8+ characters, at most 72 UTF-8 bytes, not only spaces, typed the same twice', () => {
     expect(passwordProblem('1234567', '1234567')).toBe('Use at least 8 characters.')
-    expect(passwordProblem('x'.repeat(73), 'x'.repeat(73))).toBe('Use at most 72 characters.')
+    expect(passwordProblem(' \t'.repeat(5), ' \t'.repeat(5))).toBe(
+      "A password can't be only spaces.",
+    )
+    const long = 'x'.repeat(73)
+    expect(passwordProblem(long, long)).toBe('That password is too long. Use a shorter one.')
+    // 37 characters, 74 bytes.
+    const accents = 'é'.repeat(37)
+    expect(passwordProblem(accents, accents)).toBe('That password is too long. Use a shorter one.')
+    expect(passwordProblem('é'.repeat(36), 'é'.repeat(36))).toBeNull()
     expect(passwordProblem('12345678', '12345679')).toBe("The passwords don't match.")
     expect(passwordProblem('12345678', '12345678')).toBeNull()
   })
@@ -56,13 +68,13 @@ describe('linkLabel', () => {
 
   it('says until when a link is open, in Lisbon time', () => {
     expect(linkLabel({ ...link, expiresAt: '2026-12-06T12:00:00Z' }, now)).toBe(
-      'Invite open until 6 Dec 2026, 12:00',
+      'Invite until 6 Dec, 12:00',
     )
   })
 
   it('says when a link expired (summer time in Lisbon)', () => {
     expect(linkLabel({ ...link, kind: 'reset', expiresAt: '2026-07-01T09:00:00Z' }, now)).toBe(
-      'Reset link expired 1 Jul 2026, 10:00',
+      'Reset link expired 1 Jul, 10:00',
     )
   })
 })

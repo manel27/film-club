@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { createMemoryRouter, RouterProvider } from 'react-router'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AuthProvider } from '../auth/AuthProvider'
 import * as api from '../invites/api'
 import { routes } from '../routes'
@@ -41,6 +41,17 @@ const type = (label: string | RegExp, value: string) =>
   fireEvent.change(screen.getByLabelText(label), { target: { value } })
 
 beforeEach(() => vi.resetAllMocks())
+
+// jsdom has <dialog> but not showModal()/close().
+beforeAll(() => {
+  HTMLDialogElement.prototype.showModal = function (this: HTMLDialogElement) {
+    this.open = true
+  }
+  HTMLDialogElement.prototype.close = function (this: HTMLDialogElement) {
+    this.open = false
+    this.dispatchEvent(new Event('close'))
+  }
+})
 
 describe('invite page', () => {
   it('shows who the invite is for, creates the login, signs in and opens the app', async () => {
@@ -89,8 +100,13 @@ describe('invite page', () => {
 
 describe('reset page', () => {
   it('sets the new password, then signs in with the returned email', async () => {
+    mocked.previewInvite.mockResolvedValue({ name: 'Quinn', colour: '#4a86e8', watched: 2 })
     mocked.claimReset.mockResolvedValue(TEST_EMAIL)
     const { fake } = renderApp('/reset/tok456')
+    expect(
+      await screen.findByRole('heading', { name: 'Set a new password for Quinn' }),
+    ).toBeInTheDocument()
+    expect(mocked.previewInvite).toHaveBeenCalledWith('tok456', 'reset')
     type(/^New password/, TEST_PASSWORD)
     type('Confirm new password', TEST_PASSWORD)
     fireEvent.click(screen.getByRole('button', { name: 'Save and log in' }))
@@ -99,9 +115,18 @@ describe('reset page', () => {
     expect(fake.backend.signIn).toHaveBeenCalledWith(TEST_EMAIL, TEST_PASSWORD)
   })
 
-  it('refuses mismatched passwords and explains a bad link', async () => {
+  it('says straight away when the link is dead', async () => {
+    mocked.previewInvite.mockRejectedValue({ status: 404, error: 'invalid_link' })
+    renderApp('/reset/dead')
+    expect(await screen.findByRole('alert')).toHaveTextContent('Ask Manel for a new link')
+    expect(screen.queryByLabelText(/New password/)).not.toBeInTheDocument()
+  })
+
+  it('refuses mismatched passwords and explains a link that died meanwhile', async () => {
+    mocked.previewInvite.mockResolvedValue({ name: 'Quinn', colour: '#4a86e8', watched: 2 })
     mocked.claimReset.mockRejectedValue({ status: 404 })
     renderApp('/reset/tok456')
+    await screen.findByRole('heading', { name: 'Set a new password for Quinn' })
     type(/^New password/, TEST_PASSWORD)
     type('Confirm new password', 'something-else')
     fireEvent.click(screen.getByRole('button', { name: 'Save and log in' }))
@@ -168,7 +193,7 @@ describe('admin page', () => {
     await screen.findByRole('link', { name: 'Kwame' })
     expect(row('Kwame')).toHaveTextContent('Has a login')
     expect(row('Viggo')).toHaveTextContent('Not claimed yet')
-    expect(row('Viggo')).toHaveTextContent('Invite open until 1 Jan 2099')
+    expect(row('Viggo')).toHaveTextContent('Invite until 1 Jan')
     expect(row('Wren')).toHaveTextContent('Needs a colour before an invite')
     expect(screen.getByRole('button', { name: 'Create reset link for Kwame' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Regenerate invite for Viggo' })).toBeInTheDocument()
@@ -187,17 +212,40 @@ describe('admin page', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Copy link' }))
     expect(await screen.findByText('Copied.')).toBeInTheDocument()
     expect(writeText).toHaveBeenCalledWith('http://x/#/reset/abc')
+    expect(screen.getByLabelText('Link')).toHaveFocus()
     fireEvent.click(screen.getByRole('button', { name: 'Done' }))
     expect(screen.queryByLabelText('Link')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Create reset link for Kwame' })).toHaveFocus()
   })
 
-  it('revokes a link', async () => {
-    mocked.fetchAdminPeople.mockResolvedValue(adminData())
+  it('revokes a link only after a yes, then focuses the row again', async () => {
+    mocked.fetchAdminPeople
+      .mockResolvedValueOnce(adminData())
+      .mockResolvedValue({ ...adminData(), links: [] })
     mocked.revokeLink.mockResolvedValue()
     renderApp('/admin', admin())
     fireEvent.click(await screen.findByRole('button', { name: 'Revoke invite for Viggo' }))
+    const dialog = screen.getByRole('dialog', { name: 'Revoke the invite for Viggo?' })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    expect(mocked.revokeLink).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Revoke invite for Viggo' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Yes, revoke' }))
     await waitFor(() => expect(mocked.revokeLink).toHaveBeenCalledWith('link-1'))
-    await waitFor(() => expect(mocked.fetchAdminPeople).toHaveBeenCalledTimes(2))
+    const create = await screen.findByRole('button', { name: 'Create invite for Viggo' })
+    await waitFor(() => expect(create).toHaveFocus())
+  })
+
+  it('regenerates a link only after a yes', async () => {
+    mocked.fetchAdminPeople.mockResolvedValue(adminData())
+    mocked.createLink.mockResolvedValue({ link: 'http://x/#/invite/new', expires_at: '2099-01-01' })
+    renderApp('/admin', admin())
+    fireEvent.click(await screen.findByRole('button', { name: 'Regenerate invite for Viggo' }))
+    expect(mocked.createLink).not.toHaveBeenCalled()
+    expect(screen.getByRole('dialog')).toHaveTextContent('stops working, even if it was sent')
+    fireEvent.click(screen.getByRole('button', { name: 'Yes, regenerate' }))
+    expect(await screen.findByLabelText('Link')).toHaveValue('http://x/#/invite/new')
+    expect(mocked.createLink).toHaveBeenCalledWith('invite', VIGGO)
   })
 
   it('adds a person with a normalised name, colour and role', async () => {
@@ -210,10 +258,17 @@ describe('admin page', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Someone already has that name.')
 
     type('Name', '  Zé​   Novo ')
+    fireEvent.click(screen.getByRole('button', { name: 'Add person' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Pick a colour.')
+    expect(screen.getByText('Not chosen yet')).toBeInTheDocument()
+    expect(mocked.addPerson).not.toHaveBeenCalled()
+
     type('Colour', '#123abc')
     fireEvent.change(screen.getByLabelText('Role'), { target: { value: 'viewer' } })
     fireEvent.click(screen.getByRole('button', { name: 'Add person' }))
     expect(await screen.findByText('Zé Novo added. Create their invite above.')).toBeInTheDocument()
     expect(mocked.addPerson).toHaveBeenCalledWith('Zé Novo', '#123abc', 'viewer')
+    expect(screen.getByLabelText('Name')).toHaveFocus()
+    expect(screen.getByText('Not chosen yet')).toBeInTheDocument()
   })
 })

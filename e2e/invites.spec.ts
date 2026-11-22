@@ -79,7 +79,7 @@ test('admin adds a person and invites them; they claim it and log in', async ({
 
   const link = await newLink(page, `Create invite for ${INVITEE.name}`)
   expect(link.startsWith('http://localhost:4317/film-club/#/invite/')).toBe(true)
-  await expect(row).toContainText('Invite open until')
+  await expect(row).toContainText('Invite until')
   await page.screenshot({ path: `${SCREENSHOTS}/admin-people.png`, fullPage: true })
 
   const invitee = await openFresh(browser, link)
@@ -103,6 +103,14 @@ test('admin adds a person and invites them; they claim it and log in', async ({
 
   await page.reload()
   await expect(row).toContainText('Has a login')
+
+  // On a phone each person is a card: nothing scrolls sideways.
+  await page.setViewportSize({ width: 375, height: 800 })
+  await expect(row.getByRole('link', { name: INVITEE.name })).toBeInViewport()
+  const region = page.getByRole('region', { name: 'People' })
+  expect(await region.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375)
+  await page.screenshot({ path: `${SCREENSHOTS}/admin-people-phone.png`, fullPage: true })
   await expect(
     page.getByRole('button', { name: `Create reset link for ${INVITEE.name}` }),
   ).toBeVisible()
@@ -118,6 +126,8 @@ test('expired, revoked and made-up invite links are refused', async ({ page, bro
   await openAdmin(page)
   const revoked = await newLink(page, `Create invite for ${STALE.name}`)
   await page.getByRole('button', { name: `Revoke invite for ${STALE.name}` }).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Yes, revoke' }).click()
+  await expect(page.getByRole('button', { name: `Create invite for ${STALE.name}` })).toBeFocused()
   await expect(page.getByRole('row').filter({ hasText: STALE.name })).toContainText(
     '—Create invite',
   )
@@ -158,6 +168,9 @@ test('a reset link sets a new password once', async ({ page, browser }) => {
   await expect(page.getByText(/for 24 hours/)).toBeVisible()
 
   const resetter = await openFresh(browser, link)
+  await expect(
+    resetter.getByRole('heading', { name: `Set a new password for ${RESETTER.name}` }),
+  ).toBeVisible()
   await resetter.getByLabel(/^New password/).fill(NEW_PASSWORD)
   await resetter.getByLabel('Confirm new password').fill('typo-password')
   await resetter.getByRole('button', { name: 'Save and log in' }).click()
@@ -170,11 +183,10 @@ test('a reset link sets a new password once', async ({ page, browser }) => {
   await resetter.getByRole('button', { name: 'Log out' }).click()
   await logIn(resetter, RESETTER.email, NEW_PASSWORD)
 
+  // Used: the reset page says so before any typing.
   const again = await openFresh(browser, link)
-  await again.getByLabel(/^New password/).fill('another-password')
-  await again.getByLabel('Confirm new password').fill('another-password')
-  await again.getByRole('button', { name: 'Save and log in' }).click()
   await expect(again.getByRole('alert')).toHaveText(BAD_LINK)
+  await expect(again.getByLabel(/^New password/)).toHaveCount(0)
 })
 
 test('only the admin reaches the admin page', async ({ page }) => {

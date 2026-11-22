@@ -9,7 +9,9 @@ export interface InvitePreview {
   watched: number
 }
 
-export const previewInvite = (token: string) => invoke<InvitePreview>('invite-preview', { token })
+/** Who an open link is for (a reset link with kind 'reset'); a dead link throws a 404. */
+export const previewInvite = (token: string, kind: OpenLink['kind'] = 'invite') =>
+  invoke<InvitePreview>('invite-preview', { token, kind })
 
 /** Creates the login for the invite's person (then sign in with the same email and password). */
 export const claimInvite = (token: string, email: string, password: string) =>
