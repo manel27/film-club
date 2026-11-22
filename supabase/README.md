@@ -82,12 +82,26 @@ npm run db:reset   # drop the local database, re-apply all migrations, re-seed
 `functions/` holds the film functions (plan 2.2). Each one verifies the
 caller's JWT, re-reads their role from the database (`my_profile()`) and writes
 with the caller's JWT, so RLS and the triggers apply. None uses the secret key.
+The invite and reset link functions (plan 7, `_shared/links.ts`) are the
+exception: they use the secret key through service-role-only RPCs
+(`invite_issue`, `invite_peek`, `invite_redeem`, `invite_rate_hit`).
 
 | Function           | Who                           | What                                                                 |
 | ------------------ | ----------------------------- | -------------------------------------------------------------------- |
 | `tmdb-search`      | logged-in, not viewers        | TMDB search (60 a minute per person, `tmdb_search_hit()`); marks films already watched |
 | `film-save`        | moderators, admins            | adds or edits a film, from TMDB or without it (title + year)          |
 | `film-relink-tmdb` | moderators, admins            | links a film to a TMDB id (or refreshes it) and replaces its details  |
+| `invite-create`    | admins                        | a new invite link (14 days) for an unclaimed person; revokes their open one |
+| `admin-reset-link` | admins                        | a new password reset link (24 hours) for a person with a login        |
+| `invite-preview`   | public (the link's token)     | name, colour and films watched of an open invite                      |
+| `invite-claim`     | public (the link's token)     | creates the login (email + password) and links it to the person       |
+| `reset-claim`      | public (the link's token)     | sets the new password; returns the email so the page can sign in      |
+
+Links are single use and revocable (admins revoke them from the browser: RLS
+allows only that). Only the token's SHA-256 hash is stored. The public ones
+allow 10 attempts per IP per hour, and say the same thing for every bad link.
+A link's origin is the admin page's own (the site, or localhost locally), so
+no configuration is needed.
 
 **Local secrets.** `supabase start` reads `functions/.env` (git-ignored). Copy
 `functions/.env.example` and fill in:
@@ -106,7 +120,8 @@ local stack with TMDB replaced by a stub (Deno 2 needed; `npm run
 functions:check` checks format and types).
 
 **Production** (not done by any agent): `supabase secrets set TMDB_TOKEN=…`,
-then `supabase functions deploy tmdb-search film-save film-relink-tmdb`.
+then `supabase functions deploy tmdb-search film-save film-relink-tmdb invite-create
+admin-reset-link invite-preview invite-claim reset-claim`.
 `config.toml` turns the gateway's legacy JWT check off for them
 (`verify_jwt = false`) because they verify the JWT themselves.
 

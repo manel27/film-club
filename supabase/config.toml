@@ -405,9 +405,11 @@ deno_version = 2
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 
-# The film functions verify the caller's JWT themselves (Supabase Auth) and
-# re-check the role in the database; the gateway's legacy JWT check is off
-# because it does not understand the new asymmetric signing keys.
+# The film and admin link functions verify the caller's JWT themselves
+# (Supabase Auth) and re-check the role in the database; the gateway's legacy
+# JWT check is off because it does not understand the new asymmetric signing
+# keys. invite-preview, invite-claim and reset-claim are public (the link's
+# token is the credential) and rate-limited per IP.
 [functions.tmdb-search]
 verify_jwt = false
 
@@ -415,6 +417,21 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.film-relink-tmdb]
+verify_jwt = false
+
+[functions.invite-create]
+verify_jwt = false
+
+[functions.admin-reset-link]
+verify_jwt = false
+
+[functions.invite-preview]
+verify_jwt = false
+
+[functions.invite-claim]
+verify_jwt = false
+
+[functions.reset-claim]
 verify_jwt = false
 
 [analytics]

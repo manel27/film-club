@@ -71,7 +71,7 @@ export default function LoginPage() {
           {submitting ? 'Logging in…' : 'Log in'}
         </button>
       </form>
-      <p className="muted">Invite-only. Ask Manel for an invite.</p>
+      <p className="muted">Got an invite? Open the link Manel sent you.</p>
       <ThemePicker />
     </main>
   )

@@ -287,6 +287,7 @@ export type Database = {
           created_by: string | null
           expires_at: string
           id: string
+          kind: string
           profile_id: string
           revoked_at: string | null
           token_hash: string
@@ -298,6 +299,7 @@ export type Database = {
           created_by?: string | null
           expires_at?: string
           id?: string
+          kind?: string
           profile_id: string
           revoked_at?: string | null
           token_hash: string
@@ -308,6 +310,7 @@ export type Database = {
           created_by?: string | null
           expires_at?: string
           id?: string
+          kind?: string
           profile_id?: string
           revoked_at?: string | null
           token_hash?: string
@@ -768,6 +771,26 @@ export type Database = {
           screened_on: string
           title: string
           tmdb_id: number
+        }[]
+      }
+      invite_issue: {
+        Args: { p_created_by: string; p_kind: string; p_profile_id: string; p_token_hash: string }
+        Returns: string
+      }
+      invite_peek: {
+        Args: { p_kind: string; p_token_hash: string }
+        Returns: {
+          colour: string
+          display_name: string
+          watched: number
+        }[]
+      }
+      invite_rate_hit: { Args: { p_ip: string }; Returns: boolean }
+      invite_redeem: {
+        Args: { p_auth_user_id?: string; p_kind: string; p_token_hash: string }
+        Returns: {
+          auth_user_id: string
+          invite_id: string
         }[]
       }
       my_profile: {

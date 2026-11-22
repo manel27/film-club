@@ -22,7 +22,7 @@ test('logged-out visitors are sent to the login page', async ({ page }) => {
   await page.goto('./')
   await expect(page).toHaveURL(/\/film-club\/#\/login$/)
   await expect(page.getByRole('heading', { name: 'Log in' })).toBeVisible()
-  await expect(page.getByText('Invite-only. Ask Manel for an invite.')).toBeVisible()
+  await expect(page.getByText('Got an invite? Open the link Manel sent you.')).toBeVisible()
   await expect(page.getByRole('link')).toHaveCount(0)
   await page.screenshot({ path: `${SCREENSHOTS}/login.png` })
 
@@ -38,7 +38,8 @@ test('admin logs in and sees the app shell', async ({ page }) => {
   const header = page.getByRole('banner')
   await expect(header.getByRole('link', { name: 'Film Club' })).toBeVisible()
   await expect(header.getByText(E2E_ADMIN.name)).toBeVisible()
-  await expect(header.getByText('Admin', { exact: true })).toBeVisible()
+  await expect(header.getByLabel('Logged in as').getByText('Admin', { exact: true })).toBeVisible()
+  await expect(header.getByRole('link', { name: 'Admin', exact: true })).toBeVisible()
   await expect(header.locator('.colour-dot')).toHaveCSS('background-color', 'rgb(230, 145, 56)')
   await expect(page.getByRole('heading', { name: 'Films', exact: true })).toBeVisible()
   await page.screenshot({ path: `${SCREENSHOTS}/home-admin.png` })
