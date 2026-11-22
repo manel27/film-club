@@ -21,6 +21,7 @@ const film = (f: Partial<FilmItem> & Pick<FilmItem, 'id' | 'title' | 'screenedOn
   assignedId: ADA,
   presentIds: [],
   avgScore: null,
+  isEasterEgg: false,
   ...f,
 })
 
@@ -39,16 +40,23 @@ const data = (): ProfileData => ({
       avgScore: 8,
     }),
     film({ id: 2, title: 'Night Bus', screenedOn: '2026-11-07', assignedId: ME, avgScore: 6 }),
-    film({ id: 3, title: 'Shark Joke', screenedOn: '2025-06-14', assignedId: ME }),
+    // The easter egg and a future screening: in no tab (P3, P4).
+    film({
+      id: 3,
+      title: 'Shark Joke',
+      screenedOn: '2025-06-14',
+      assignedId: ME,
+      isEasterEgg: true,
+    }),
+    film({ id: 4, title: 'Old Reel', screenedOn: '2024-03-02' }),
+    film({ id: 5, title: 'Tomorrow', screenedOn: '2099-01-01', assignedId: ME }),
   ],
-  scored: new Set([1, 2, 3]),
   scores: new Map([
     [1, 9],
     [2, 7],
     [3, 11],
   ]),
   commentFilmIds: [1, 3],
-  easterEggIds: new Set([3]),
 })
 
 const fetchProfileData = vi.fn(async (id: string): Promise<ProfileData> => (void id, data()))
@@ -102,7 +110,7 @@ describe('profile page', () => {
       color: '#000000',
     })
     expect(stat('Films watched')).toBe('1')
-    expect(stat('Films chosen')).toBe('1')
+    expect(stat('Films chosen')).toBe('2') // the future film counts
     expect(stat('Average of the films they chose')).toBe('6.00')
     expect(stat('Scores given')).toBe('2')
     expect(stat('Average score given')).toBe('8.00')
@@ -127,12 +135,25 @@ describe('profile page', () => {
     const rows = within(screen.getByRole('tabpanel')).getAllByRole('listitem')
     expect(rows.map((r) => r.querySelector('a[href^="/films/"]')?.textContent)).toEqual([
       'Night Bus',
-      'Shark Joke',
+      'Old Reel',
     ])
     expect(within(rows[0]).getByText('Scored, not present')).toBeInTheDocument()
 
-    // Arrow keys move between the tabs.
-    fireEvent.keyDown(screen.getByRole('tab', { name: 'Not watched (2)' }), { key: 'ArrowLeft' })
+    expect(within(rows[1]).queryByText('Scored, not present')).not.toBeInTheDocument()
+    expect(screen.getByRole('tabpanel')).toHaveAttribute('tabindex', '0')
+
+    // Arrow keys move between the tabs (and wrap); Home and End jump.
+    const notWatched = screen.getByRole('tab', { name: 'Not watched (2)' })
+    fireEvent.keyDown(notWatched, { key: 'ArrowLeft' })
+    expect(screen.getByRole('tab', { name: 'Watched (1)' })).toHaveFocus()
+    fireEvent.keyDown(screen.getByRole('tab', { name: 'Watched (1)' }), { key: 'ArrowLeft' })
+    expect(notWatched).toHaveFocus()
+    expect(notWatched).toHaveAttribute('aria-selected', 'true')
+    fireEvent.keyDown(notWatched, { key: 'Home' })
+    expect(screen.getByRole('tab', { name: 'Watched (1)' })).toHaveFocus()
+    fireEvent.keyDown(screen.getByRole('tab', { name: 'Watched (1)' }), { key: 'End' })
+    expect(notWatched).toHaveFocus()
+    fireEvent.keyDown(notWatched, { key: 'ArrowRight' })
     expect(screen.getByRole('tab', { name: 'Watched (1)' })).toHaveFocus()
 
     fireEvent.click(screen.getByRole('button', { name: 'Poster grid' }))
@@ -184,15 +205,38 @@ describe('profile page', () => {
     expect(screen.queryByRole('button', { name: 'Edit name' })).not.toBeInTheDocument()
   })
 
-  it('offers no rename to a viewer', async () => {
+  it('offers no rename to a viewer on their own profile', async () => {
+    const d = data()
+    d.people[0].role = 'viewer'
+    fetchProfileData.mockResolvedValueOnce(d)
     renderPage(`/people/${ME}`, 'viewer')
     expect(await screen.findByRole('heading', { level: 1, name: 'Quinn' })).toBeInTheDocument()
+    expect(screen.getByText('Viewer', { selector: '.badge' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Edit name' })).not.toBeInTheDocument()
   })
 
   it('treats system profiles, unknown ids and bad ids as not found', async () => {
     renderPage(`/people/${CINEMA}`)
     expect(await screen.findByRole('heading', { name: 'Person not found' })).toBeInTheDocument()
+  })
+
+  it('treats an unknown valid uuid as not found', async () => {
+    renderPage('/people/00000000-0000-4000-8000-0000000000ff')
+    expect(await screen.findByRole('heading', { name: 'Person not found' })).toBeInTheDocument()
+    expect(fetchProfileData).toHaveBeenCalledWith('00000000-0000-4000-8000-0000000000ff')
+  })
+
+  it('saves even when the name matches a stale copy, and shows what the server has', async () => {
+    renderPage(`/people/${ME}`)
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit name' }))
+    // The reload after saving brings whatever the server now has.
+    const fresh = data()
+    fresh.people[0].name = 'Quinn (server)'
+    fetchProfileData.mockResolvedValueOnce(fresh)
+    fireEvent.click(screen.getByRole('button', { name: 'Save name' }))
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Name saved.'))
+    expect(renameProfile).toHaveBeenCalledWith(ME, 'Quinn')
+    expect(screen.getByRole('heading', { level: 1, name: 'Quinn (server)' })).toBeInTheDocument()
   })
 
   it('does not query for an id that is not a uuid', async () => {

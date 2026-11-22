@@ -28,7 +28,7 @@ test('a member browses the films by week, with averages and present people', asy
   ])
 
   const orchard = page.getByRole('listitem').filter({ hasText: 'The Quiet Orchard' })
-  await expect(orchard.getByRole('img', { name: 'Chosen by Kwame' })).toBeVisible()
+  await expect(orchard.getByText('Chosen by Kwame')).toBeAttached()
   await expect(orchard.locator('.film-avg')).toHaveText('Average 7.69')
   await expect(orchard.getByRole('group', { name: 'Present' }).getByRole('img')).toHaveCount(4)
   await expect(orchard.getByRole('img', { name: 'Viggo' })).toBeVisible()

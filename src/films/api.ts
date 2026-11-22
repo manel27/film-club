@@ -11,23 +11,23 @@ export interface FilmsData {
 }
 
 /**
- * Everything the films page needs in four queries. Attendance is embedded in
- * the films query (PostgREST's max_rows limits top-level rows only), averages
- * come from film_stats, which already leaves out the easter egg's locked 11s.
+ * Every film with its attendance and average, and everyone. Attendance is
+ * embedded in the films query (PostgREST's max_rows limits top-level rows
+ * only), averages come from film_stats, which already leaves out the easter
+ * egg's locked 11s.
  * shortcut: assumes fewer than 1,000 films (PostgREST max_rows); page the films query past that.
  */
-export async function fetchFilmsData(profileId: string): Promise<FilmsData> {
-  const [films, stats, people, scores] = await Promise.all([
+async function fetchFilmsAndPeople(): Promise<Pick<FilmsData, 'films' | 'people'>> {
+  const [films, stats, people] = await Promise.all([
     supabase
       .from('films')
       .select(
-        'id, title, release_year, poster_path, genres, screened_on, day_order, kind, assigned_id, attendance(profile_id)',
+        'id, title, release_year, poster_path, genres, screened_on, day_order, kind, assigned_id, is_easter_egg, attendance(profile_id)',
       ),
     supabase.from('film_stats').select('film_id, avg_score'),
     fetchPeople(),
-    supabase.from('scores').select('film_id').eq('profile_id', profileId),
   ])
-  const error = films.error ?? stats.error ?? people.error ?? scores.error
+  const error = films.error ?? stats.error ?? people.error
   if (error) throw error
 
   const avg = new Map((stats.data ?? []).map((s) => [s.film_id, s.avg_score]))
@@ -44,10 +44,20 @@ export async function fetchFilmsData(profileId: string): Promise<FilmsData> {
       assignedId: f.assigned_id,
       presentIds: f.attendance.map((a) => a.profile_id),
       avgScore: avg.get(f.id) ?? null,
+      isEasterEgg: f.is_easter_egg,
     })),
     people: toPeople(people.data),
-    scored: new Set((scores.data ?? []).map((s) => s.film_id)),
   }
+}
+
+/** Everything the films page needs; `scored` is for the given (logged-in) profile. */
+export async function fetchFilmsData(profileId: string): Promise<FilmsData> {
+  const [base, scores] = await Promise.all([
+    fetchFilmsAndPeople(),
+    supabase.from('scores').select('film_id').eq('profile_id', profileId),
+  ])
+  if (scores.error) throw scores.error
+  return { ...base, scored: new Set((scores.data ?? []).map((s) => s.film_id)) }
 }
 
 function fetchPeople() {
@@ -134,30 +144,26 @@ export const filmWrites = {
     check(supabase.from('films').delete().eq('id', id).select('id'), true),
 }
 
-export interface ProfileData extends FilmsData {
+export interface ProfileData extends Pick<FilmsData, 'films' | 'people'> {
   /** The person's scores by film id. */
   scores: Map<number, number>
   /** Film ids of the person's comments (one per comment). */
   commentFilmIds: number[]
-  /** The easter egg's id(s): left out of every profile stat (plan 4.4). */
-  easterEggIds: Set<number>
 }
 
-/** Everything a profile page needs: the films data plus the person's scores and comments. */
+/** Everything a profile page needs: every film and person, plus the person's scores and comments. */
 export async function fetchProfileData(personId: string): Promise<ProfileData> {
-  const [base, scores, comments, eggs] = await Promise.all([
-    fetchFilmsData(personId),
+  const [base, scores, comments] = await Promise.all([
+    fetchFilmsAndPeople(),
     supabase.from('scores').select('film_id, score').eq('profile_id', personId),
     supabase.from('comments').select('film_id').eq('author_id', personId),
-    supabase.from('films').select('id').eq('is_easter_egg', true),
   ])
-  const error = scores.error ?? comments.error ?? eggs.error
+  const error = scores.error ?? comments.error
   if (error) throw error
   return {
     ...base,
     scores: new Map((scores.data ?? []).map((s) => [s.film_id, s.score])),
     commentFilmIds: (comments.data ?? []).map((c) => c.film_id),
-    easterEggIds: new Set((eggs.data ?? []).map((f) => f.id)),
   }
 }
 

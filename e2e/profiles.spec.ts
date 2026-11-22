@@ -11,7 +11,7 @@ import {
 // Renames the E2E member in the shared local database (and puts the name
 // back), so this file runs in the writes project (playwright.config.ts).
 // Uses the seed data: Orla (admin) was present at films 1, 3, 4, 5 and 6,
-// chose 4 and 5 (and the easter egg, 7), and scored 2 without being there.
+// chose 4 and 5 (and the easter egg, 7), and scored 2 and 7 without being there.
 const SCREENSHOTS = 'test-results/screenshots'
 const ORLA = '00000000-0000-4000-8000-0000000000a1'
 const RENAMED = 'E2E Member Renamed'
@@ -62,9 +62,8 @@ test('a profile shows stats and switches between watched and not watched', async
   await expect(panel.getByRole('listitem').filter({ hasText: 'Neon Harbour' })).toContainText(
     'Scored, not present',
   )
-  await expect(
-    panel.getByRole('listitem').filter({ hasText: "Tomorrow's Feature" }),
-  ).not.toContainText('Scored, not present')
+  // The easter egg is in neither tab, though Orla scored it (decision P3).
+  await expect(panel).not.toContainText('Megashark Rising 2')
   await page.getByRole('button', { name: 'Poster grid' }).click()
   await expect(panel.getByRole('img', { name: 'Neon Harbour (2021)' })).toBeVisible()
   await page.screenshot({ path: `${SCREENSHOTS}/profile.png`, fullPage: true })
@@ -118,7 +117,10 @@ test('a member renames themselves from their own profile', async ({ page }) => {
   await page.getByRole('button', { name: 'Edit name' }).click()
   const input = page.getByLabel('Display name')
   await expect(input).toBeFocused()
-  await input.fill('kwame')
+  await input.fill('\u200b \u2060')
+  await page.getByRole('button', { name: 'Save name' }).click()
+  await expect(page.getByRole('alert')).toHaveText('Enter a name.')
+  await input.fill('k\u200bwame')
   await page.getByRole('button', { name: 'Save name' }).click()
   await expect(page.getByRole('alert')).toHaveText('Someone already has that name.')
 

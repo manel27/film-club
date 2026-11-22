@@ -20,3 +20,9 @@ export default function Chip({ person }: { person: Person | undefined }) {
     </span>
   )
 }
+
+/** A person's plain name, linking to their profile like Chip does (not system profiles). */
+export function PersonName({ person }: { person: Person | undefined }) {
+  if (person && !person.isSystem) return <Link to={`/people/${person.id}`}>{person.name}</Link>
+  return <>{person?.name ?? 'Unknown'}</>
+}

@@ -25,6 +25,7 @@ function film(id: number, screenedOn: string, extra: Partial<FilmItem> = {}): Fi
     assignedId: 'a',
     presentIds: [],
     avgScore: null,
+    isEasterEgg: false,
     ...extra,
   }
 }

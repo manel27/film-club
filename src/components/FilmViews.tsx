@@ -94,17 +94,27 @@ export function FilmRow(props: {
   const { film, people } = props
   const assigned = people.get(film.assignedId)
   const kind = KIND_LABELS[film.kind]
-  const chosenBy = <Dot person={assigned} label={`Chosen by ${assigned?.name ?? 'unknown'}`} />
+  const chosenBy = `Chosen by ${assigned?.name ?? 'unknown'}`
   return (
     <li className="film-row">
       {props.showDate && <span className="muted film-date">{weekHeading([film.screenedOn])}</span>}
       <span className="film-title">
         {assigned && !assigned.isSystem ? (
-          <Link to={`/people/${assigned.id}`} className="dot-link">
-            {chosenBy}
-          </Link>
+          // A mouse shortcut only: one Tab stop per film would be ~330. Screen readers get the text.
+          <>
+            <Link
+              to={`/people/${assigned.id}`}
+              className="dot-link"
+              tabIndex={-1}
+              aria-hidden="true"
+              title={chosenBy}
+            >
+              <Dot person={assigned} />
+            </Link>
+            <span className="sr-only">{chosenBy}</span>
+          </>
         ) : (
-          chosenBy
+          <Dot person={assigned} label={chosenBy} />
         )}{' '}
         <Link to={`/films/${film.id}`}>{film.title}</Link>
         {film.releaseYear && <span className="muted"> ({film.releaseYear})</span>}

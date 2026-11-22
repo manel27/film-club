@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link } from 'react-router'
 import { useAuth } from '../auth/authContext'
-import Chip from '../components/Chip'
+import Chip, { PersonName } from '../components/Chip'
 import { NextUp } from '../components/NextUp'
 import { KIND_LABELS, type Person } from '../films/films'
 import { rotationWrites, type RotationData } from '../rotation/api'
@@ -128,7 +128,10 @@ function PastChoosers({ data, byId }: Props) {
                   <td>
                     <Chip person={byId.get(f.assignedId)} />
                     {f.turnHolderId && (
-                      <span className="muted"> (missed: {byId.get(f.turnHolderId)?.name})</span>
+                      <span className="muted">
+                        {' '}
+                        (missed: <PersonName person={byId.get(f.turnHolderId)} />)
+                      </span>
                     )}
                   </td>
                 </tr>
@@ -178,7 +181,7 @@ function Passes({ rotation, data, byId }: Props & { rotation: Rotation }) {
                   <td>
                     <Chip person={byId.get(p.profileId)} />
                   </td>
-                  <td>{p.createdBy ? byId.get(p.createdBy)?.name : '–'}</td>
+                  <td>{p.createdBy ? <PersonName person={byId.get(p.createdBy)} /> : '–'}</td>
                   <td>
                     {canRemove(p) && (
                       <button
@@ -245,7 +248,7 @@ function AdjustmentLog({ data, byId }: Props) {
                   </td>
                   <td>{change(a)}</td>
                   <td>{a.reason}</td>
-                  <td>{a.createdBy ? (byId.get(a.createdBy)?.name ?? 'Unknown') : '–'}</td>
+                  <td>{a.createdBy ? <PersonName person={byId.get(a.createdBy)} /> : '–'}</td>
                 </tr>
               ))}
             </tbody>

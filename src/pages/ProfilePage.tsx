@@ -5,7 +5,8 @@ import { FilmRow, PosterTile, ViewToggle } from '../components/FilmViews'
 import { fetchProfileData, renameProfile, type ProfileData } from '../films/api'
 import { sortFilms, type FilmItem, type Person } from '../films/films'
 import { textOn } from '../lib/colour'
-import { parseName, profileStats, renameError, ROLE_NAMES } from '../people/profile'
+import { parseName, profileStats, profileTabs, renameError, ROLE_NAMES } from '../people/profile'
+import { lisbonDate } from '../rotation/rotation'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -97,14 +98,14 @@ function Profile({ id }: { id: string }) {
     )
   }
 
-  const stats = profileStats(id, data.films, data.scores, data.commentFilmIds, data.easterEggIds)
+  const stats = profileStats(id, data.films, data.scores, data.commentFilmIds)
   const people = new Map(data.people.map((p) => [p.id, p]))
   // ~330 films: cheap enough to recompute on every render.
-  const films = sortFilms(data.films, 'newest')
-  const lists: Record<Tab, FilmItem[]> = {
-    watched: films.filter((f) => f.presentIds.includes(id)),
-    'not-watched': films.filter((f) => !f.presentIds.includes(id)),
-  }
+  const lists: Record<Tab, FilmItem[]> = profileTabs(
+    id,
+    sortFilms(data.films, 'newest'),
+    lisbonDate(),
+  )
   const shown = lists[tab]
   // Only on "Not watched": scoring without attendance is allowed (plan 4.2).
   const marker = (f: FilmItem) =>
@@ -114,9 +115,13 @@ function Profile({ id }: { id: string }) {
     : undefined
   const canRename = me?.id === id && me.role !== 'viewer'
 
+  // ARIA tabs keyboard: arrows move (and wrap), Home and End jump to the first and last tab.
   const onTabKey = (e: KeyboardEvent) => {
-    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
-    const next = tab === 'watched' ? 'not-watched' : 'watched'
+    const i = TABS.findIndex(([t]) => t === tab)
+    const to = { ArrowLeft: i - 1, ArrowRight: i + 1, Home: 0, End: TABS.length - 1 }[e.key]
+    if (to === undefined) return
+    e.preventDefault()
+    const [next] = TABS[(to + TABS.length) % TABS.length]
     set('tab', next, 'watched')
     document.getElementById(`tab-${next}`)?.focus()
   }
@@ -175,7 +180,7 @@ function Profile({ id }: { id: string }) {
           onChange={(v) => set('view', v, 'list')}
         />
       </div>
-      <div id="profile-films" role="tabpanel" aria-labelledby={`tab-${tab}`}>
+      <div id="profile-films" role="tabpanel" aria-labelledby={`tab-${tab}`} tabIndex={0}>
         {shown.length === 0 ? (
           <p className="muted">No films here.</p>
         ) : view === 'list' ? (
@@ -241,11 +246,11 @@ function RenameForm(props: {
     if (busyRef.current) return
     const parsed = parseName(value, props.people, props.id)
     if ('error' in parsed) return setError(parsed.error)
-    if (parsed.name === props.name) return close('button')
     busyRef.current = true
     setBusy(true)
     setError('')
     try {
+      // Sent even when it matches the name shown: that copy may be stale (renamed in another tab).
       await renameProfile(props.id, parsed.name)
       // The header shows the name too.
       await Promise.all([refreshProfile(), props.reload()])
