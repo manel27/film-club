@@ -208,7 +208,12 @@ describe('rotation page', () => {
     renderPage()
     await card()
     expect(screen.getByRole('link', { name: 'Vote Night' })).toHaveAttribute('href', '/films/7')
-    expect(screen.getByText('(missed: Bo)')).toBeInTheDocument()
+    expect(screen.getByText(/\(missed:/)).toHaveTextContent('(missed: Bo)')
+    // Names in the tables link to profiles.
+    expect(within(screen.getByText(/\(missed:/)).getByRole('link', { name: 'Bo' })).toHaveAttribute(
+      'href',
+      expect.stringMatching(/^\/people\//),
+    )
     const log = screen.getByRole('heading', { name: 'Adjustments' }).nextElementSibling!
     const rows = within(log as HTMLElement)
       .getAllByRole('row')
@@ -217,6 +222,8 @@ describe('rotation page', () => {
       '2026/01/05Adaset to 3Starting valueBo',
       '2026/02/01Quinn−2Typo–',
     ])
+    // The "by" column links too.
+    expect(within(log as HTMLElement).getAllByRole('link', { name: 'Bo' })).toHaveLength(1)
     // A past pass can't be removed.
     expect(screen.getByText('2026/02/09')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Remove/ })).not.toBeInTheDocument()

@@ -28,13 +28,13 @@ export default defineConfig({
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
-      testIgnore: /(add|delete)-film|rotation/,
+      testIgnore: /(add|delete)-film|rotation|profiles/,
     },
-    // Add and delete films and write rotation data, which other tests count or show: run after them.
+    // Add and delete films, write rotation data and rename people, which other tests count or show: run after them.
     {
       name: 'chromium-writes',
       use: { ...devices['Desktop Chrome'] },
-      testMatch: /(add|delete)-film|rotation/,
+      testMatch: /(add|delete)-film|rotation|profiles/,
       dependencies: ['chromium'],
     },
   ],

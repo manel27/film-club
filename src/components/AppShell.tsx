@@ -25,6 +25,7 @@ export default function AppShell() {
             Films
           </NavLink>
           <NavLink to="/rotation">Rotation</NavLink>
+          <NavLink to="/people">People</NavLink>
         </nav>
         <div className="header-tools">
           <ThemePicker />
@@ -35,7 +36,9 @@ export default function AppShell() {
                 style={profile.colour ? { backgroundColor: profile.colour } : undefined}
                 aria-hidden="true"
               />
-              <span className="whoami-name">{profile.display_name}</span>
+              <Link to={`/people/${profile.id}`} className="whoami-name">
+                {profile.display_name}
+              </Link>
               {roleLabel && <span className="badge">{roleLabel}</span>}
               <button
                 type="button"

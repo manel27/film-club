@@ -29,8 +29,8 @@ select throws_ok($$insert into public.profiles (display_name, is_system) values 
   '42501', null, 'admin cannot create system profiles from a browser');
 select throws_ok($$insert into public.profiles (display_name, auth_user_id) values ('Pre-linked', tests.auth_user_id('viewer'))$$,
   '42501', null, 'admin cannot pre-link an auth user from a browser');
-select throws_ok($$insert into public.profiles (display_name) values ('  orla ')$$,
-  '23505', null, 'display names are unique (ignoring case and spaces)');
+select throws_ok($$insert into public.profiles (display_name) values ('ORLA')$$,
+  '23505', null, 'display names are unique (ignoring case; spaces at either end are refused, 150)');
 select throws_ok($$insert into public.profiles (display_name, colour) values ('Bad Colour', 'red')$$,
   '23514', null, 'colour must be a #rrggbb hex value');
 

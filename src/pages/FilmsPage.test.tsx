@@ -16,6 +16,7 @@ const film = (f: Partial<FilmItem> & Pick<FilmItem, 'id' | 'title' | 'screenedOn
   assignedId: 'p-ada',
   presentIds: [],
   avgScore: null,
+  isEasterEgg: false,
   ...f,
 })
 
@@ -76,7 +77,17 @@ describe('films page', () => {
     const heading = await screen.findByRole('heading', { name: '2026/11/14' }, { timeout: 3000 })
     const row = within(heading.closest('section')!).getByRole('listitem')
     expect(row).toHaveTextContent('Glass River (2001)')
-    expect(within(row).getByRole('img', { name: 'Chosen by Ada' })).toBeInTheDocument()
+    expect(within(row).getByText('Chosen by Ada')).toHaveClass('sr-only')
+    // The dot links to the profile for the mouse only: no Tab stop, hidden from screen readers.
+    const dotLink = row.querySelector('a.dot-link')
+    expect(dotLink).toHaveAttribute('href', '/people/p-ada')
+    expect(dotLink).toHaveAttribute('tabindex', '-1')
+    expect(dotLink).toHaveAttribute('aria-hidden', 'true')
+    expect(within(row).queryByRole('link', { name: /Chosen by/ })).not.toBeInTheDocument()
+    // A system chooser's dot is not a link.
+    const cinema = screen.getByRole('img', { name: 'Chosen by Cinema' })
+    expect(cinema.tagName).toBe('SPAN')
+    expect(cinema.closest('a')).toBeNull()
     expect(row.querySelector('.film-avg')).toHaveTextContent('Average 7.50')
     expect(screen.getAllByText('No average')).toHaveLength(2)
     const present = within(row).getByRole('group', { name: 'Present' })
@@ -198,11 +209,11 @@ describe('films page', () => {
     expect(
       screen.getAllByRole('listitem').map((r) => r.querySelector('.film-date')?.textContent),
     ).toEqual(['2026/11/14', '2026/11/07', '2025/06/14'])
-    expect(screen.getAllByRole('link').map((l) => l.textContent)).toEqual([
-      'Glass River',
-      'Night Bus',
-      'Shark Joke',
-    ])
+    // Film links only (the "chosen by" dots link to profiles).
+    const films = screen
+      .getAllByRole('link')
+      .filter((l) => l.getAttribute('href')?.startsWith('/films/'))
+    expect(films.map((l) => l.textContent)).toEqual(['Glass River', 'Night Bus', 'Shark Joke'])
   })
 
   it('shows posters by week as the grid, with the averages, when not sorted by date', async () => {

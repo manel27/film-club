@@ -16,6 +16,8 @@ export interface FilmItem {
   presentIds: string[]
   /** Average without the easter egg's locked scores (from film_stats). */
   avgScore: number | null
+  /** Jurassic Shark 2: left out of profiles and every aggregate (plan 4.4). */
+  isEasterEgg: boolean
 }
 
 export interface Person {

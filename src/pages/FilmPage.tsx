@@ -4,7 +4,7 @@ import { useAuth } from '../auth/authContext'
 import { fetchFilm, filmWrites, type FilmDetailData, type FilmRecord } from '../films/api'
 import { errorMessage, parseScore, permissions } from '../films/filmDetail'
 import { KIND_LABELS, type Person } from '../films/films'
-import Chip from '../components/Chip'
+import Chip, { PersonName } from '../components/Chip'
 import { fetchEpoch } from '../rotation/api'
 import { lisbonDate } from '../rotation/rotation'
 
@@ -458,7 +458,9 @@ function Scores({ data, ...props }: SectionProps & { data: FilmDetailData }) {
           <tbody>
             {scores.map((s) => (
               <tr key={s.profile_id}>
-                <th scope="row">{byId.get(s.profile_id)?.name ?? 'Unknown'}</th>
+                <th scope="row">
+                  <PersonName person={byId.get(s.profile_id)} />
+                </th>
                 <td>{s.score.toFixed(2)}</td>
                 <td>
                   {perms.score(s.profile_id) && (

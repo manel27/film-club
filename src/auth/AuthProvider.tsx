@@ -138,6 +138,20 @@ export function AuthProvider({ backend, children }: { backend: AuthBackend; chil
 
   const reloadProfile = useCallback(() => setAttempt((n) => n + 1), [])
 
+  const refreshProfile = useCallback(async () => {
+    try {
+      const fresh = await backend.fetchMyProfile()
+      // Only replaces a loaded profile of the same user; a failure keeps the old one.
+      if (fresh) {
+        setProfileResult((r) =>
+          r?.kind === 'found' && r.profile?.id === fresh.id ? { ...r, profile: fresh } : r,
+        )
+      }
+    } catch {
+      // The old name stays until the next load.
+    }
+  }, [backend])
+
   // Themes: saved per person in user_settings (private to them, D5). Viewers
   // can't write, so theirs stays in localStorage only, like the login page's.
   const profile = status === 'signedIn' ? (current?.profile ?? null) : null
@@ -183,6 +197,7 @@ export function AuthProvider({ backend, children }: { backend: AuthBackend; chil
       signIn,
       signOut,
       reloadProfile,
+      refreshProfile,
       theme,
       setTheme,
     }),
@@ -195,6 +210,7 @@ export function AuthProvider({ backend, children }: { backend: AuthBackend; chil
       signIn,
       signOut,
       reloadProfile,
+      refreshProfile,
       theme,
       setTheme,
     ],
