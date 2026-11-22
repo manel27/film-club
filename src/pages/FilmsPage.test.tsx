@@ -77,6 +77,10 @@ describe('films page', () => {
     const row = within(heading.closest('section')!).getByRole('listitem')
     expect(row).toHaveTextContent('Glass River (2001)')
     expect(within(row).getByRole('img', { name: 'Chosen by Ada' })).toBeInTheDocument()
+    expect(within(row).getByRole('link', { name: 'Chosen by Ada' })).toHaveAttribute(
+      'href',
+      '/people/p-ada',
+    )
     expect(row.querySelector('.film-avg')).toHaveTextContent('Average 7.50')
     expect(screen.getAllByText('No average')).toHaveLength(2)
     const present = within(row).getByRole('group', { name: 'Present' })
@@ -198,11 +202,11 @@ describe('films page', () => {
     expect(
       screen.getAllByRole('listitem').map((r) => r.querySelector('.film-date')?.textContent),
     ).toEqual(['2026/11/14', '2026/11/07', '2025/06/14'])
-    expect(screen.getAllByRole('link').map((l) => l.textContent)).toEqual([
-      'Glass River',
-      'Night Bus',
-      'Shark Joke',
-    ])
+    // Film links only (the "chosen by" dots link to profiles).
+    const films = screen
+      .getAllByRole('link')
+      .filter((l) => l.getAttribute('href')?.startsWith('/films/'))
+    expect(films.map((l) => l.textContent)).toEqual(['Glass River', 'Night Bus', 'Shark Joke'])
   })
 
   it('shows posters by week as the grid, with the averages, when not sorted by date', async () => {

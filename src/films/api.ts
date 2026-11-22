@@ -134,6 +134,40 @@ export const filmWrites = {
     check(supabase.from('films').delete().eq('id', id).select('id'), true),
 }
 
+export interface ProfileData extends FilmsData {
+  /** The person's scores by film id. */
+  scores: Map<number, number>
+  /** Film ids of the person's comments (one per comment). */
+  commentFilmIds: number[]
+  /** The easter egg's id(s): left out of every profile stat (plan 4.4). */
+  easterEggIds: Set<number>
+}
+
+/** Everything a profile page needs: the films data plus the person's scores and comments. */
+export async function fetchProfileData(personId: string): Promise<ProfileData> {
+  const [base, scores, comments, eggs] = await Promise.all([
+    fetchFilmsData(personId),
+    supabase.from('scores').select('film_id, score').eq('profile_id', personId),
+    supabase.from('comments').select('film_id').eq('author_id', personId),
+    supabase.from('films').select('id').eq('is_easter_egg', true),
+  ])
+  const error = scores.error ?? comments.error ?? eggs.error
+  if (error) throw error
+  return {
+    ...base,
+    scores: new Map((scores.data ?? []).map((s) => [s.film_id, s.score])),
+    commentFilmIds: (comments.data ?? []).map((c) => c.film_id),
+    easterEggIds: new Set((eggs.data ?? []).map((f) => f.id)),
+  }
+}
+
+/** Renames a profile (RLS: your own only; the trigger guards every other column). */
+export const renameProfile = (id: string, displayName: string) =>
+  check(
+    supabase.from('profiles').update({ display_name: displayName }).eq('id', id).select('id'),
+    true,
+  )
+
 /** Everyone, for the add/edit film form's choosers. */
 export async function fetchPeopleList(): Promise<Person[]> {
   const { data, error } = await fetchPeople()

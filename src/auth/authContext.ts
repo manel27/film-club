@@ -26,6 +26,8 @@ export interface AuthState {
   signOut(): Promise<string | null>
   /** Loads the profile again (after an `error`). */
   reloadProfile(): void
+  /** Fetches the profile again in place (no loading screen), e.g. after a rename. Never throws. */
+  refreshProfile(): Promise<void>
   /** The theme on screen. */
   theme: Theme
   /** Applies a theme; saved to user_settings too, except for viewers (localStorage only). */

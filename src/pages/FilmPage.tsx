@@ -458,7 +458,11 @@ function Scores({ data, ...props }: SectionProps & { data: FilmDetailData }) {
           <tbody>
             {scores.map((s) => (
               <tr key={s.profile_id}>
-                <th scope="row">{byId.get(s.profile_id)?.name ?? 'Unknown'}</th>
+                <th scope="row">
+                  <Link to={`/people/${s.profile_id}`}>
+                    {byId.get(s.profile_id)?.name ?? 'Unknown'}
+                  </Link>
+                </th>
                 <td>{s.score.toFixed(2)}</td>
                 <td>
                   {perms.score(s.profile_id) && (

@@ -103,7 +103,7 @@ test('films can be sorted by title, release year and average, without week headi
   page,
 }) => {
   await logIn(page, E2E_MEMBER.email, E2E_PASSWORD)
-  const titles = page.locator('.film-title a')
+  const titles = page.locator('.film-title a[href*="/films/"]')
 
   await page.getByLabel('Sort').selectOption({ label: 'Title A–Z' })
   await expect(page).toHaveURL(/#\/\?sort=title$/)
