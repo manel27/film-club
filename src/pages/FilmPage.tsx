@@ -4,7 +4,9 @@ import { useAuth } from '../auth/authContext'
 import { fetchFilm, filmWrites, type FilmDetailData, type FilmRecord } from '../films/api'
 import { errorMessage, parseScore, permissions } from '../films/filmDetail'
 import { KIND_LABELS, type Person } from '../films/films'
-import { textOn } from '../lib/colour'
+import Chip from '../components/Chip'
+import { fetchEpoch } from '../rotation/api'
+import { lisbonDate } from '../rotation/rotation'
 
 type Section = 'attendance' | 'scores' | 'comments' | 'delete'
 /** Runs one write at a time, then reloads the film. Resolves true on success. */
@@ -233,6 +235,23 @@ function DeleteFilm({
 }) {
   const dialog = useRef<HTMLDialogElement>(null)
   const cancel = useRef<HTMLButtonElement>(null)
+  // Deleting a counted screening changes the rotation (plan 11): say so.
+  const [epoch, setEpoch] = useState<string | null>(null)
+  useEffect(() => {
+    let current = true
+    fetchEpoch().then(
+      (e) => current && setEpoch(e),
+      () => {},
+    )
+    return () => {
+      current = false
+    }
+  }, [])
+  const inRotation =
+    (film.kind === 'normal' || film.kind === 'democratico') &&
+    !!epoch &&
+    film.screened_on >= epoch &&
+    film.screened_on <= lisbonDate()
   return (
     <>
       <button
@@ -263,6 +282,7 @@ function DeleteFilm({
             <li>{count(film.attendance.length, 'attendance mark', 'attendance marks')}</li>
             <li>{count(film.comments.length, 'comment', 'comments')}</li>
           </ul>
+          {inRotation && <p>Rotation points will be recalculated without this screening.</p>}
         </div>
         {error && (
           <p role="alert" className="form-error">
@@ -296,18 +316,6 @@ function Fact({ label, value }: { label: string; value: React.ReactNode }) {
       <dt>{label}</dt>
       <dd>{value}</dd>
     </>
-  )
-}
-
-/** A person's name on their own colour, with black or white text. */
-function Chip({ person }: { person: Person | undefined }) {
-  const style = person?.colour
-    ? { backgroundColor: person.colour, color: textOn(person.colour) }
-    : undefined
-  return (
-    <span className="chip" style={style}>
-      {person?.name ?? 'Unknown'}
-    </span>
   )
 }
 

@@ -3,6 +3,8 @@ import { E2E_MEMBER, E2E_PASSWORD, SEED_VIEWER } from './fixtures'
 
 // Uses the synthetic films in supabase/seed.sql.
 const SCREENSHOTS = 'test-results/screenshots'
+// Week headings, not the "Next up" card's.
+const weekHeadings = (page: Page) => page.locator('.week').getByRole('heading', { level: 2 })
 
 async function logIn(page: Page, email: string, password: string) {
   await page.goto('./#/login')
@@ -37,7 +39,7 @@ test('a member browses the films by week, with averages and present people', asy
   await expect(egg.getByText('Democrático')).toBeVisible()
 
   // Newest first by default.
-  await expect(page.getByRole('heading', { level: 2 }).first()).toHaveText('2026/12/05')
+  await expect(weekHeadings(page).first()).toHaveText('2026/12/05')
   for (const theme of ['letterboxd', 'superman', 'batman']) {
     await page.getByRole('banner').getByLabel('Theme').selectOption(theme)
     await page.screenshot({ path: `${SCREENSHOTS}/films-list-${theme}.png`, fullPage: true })
@@ -78,11 +80,11 @@ test('view and filters are kept in the URL and restored from localStorage', asyn
 test('posters can be shown in one grid without week headings', async ({ page }) => {
   await logIn(page, E2E_MEMBER.email, E2E_PASSWORD)
   await page.getByRole('button', { name: 'Posters by week' }).click()
-  await expect(page.getByRole('heading', { level: 2 })).toHaveCount(7)
+  await expect(weekHeadings(page)).toHaveCount(7)
 
   await page.getByRole('button', { name: 'Poster grid' }).click()
   await expect(page).toHaveURL(/#\/\?view=grid$/)
-  await expect(page.getByRole('heading', { level: 2 })).toHaveCount(0)
+  await expect(weekHeadings(page)).toHaveCount(0)
   await expect(page.locator('.poster')).toHaveCount(8)
   await expect(page.locator('.poster').first()).toHaveAttribute(
     'title',
@@ -105,7 +107,7 @@ test('films can be sorted by title, release year and average, without week headi
 
   await page.getByLabel('Sort').selectOption({ label: 'Title A–Z' })
   await expect(page).toHaveURL(/#\/\?sort=title$/)
-  await expect(page.getByRole('heading', { level: 2 })).toHaveCount(0)
+  await expect(weekHeadings(page)).toHaveCount(0)
   // A leading "The" is ignored.
   await expect(titles).toHaveText([
     'The Long Vote',
@@ -143,7 +145,7 @@ test('films can be sorted by title, release year and average, without week headi
   )
   await page.getByRole('button', { name: 'Poster grid' }).click()
   await expect(page).toHaveURL(/#\/\?view=grid&sort=score-desc$/)
-  await expect(page.getByRole('heading', { level: 2 })).toHaveCount(0)
+  await expect(weekHeadings(page)).toHaveCount(0)
   const first = page.locator('.poster').first()
   await expect(first).toHaveAttribute('title', 'Paper Moons Over the River (2018)')
   await expect(first.locator('.poster-note')).toHaveText('Average 8.75')

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useLocation, useSearchParams } from 'react-router'
 import { useAuth } from '../auth/authContext'
+import NextUpCard from '../components/NextUp'
 import { fetchFilmsData, type FilmsData } from '../films/api'
 import {
   filterFilms,
@@ -213,6 +214,7 @@ export default function FilmsPage() {
           {notice}
         </p>
       )}
+      {data && <NextUpCard people={data.people} />}
 
       {!data || !options ? (
         <p role="status" className="muted">

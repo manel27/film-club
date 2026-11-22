@@ -51,7 +51,7 @@ export async function fetchFilmsData(profileId: string): Promise<FilmsData> {
 }
 
 function fetchPeople() {
-  return supabase.from('profile_directory').select('id, display_name, colour, is_system')
+  return supabase.from('profile_directory').select('id, display_name, colour, is_system, role')
 }
 
 function toPeople(rows: Awaited<ReturnType<typeof fetchPeople>>['data']): Person[] {
@@ -60,6 +60,7 @@ function toPeople(rows: Awaited<ReturnType<typeof fetchPeople>>['data']): Person
     name: p.display_name!,
     colour: p.colour,
     isSystem: p.is_system!,
+    role: p.role ?? undefined,
   }))
 }
 

@@ -17,11 +17,11 @@ select lives_ok($$insert into public.rotation_passes (week_start, profile_id) va
   'moderator can record own pass');
 reset role;
 select tests.login_as('member');
-select lives_ok($$insert into public.rotation_passes (week_start, profile_id) values ('2026-03-02', tests.profile_id('member'))$$,
-  'member can record own pass');
-select is(tests.affected($$delete from public.rotation_passes where week_start = '2026-03-02' and profile_id = tests.profile_id('member')$$), 1,
+select lives_ok($$insert into public.rotation_passes (week_start, profile_id) values ('2099-03-02', tests.profile_id('member'))$$,
+  'member can record own pass (a coming week)');
+select is(tests.affected($$delete from public.rotation_passes where week_start = '2099-03-02' and profile_id = tests.profile_id('member')$$), 1,
   'member can withdraw own pass');
-select throws_ok($$insert into public.rotation_passes (week_start, profile_id) values ('2026-03-03', tests.profile_id('member'))$$,
+select throws_ok($$insert into public.rotation_passes (week_start, profile_id) values ('2099-03-03', tests.profile_id('member'))$$,
   '23514', null, 'a pass week must start on a Monday');
 reset role;
 select tests.login_as('viewer');

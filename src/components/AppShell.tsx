@@ -1,4 +1,4 @@
-import { Link, Outlet } from 'react-router'
+import { Link, NavLink, Outlet } from 'react-router'
 import { useAuth } from '../auth/authContext'
 import { useLogOut } from '../auth/useLogOut'
 import ThemePicker from './ThemePicker'
@@ -20,6 +20,12 @@ export default function AppShell() {
         <Link to="/" className="brand">
           Film Club
         </Link>
+        <nav className="main-nav" aria-label="Main">
+          <NavLink to="/" end>
+            Films
+          </NavLink>
+          <NavLink to="/rotation">Rotation</NavLink>
+        </nav>
         <div className="header-tools">
           <ThemePicker />
           {profile && (
