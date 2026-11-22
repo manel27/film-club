@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { adminClient, SEED_MEMBER, SEED_MODERATOR, SEED_VIEWER } from './fixtures'
+import { adminClient, SEED_MEMBER, SEED_MODERATOR, SEED_VIEWER, userClient } from './fixtures'
 
 // Records passes and adjustments in the shared local database, so this file
 // runs in the writes project (playwright.config.ts). Uses the seed rotation:
@@ -13,11 +13,7 @@ test.describe.configure({ mode: 'serial' })
 async function cleanUp() {
   const db = adminClient()
   for (const { error } of [
-    await db
-      .from('rotation_passes')
-      .delete()
-      .eq('profile_id', KWAME)
-      .gte('week_start', '2026-11-01'),
+    await db.from('rotation_passes').delete().eq('profile_id', KWAME), // the seed has none
     await db.from('rotation_adjustments').delete().eq('reason', REASON),
   ]) {
     if (error) throw error
@@ -81,6 +77,35 @@ test('a moderator enters a starting value on the rotation page; the log shows wh
   // An owed turn still comes first.
   await expect(standings.getByRole('listitem').first()).toContainText('Kwame')
   await page.screenshot({ path: `${SCREENSHOTS}/rotation.png`, fullPage: true })
+})
+
+test('a member cannot take back a pass for a week already screened (R4)', async ({ page }) => {
+  // Kwame passed for the week of 2026-01-12, whose screening (2026-01-17) happened.
+  const { error } = await adminClient()
+    .from('rotation_passes')
+    .insert({ week_start: '2026-01-12', profile_id: KWAME, created_by: KWAME })
+  if (error) throw error
+
+  await logIn(page, SEED_MEMBER)
+  await page.goto('./#/rotation')
+  const passes = page.getByRole('region', { name: 'Passes' })
+  await expect(passes.getByRole('row').filter({ hasText: '2026/01/12' })).toContainText('Kwame')
+  await expect(passes.getByRole('button', { name: /Remove Kwame's pass/ })).toHaveCount(0)
+
+  // The server refuses it too.
+  const kwame = userClient()
+  const { error: loginError } = await kwame.auth.signInWithPassword(SEED_MEMBER)
+  if (loginError) throw loginError
+  const removed = await kwame
+    .from('rotation_passes')
+    .delete()
+    .match({ week_start: '2026-01-12', profile_id: KWAME })
+    .select('week_start')
+  expect(removed.data).toEqual([])
+  const added = await kwame
+    .from('rotation_passes')
+    .insert({ week_start: '2026-01-19', profile_id: KWAME })
+  expect(added.error?.code).toBe('42501')
 })
 
 test('a viewer sees the rotation but can change nothing', async ({ page }) => {

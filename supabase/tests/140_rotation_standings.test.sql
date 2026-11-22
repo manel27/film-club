@@ -7,7 +7,7 @@
 -- Worked example cast: Ana = Orla (admin), Bea = Kwame (member),
 -- Gui = Tamsin (moderator), Rocha = Viggo (placeholder member).
 begin;
-select plan(26);
+select plan(44);
 
 select ok((select c.reloptions @> array['security_invoker=true'] from pg_class c where c.oid = 'public.rotation_standings'::regclass),
   'rotation_standings runs with the caller''s rights (RLS applies)');
@@ -119,6 +119,70 @@ reset role;
 select tests.login_as('viewer');
 select throws_ok($$insert into public.rotation_adjustments (profile_id, delta) values (tests.profile_id('viewer'), 9)$$,
   '42501', null, 'viewer cannot adjust points');
+reset role;
+
+-- ---------------------------------------------------------------- R2: never below 0
+insert into public.rotation_adjustments (profile_id, delta, reason) values (tests.profile_id('placeholder'), -100, 'too much');
+select is((select points from public.rotation_standings where profile_id = tests.profile_id('placeholder')), 0,
+  'a correction never takes points below 0');
+insert into public.rotation_adjustments (profile_id, delta, reason) values (tests.profile_id('placeholder'), 1, 'one back');
+select is((select points from public.rotation_standings where profile_id = tests.profile_id('placeholder')), 1,
+  'the floor applies after each correction (0 + 1, not 5 - 100 + 1)');
+
+-- ---------------------------------------------------------------- sane values
+select throws_ok($$insert into public.rotation_adjustments (profile_id, delta) values (tests.profile_id('member'), 1001)$$,
+  '23514', null, 'a correction is at most 1000');
+select throws_ok($$insert into public.rotation_adjustments (profile_id, delta) values (tests.profile_id('member'), -2147483648)$$,
+  '23514', null, 'a correction is at least -1000');
+select throws_ok($$insert into public.rotation_adjustments (profile_id, set_to) values (tests.profile_id('member'), 1001)$$,
+  '23514', null, 'a starting value is at most 1000');
+
+-- ---------------------------------------------------------------- R4: own passes from the coming week on
+-- Kwame passed for this week, the week's screening has happened (today), so
+-- the coming week is next week: his pass is history and stays put.
+insert into public.rotation_passes (week_start, profile_id) values
+  (date_trunc('week', (now() at time zone 'Europe/Lisbon')::date)::date, tests.profile_id('member'));
+insert into public.films (title, release_year, screened_on, kind, assigned_id) values
+  ('Rotation this week', 2007, (now() at time zone 'Europe/Lisbon')::date, 'normal', tests.profile_id('admin'));
+select is(app.rotation_coming_week(), date_trunc('week', (now() at time zone 'Europe/Lisbon')::date)::date + 7,
+  'after this week''s screening the coming week is next week');
+select tests.login_as('member');
+select is(tests.affected($$delete from public.rotation_passes where profile_id = tests.profile_id('member')
+  and week_start = date_trunc('week', (now() at time zone 'Europe/Lisbon')::date)::date$$), 0,
+  'a member cannot remove a pass for a week already screened');
+select throws_ok($$insert into public.rotation_passes (week_start, profile_id) values ('2026-03-23', tests.profile_id('member'))$$,
+  '42501', null, 'a member cannot add a pass for a past week');
+select lives_ok($$insert into public.rotation_passes (week_start, profile_id)
+  values (date_trunc('week', (now() at time zone 'Europe/Lisbon')::date)::date + 7, tests.profile_id('member'))$$,
+  'a member can pass for the coming week');
+select is(tests.affected($$delete from public.rotation_passes where profile_id = tests.profile_id('member')
+  and week_start = date_trunc('week', (now() at time zone 'Europe/Lisbon')::date)::date + 7$$), 1,
+  'a member can take back a pass for the coming week');
+reset role;
+select tests.login_as('moderator');
+select is(tests.affected($$delete from public.rotation_passes where profile_id = tests.profile_id('member')
+  and week_start = date_trunc('week', (now() at time zone 'Europe/Lisbon')::date)::date$$), 1,
+  'staff can still correct a past pass');
+
+-- ---------------------------------------------------------------- viewers aren't in the rotation
+select throws_ok($$insert into public.rotation_passes (week_start, profile_id) values ('2099-03-02', tests.profile_id('viewer'))$$,
+  '42501', null, 'staff cannot record a pass for a viewer');
+select throws_ok($$insert into public.rotation_next (week_start, profile_id) values ('2099-03-02', tests.profile_id('viewer'))$$,
+  '42501', null, 'staff cannot pick a viewer as next chooser');
+select throws_ok($$update public.rotation_next set profile_id = tests.profile_id('viewer') where week_start = date_trunc('week', now())::date$$,
+  '42501', null, 'staff cannot change a decision to a viewer');
+reset role;
+
+-- ---------------------------------------------------------------- epoch format (R3)
+select tests.login_as('admin');
+select throws_ok($$update public.app_settings set value = '"2026-02-30"' where key = 'rotation_epoch'$$,
+  '23514', null, 'the epoch must be a real date');
+select throws_ok($$update public.app_settings set value = '"2026/03/02"' where key = 'rotation_epoch'$$,
+  '23514', null, 'the epoch must be written YYYY-MM-DD');
+select throws_ok($$update public.app_settings set value = '20260302' where key = 'rotation_epoch'$$,
+  '23514', null, 'the epoch must be a JSON string');
+select is(tests.affected($$update public.app_settings set value = '"2026-03-04"' where key = 'rotation_epoch'$$), 1,
+  'the admin can set a valid epoch (any weekday)');
 reset role;
 
 -- ---------------------------------------------------------------- epoch

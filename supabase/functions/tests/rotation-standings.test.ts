@@ -35,7 +35,10 @@ async function ok<T>(request: PromiseLike<{ data: T; error: unknown }>): Promise
 }
 
 /** Every rotation input in the database, as the TS algorithm takes it. */
-async function inputs(): Promise<RotationInput> {
+const lisbonToday = () =>
+  new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Lisbon' }).format(new Date())
+
+async function inputs(today: string): Promise<RotationInput> {
   const [setting, people, films, adjustments, passes] = await Promise.all([
     ok(db.from('app_settings').select('value').eq('key', 'rotation_epoch').maybeSingle()),
     ok(db.from('profiles').select('id').neq('role', 'viewer').eq('is_system', false)),
@@ -53,7 +56,7 @@ async function inputs(): Promise<RotationInput> {
   ])
   return {
     epoch: (setting?.value as string | undefined) ?? null,
-    today: new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Lisbon' }).format(new Date()),
+    today,
     people: people.map((p) => p.id),
     films: films.map((f) => ({
       id: f.id,
@@ -77,9 +80,12 @@ async function inputs(): Promise<RotationInput> {
 }
 
 /** Both sides as sorted rows; returns the TS result for extra checks. */
-async function assertSame(step: string) {
-  const ts = computeStandings(await inputs())
+async function assertSame(step: string): Promise<ReturnType<typeof computeStandings>> {
+  // Both sides on the same Lisbon day: retry if midnight passed in between.
+  const today = lisbonToday()
+  const ts = computeStandings(await inputs(today))
   const sql = await ok(db.from('rotation_standings').select('*'))
+  if (lisbonToday() !== today) return assertSame(step)
   const expected = (ts?.standings ?? []).map((s) => ({
     profile_id: s.profileId,
     points: s.points,
@@ -184,6 +190,35 @@ Deno.test('rotation_standings (SQL) equals computeStandings (TS) on the same dat
     })
     await pass('2027-01-04', YUSUF) // far ahead: not counted yet
     await assertSame('a negative correction, a full house, a future pass')
+
+    // This week's screening happened today: the coming week is next week.
+    await film({ date: lisbonToday(), assigned: ORLA, present: [ORLA, WREN] })
+    const plus7 = await assertSame('the coming week moves on after this week’s screening')
+    assertEquals(plus7!.weekStart > lisbonToday(), true)
+
+    // July, with a mid-week epoch (Wednesday 2026-07-15).
+    await pass('2026-07-13', YUSUF) // its Monday is before the epoch: not counted
+    // 23:30 UTC on the 14th is already the 15th in Lisbon (UTC+1): counted.
+    await adjust({ profile_id: KWAME, delta: 3, effective_at: '2026-07-14T23:30:00Z' })
+    // Same day: entry order, a set_to then a delta.
+    await adjust({ profile_id: ORLA, set_to: 4, effective_at: '2026-07-16T20:00:00Z' })
+    await adjust({ profile_id: ORLA, delta: -2, effective_at: '2026-07-16T08:00:00Z' })
+    await adjust({ profile_id: WREN, delta: -50, effective_at: '2026-07-17T08:00:00Z' }) // floor at 0
+    await adjust({ profile_id: WREN, delta: 1, effective_at: '2026-07-17T09:00:00Z' })
+    // Two films on the same date with the same day_order: id decides.
+    await film({
+      date: '2026-07-18',
+      kind: 'democratico',
+      assigned: VIGGO,
+      holder: YUSUF,
+      present: [TAMSIN, VIGGO],
+    })
+    await film({ date: '2026-07-18', assigned: YUSUF, present: [YUSUF, KWAME] })
+    await assertSame('July data under the January epoch')
+    await setEpoch('2026-07-15')
+    const july = await assertSame('a mid-week epoch')
+    const points = (id: string) => july?.standings.find((s) => s.profileId === id)?.points
+    assertEquals([points(KWAME), points(ORLA), points(WREN), points(YUSUF)], [4, 0, 2, 0])
 
     await setEpoch('2026-03-02')
     await assertSame('a later epoch')

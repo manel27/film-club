@@ -2,7 +2,7 @@ import { fetchPeopleList } from '../films/api'
 import { NO_ROWS } from '../films/filmDetail'
 import type { FilmKind, Person } from '../films/films'
 import { supabase } from '../lib/supabase'
-import { lisbonDate, type Standing } from './rotation'
+import type { Standing } from './rotation'
 
 export interface RotationData {
   /** Go-live date; null = rotation not started (no rotation_epoch). */
@@ -23,7 +23,7 @@ export interface RotationData {
     effectiveAt: string
     createdBy: string | null
   }[]
-  /** Normal and Democrático films since the epoch, up to today, newest first. */
+  /** All normal and Democrático films (planned ones too), newest first. */
   chosen: {
     id: number
     title: string
@@ -56,8 +56,8 @@ export async function fetchEpoch(): Promise<string | null> {
  * Everything the rotation page and the films page's "Next up" card need.
  * shortcut: assumes fewer than 1,000 rows per table (PostgREST max_rows); page past that.
  */
-export async function fetchRotation(): Promise<RotationData> {
-  const [epoch, standings, passes, decisions, adjustments, people] = await Promise.all([
+export async function fetchRotation(knownPeople?: Person[]): Promise<RotationData> {
+  const [epoch, standings, passes, decisions, adjustments, people, chosen] = await Promise.all([
     fetchEpoch(),
     rows(supabase.from('rotation_standings').select('*')),
     rows(
@@ -74,20 +74,17 @@ export async function fetchRotation(): Promise<RotationData> {
         .order('effective_at', { ascending: false })
         .order('id', { ascending: false }),
     ),
-    fetchPeopleList(),
+    knownPeople ?? fetchPeopleList(),
+    // Every counted film: the epoch isn't known yet, and there are only a few hundred.
+    rows(
+      supabase
+        .from('films')
+        .select('id, title, screened_on, kind, assigned_id, turn_holder_id')
+        .in('kind', ['normal', 'democratico'])
+        .order('screened_on', { ascending: false })
+        .order('day_order', { ascending: false }),
+    ),
   ])
-  const chosen = epoch
-    ? await rows(
-        supabase
-          .from('films')
-          .select('id, title, screened_on, kind, assigned_id, turn_holder_id')
-          .in('kind', ['normal', 'democratico'])
-          .gte('screened_on', epoch)
-          .lte('screened_on', lisbonDate())
-          .order('screened_on', { ascending: false })
-          .order('day_order', { ascending: false }),
-      )
-    : []
   return {
     epoch,
     weekStart: standings[0]?.week_start ?? null,
@@ -134,22 +131,35 @@ async function check(request: PromiseLike<{ error: unknown }>) {
   if (error) throw error
 }
 
+// RLS filters a refused delete silently: no row back = not removed.
+async function deleted(request: PromiseLike<{ error: unknown; data: unknown[] | null }>) {
+  const { error, data } = await request
+  if (error) throw error
+  if (!data?.length) throw NO_ROWS
+}
+
 // Writes. RLS decides who may do what (plan 5); the triggers record who did it.
 export const rotationWrites = {
   pass: (week_start: string, profile_id: string) =>
     check(supabase.from('rotation_passes').insert({ week_start, profile_id })),
-  // RLS filters a refused delete silently: no row back = not removed.
-  unpass: async (week_start: string, profile_id: string) => {
-    const { data, error } = await supabase
-      .from('rotation_passes')
-      .delete()
-      .match({ week_start, profile_id })
-      .select('week_start')
-    if (error) throw error
-    if (!data?.length) throw NO_ROWS
-  },
+  unpass: (week_start: string, profile_id: string) =>
+    deleted(
+      supabase
+        .from('rotation_passes')
+        .delete()
+        .match({ week_start, profile_id })
+        .select('week_start'),
+    ),
   decide: (week_start: string, profile_id: string) =>
     check(supabase.from('rotation_next').upsert({ week_start, profile_id })),
+  /** Back to the computed "who's next". */
+  undecide: (week_start: string) =>
+    deleted(
+      supabase.from('rotation_next').delete().eq('week_start', week_start).select('week_start'),
+    ),
+  /** Admin only (R3). The database refuses anything but a real YYYY-MM-DD date. */
+  setEpoch: (date: string) =>
+    check(supabase.from('app_settings').upsert({ key: 'rotation_epoch', value: date })),
   adjust: (a: {
     profile_id: string
     delta?: number

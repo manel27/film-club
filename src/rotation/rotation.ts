@@ -97,7 +97,7 @@ type Event =
 /**
  * Replays everything since the epoch (plan 6.2). Events run in date order; on
  * the same date passes (placed on their Monday) come first, then adjustments
- * (by time), then films (by day_order). Counted: normal and Democrático films
+ * (by id), then films (by day_order). Counted: normal and Democrático films
  * from the epoch to today, adjustments from the epoch to today, passes from
  * the epoch up to the coming week. Null when there is no epoch or it is still
  * in the future.
@@ -115,7 +115,7 @@ export function computeStandings(input: RotationInput): Standings | null {
       .map((adj) => ({ adj, date: lisbonDate(adj.effectiveAt) }))
       .filter(({ date }) => date >= epoch && date <= today)
       .map(({ adj, date }): Event => ({
-        key: [date, 1, Date.parse(adj.effectiveAt), adj.id],
+        key: [date, 1, adj.id, 0], // by id, like the SQL (timestamps have microseconds JS lacks)
         type: 'adjustment',
         adj,
       })),
@@ -148,7 +148,9 @@ export function computeStandings(input: RotationInput): Standings | null {
     } else if (e.type === 'adjustment') {
       const { profileId, setTo, delta } = e.adj
       if (setTo != null) points.set(profileId, setTo)
-      else if (delta != null) points.set(profileId, (points.get(profileId) ?? 0) + delta)
+      // Never below 0 (decision R2).
+      else if (delta != null)
+        points.set(profileId, Math.max(0, (points.get(profileId) ?? 0) + delta))
       if (e.adj.clearOwedTurn) unOwe(profileId)
     } else {
       const { film } = e

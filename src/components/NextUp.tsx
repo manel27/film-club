@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { useAuth } from '../auth/authContext'
+import type { Person } from '../films/films'
 import { rotationWrites } from '../rotation/api'
 import { nextUp, orderStandings, ymd } from '../rotation/rotation'
 import { useRotation, type Rotation } from '../rotation/useRotation'
@@ -14,12 +15,13 @@ export function NextUp({ rotation }: { rotation: Rotation }) {
   const { profile } = useAuth()
   const { data, run, busy, error } = rotation
   const passButton = useRef<HTMLButtonElement>(null)
-  // Disabled while busy, the button loses focus: give it back once done.
-  const refocus = useRef(false)
+  const heading = useRef<HTMLHeadingElement>(null)
+  // Disabled while busy, a button loses focus (or is gone): put it back once done.
+  const refocus = useRef<React.RefObject<HTMLElement | null> | null>(null)
   useEffect(() => {
     if (!refocus.current || busy) return
-    refocus.current = false
-    passButton.current?.focus()
+    ;(refocus.current.current ?? heading.current)?.focus()
+    refocus.current = null
   })
   if (!data) return null
   const byId = new Map(data.people.map((p) => [p.id, p]))
@@ -38,6 +40,7 @@ export function NextUp({ rotation }: { rotation: Rotation }) {
     const mine = profile && data.standings.some((s) => s.profileId === profile.id)
     const canPass = mine && profile.role !== 'viewer'
     const iPass = !!profile && passing.has(profile.id)
+    const isStaff = profile?.role === 'admin' || profile?.role === 'moderator'
     body = (
       <>
         <p className="next-chooser">
@@ -52,9 +55,23 @@ export function NextUp({ rotation }: { rotation: Rotation }) {
               {next.kind === 'owed' && ' (owed turn)'}
               {next.kind === 'decided' &&
                 ` (decided${decision?.decidedBy ? ` by ${name(decision.decidedBy)}` : ''})`}
+              {next.kind === 'decided' && passing.has(next.ids[0]) && ' (passing)'}
             </>
           )}
         </p>
+        {decision && isStaff && (
+          <button
+            type="button"
+            className="button button-secondary button-small"
+            disabled={busy}
+            onClick={() => {
+              refocus.current = heading
+              void run('next-up', () => rotationWrites.undecide(week))
+            }}
+          >
+            Remove decision
+          </button>
+        )}
         {passing.size > 0 && (
           <p className="muted">Can't make it: {[...passing].map(name).sort().join(', ')}</p>
         )}
@@ -65,6 +82,7 @@ export function NextUp({ rotation }: { rotation: Rotation }) {
               <span className="standing-points">
                 {s.points} {s.points === 1 ? 'point' : 'points'}
               </span>
+              {passing.has(s.profileId) && <span className="muted">(can't make it)</span>}
               {s.owedSince && (
                 <span className="badge">
                   owed turn (missed the Democrático on {ymd(s.owedSince)})
@@ -80,7 +98,7 @@ export function NextUp({ rotation }: { rotation: Rotation }) {
             className="button button-secondary button-small"
             disabled={busy}
             onClick={() => {
-              refocus.current = true
+              refocus.current = passButton
               void run('next-up', () =>
                 iPass
                   ? rotationWrites.unpass(week, profile.id)
@@ -102,15 +120,17 @@ export function NextUp({ rotation }: { rotation: Rotation }) {
 
   return (
     <section className="card next-up" aria-labelledby="next-up-heading">
-      <h2 id="next-up-heading">Next up</h2>
+      <h2 id="next-up-heading" ref={heading} tabIndex={-1}>
+        Next up
+      </h2>
       {body}
     </section>
   )
 }
 
-/** The films page's card: loads the rotation by itself. */
-export default function NextUpCard() {
-  const rotation = useRotation()
+/** The films page's card: loads the rotation by itself (reusing the page's people). */
+export default function NextUpCard({ people }: { people?: Person[] }) {
+  const rotation = useRotation(people)
   if (rotation.failed && !rotation.data) {
     return (
       <section className="card next-up" aria-labelledby="next-up-heading">

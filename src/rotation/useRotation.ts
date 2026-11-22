@@ -1,9 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { errorMessage } from '../films/filmDetail'
+import type { Person } from '../films/films'
 import { fetchRotation, type RotationData } from './api'
 
-/** Loads the rotation and runs one write at a time, reloading after each. */
-export function useRotation() {
+/**
+ * Loads the rotation and runs one write at a time, reloading after each.
+ * Pass the people already loaded (films page) to skip fetching them again.
+ */
+export function useRotation(people?: Person[]) {
   const [data, setData] = useState<RotationData | null>(null)
   const [failed, setFailed] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -14,14 +18,14 @@ export function useRotation() {
   // Only the first load can fail the page; a failed reload keeps what is shown.
   const load = useCallback(
     () =>
-      fetchRotation().then(
+      fetchRotation(people).then(
         (d) => {
           setData(d)
           setFailed(false)
         },
         () => setFailed(true),
       ),
-    [],
+    [people],
   )
   useEffect(() => {
     void load()

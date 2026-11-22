@@ -915,11 +915,13 @@ a.button {
   text-align: left;
 }
 
+.table-scroll {
+  overflow-x: auto;
+}
+
 .rotation-table {
   border-collapse: collapse;
-  width: 100%;
-  display: block;
-  overflow-x: auto;
+  min-width: 100%;
 }
 
 .rotation-table th,

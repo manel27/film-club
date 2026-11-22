@@ -214,7 +214,7 @@ export default function FilmsPage() {
           {notice}
         </p>
       )}
-      <NextUpCard />
+      {data && <NextUpCard people={data.people} />}
 
       {!data || !options ? (
         <p role="status" className="muted">

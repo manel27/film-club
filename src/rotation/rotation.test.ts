@@ -205,6 +205,22 @@ describe('rules (plan 6.1)', () => {
     expect(run('2026-03-03', { adjustments }).points).toEqual({ ana: 1, bea: 5, gui: 7, rocha: 0 })
   })
 
+  it('points never go below 0 (R2): the floor applies after each correction', () => {
+    const adjustments = [
+      ...START,
+      adj({ profileId: 'bea', delta: -5, effectiveAt: '2026-03-03T10:00:00Z' }), // 2 → 0, not -3
+      adj({ profileId: 'bea', delta: 1, effectiveAt: '2026-03-03T11:00:00Z' }), // 0 → 1
+    ]
+    expect(run('2026-03-03', { adjustments }).points.bea).toBe(1)
+  })
+
+  it('same-day adjustments run in entry (id) order, whatever their time', () => {
+    const later = adj({ profileId: 'ana', setTo: 8, effectiveAt: '2026-03-03T20:00:00Z' })
+    const earlier = adj({ profileId: 'ana', delta: 1, effectiveAt: '2026-03-03T09:00:00Z' })
+    expect(run('2026-03-03', { adjustments: [...START, earlier, later] }).points.ana).toBe(9)
+    expect(run('2026-03-03', { adjustments: [...START, later, earlier] }).points.ana).toBe(9)
+  })
+
   it('ignores films, adjustments and passes before the epoch, and films after today', () => {
     const r = run(SAT[0], {
       films: [

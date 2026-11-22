@@ -23,6 +23,8 @@ export interface Person {
   name: string
   colour: string | null
   isSystem: boolean
+  /** Viewers aren't in the rotation. Missing = not known (treated as in it). */
+  role?: Database['public']['Enums']['profile_role']
 }
 
 /** Sort options and their labels; the first is the default. */

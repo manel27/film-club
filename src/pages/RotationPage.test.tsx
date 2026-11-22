@@ -59,6 +59,7 @@ function data(over: Partial<RotationData> = {}): RotationData {
       { id: 'p-ada', name: 'Ada', colour: '#ffd200', isSystem: false },
       { id: 'p-bo', name: 'Bo', colour: null, isSystem: false },
       { id: 'p-cinema', name: 'Cinema', colour: '#999999', isSystem: true },
+      { id: 'p-vee', name: 'Vee', colour: null, isSystem: false, role: 'viewer' },
     ],
     ...over,
   }
@@ -70,6 +71,8 @@ const writes = vi.hoisted(() => ({
   unpass: vi.fn(async () => {}),
   decide: vi.fn(async () => {}),
   adjust: vi.fn(async () => {}),
+  undecide: vi.fn(async () => {}),
+  setEpoch: vi.fn(async () => {}),
 }))
 vi.mock('../rotation/api', () => ({
   fetchRotation: () => fetchRotation(),
@@ -300,5 +303,141 @@ describe('rotation page', () => {
     fireEvent.change(within(decide).getByLabelText('Person'), { target: { value: 'p-bo' } })
     fireEvent.click(within(decide).getByRole('button', { name: 'Save decision' }))
     expect(await within(decide).findByRole('alert')).toHaveTextContent("You can't change that.")
+  })
+})
+
+describe('rotation fixes (R3, R4, passes and decisions)', () => {
+  it('marks passers in the standings and a passing decided chooser; staff can remove a decision', async () => {
+    fetchRotation.mockResolvedValue(
+      data({
+        passes: [{ weekStart: WEEK, profileId: 'p-ada', createdBy: 'p-ada' }],
+        decisions: [{ weekStart: WEEK, profileId: 'p-ada', decidedBy: 'p-bo' }],
+      }),
+    )
+    renderPage('moderator')
+    const c = await card()
+    expect(c).toHaveTextContent('Week of 2026/11/16: Ada (decided by Bo) (passing)')
+    const ada = within(within(c).getByRole('list', { name: 'Standings' }))
+      .getAllByRole('listitem')
+      .find((li) => li.textContent?.startsWith('Ada'))
+    expect(ada).toHaveTextContent("Ada5 points(can't make it)")
+    fireEvent.click(within(c).getByRole('button', { name: 'Remove decision' }))
+    await waitFor(() => expect(writes.undecide).toHaveBeenCalledWith(WEEK))
+  })
+
+  it('offers no Remove decision to a member', async () => {
+    fetchRotation.mockResolvedValue(
+      data({ decisions: [{ weekStart: WEEK, profileId: 'p-ada', decidedBy: 'p-bo' }] }),
+    )
+    renderPage()
+    expect(await card()).toHaveTextContent('Ada (decided by Bo)')
+    expect(screen.queryByRole('button', { name: 'Remove decision' })).not.toBeInTheDocument()
+  })
+
+  it('lets a member remove their own pass only from the coming week on (R4)', async () => {
+    fetchRotation.mockResolvedValue(
+      data({
+        weekStart: '2026-11-23', // this week's screening has happened
+        passes: [
+          { weekStart: '2026-11-30', profileId: ME, createdBy: ME },
+          { weekStart: '2026-11-23', profileId: ME, createdBy: ME },
+          { weekStart: '2026-11-16', profileId: ME, createdBy: ME }, // used: the week was screened
+        ],
+      }),
+    )
+    renderPage()
+    await card()
+    const remove = screen.getAllByRole('button', { name: /^Remove Quinn's pass/ })
+    expect(remove.map((b) => b.getAttribute('aria-label'))).toEqual([
+      "Remove Quinn's pass for 2026/11/30",
+      "Remove Quinn's pass for 2026/11/23",
+    ])
+    expect(screen.getByRole('region', { name: 'Passes' })).toHaveAttribute('tabindex', '0')
+  })
+
+  it('never offers viewers or system profiles as staff targets, even before go-live', async () => {
+    fetchRotation.mockResolvedValue(data({ epoch: '2099-01-05', weekStart: null, standings: [] }))
+    renderPage('moderator')
+    await card()
+    for (const name of ['Record a pass', "Decide who's next", 'Adjust points']) {
+      const options = within(screen.getByRole('form', { name })).getAllByRole('option')
+      expect(options.map((o) => o.textContent)).toEqual(['Choose…', 'Ada', 'Bo', 'Quinn'])
+    }
+  })
+
+  it('refuses an adjustment before the epoch and notes a screening on that day', async () => {
+    renderPage('admin')
+    await card()
+    const form = screen.getByRole('form', { name: 'Adjust points' })
+    fireEvent.change(within(form).getByLabelText('Person'), { target: { value: 'p-ada' } })
+    fireEvent.change(within(form).getByLabelText('Reason'), { target: { value: 'x' } })
+    fireEvent.change(within(form).getByLabelText('Points'), { target: { value: '3' } })
+    fireEvent.change(within(form).getByLabelText('Effective from'), {
+      target: { value: '2026-01-04' },
+    })
+    fireEvent.click(within(form).getByRole('button', { name: 'Save adjustment' }))
+    expect(within(form).getByRole('alert')).toHaveTextContent(
+      'Choose a date on or after the rotation start (2026/01/05).',
+    )
+    expect(writes.adjust).not.toHaveBeenCalled()
+
+    fireEvent.change(within(form).getByLabelText('Effective from'), {
+      target: { value: '2026-11-07' }, // Vote Night
+    })
+    expect(form).toHaveTextContent(
+      "This applies before that day's screening. Choose the next day to apply it after.",
+    )
+    fireEvent.click(within(form).getByRole('button', { name: 'Save adjustment' }))
+    // Saved: the status line (already in the page) says so and takes focus.
+    await waitFor(() => expect(screen.getByText('Adjustment saved.')).toHaveFocus())
+    expect(screen.getByText('Adjustment saved.')).toHaveAttribute('role', 'status')
+  })
+
+  it('lets only the admin set the rotation start date, after confirming (R3)', async () => {
+    fetchRotation.mockResolvedValue(
+      data({ epoch: null, weekStart: null, standings: [], adjustments: [], passes: [] }),
+    )
+    const confirm = vi.spyOn(window, 'confirm')
+    renderPage('admin')
+    const form = await screen.findByRole('form', { name: 'Rotation start date' })
+    const input = within(form).getByLabelText('Start date')
+    const save = within(form).getByRole('button', { name: 'Save start date' })
+
+    fireEvent.change(input, { target: { value: '' } })
+    fireEvent.click(save)
+    expect(within(form).getByRole('alert')).toHaveTextContent('Enter a date.')
+
+    fireEvent.change(input, { target: { value: '2026-12-07' } })
+    confirm.mockReturnValueOnce(false)
+    fireEvent.click(save)
+    expect(confirm).toHaveBeenCalledWith(
+      'Start the rotation on 2026/12/07? All points and owed turns are recalculated from that date.',
+    )
+    expect(writes.setEpoch).not.toHaveBeenCalled()
+
+    confirm.mockReturnValueOnce(true)
+    fireEvent.click(save)
+    await waitFor(() => expect(writes.setEpoch).toHaveBeenCalledWith('2026-12-07'))
+    await waitFor(() => expect(screen.getByText('Rotation start date saved.')).toHaveFocus())
+    confirm.mockRestore()
+  })
+
+  it('shows a refused start date clearly', async () => {
+    writes.setEpoch.mockRejectedValueOnce({ code: '23514' })
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    renderPage('admin')
+    const form = await screen.findByRole('form', { name: 'Rotation start date' })
+    fireEvent.change(within(form).getByLabelText('Start date'), {
+      target: { value: '2026-12-07' },
+    })
+    fireEvent.click(within(form).getByRole('button', { name: 'Save start date' }))
+    expect(await within(form).findByRole('alert')).toHaveTextContent("That value isn't allowed.")
+    confirm.mockRestore()
+  })
+
+  it('has no start date control for a moderator', async () => {
+    renderPage('moderator')
+    await card()
+    expect(screen.queryByRole('form', { name: 'Rotation start date' })).not.toBeInTheDocument()
   })
 })
