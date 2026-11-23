@@ -114,7 +114,10 @@ export async function fetchFilm(id: number, known?: Person[]): Promise<FilmDetai
   return { film: film.data, avgScore: stats.data?.avg_score ?? null, people }
 }
 
-async function check(request: PromiseLike<{ error: unknown; data?: unknown }>, needsRow = false) {
+export async function check(
+  request: PromiseLike<{ error: unknown; data?: unknown }>,
+  needsRow = false,
+) {
   const { error, data } = await request
   if (error) throw error
   if (needsRow && !(data as unknown[] | null)?.length) throw NO_ROWS
@@ -182,7 +185,7 @@ export async function fetchPeopleList(): Promise<Person[]> {
 }
 
 /** Calls an Edge Function with the session's JWT; a refusal throws a FunctionError. */
-async function invoke<T>(name: string, body: object): Promise<T> {
+export async function invoke<T>(name: string, body: object): Promise<T> {
   const { data, error } = await supabase.functions.invoke(name, { body })
   if (!error) return data as T
   // FunctionsHttpError carries the Response; a network failure has none (status 0).

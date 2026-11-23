@@ -16,6 +16,8 @@ vi.mock('./films/api', () => ({
   fetchFilmsData: async () => ({ films: [], people: [], scored: new Set() }),
   fetchFilm: async () => null,
 }))
+// The admin page's data comes from Supabase too (tested in pages/InvitePages.test.tsx).
+vi.mock('./invites/api', () => ({}))
 vi.mock('./rotation/api', () => ({
   fetchRotation: async () => ({
     ...{ epoch: null, weekStart: null, standings: [], passes: [], decisions: [] },
@@ -115,7 +117,7 @@ describe('login page', () => {
   it('has no sign-up link and says it is invite-only', async () => {
     renderApp('/login')
     await screen.findByRole('heading', { name: 'Log in' })
-    expect(screen.getByText('Invite-only. Ask Manel for an invite.')).toBeInTheDocument()
+    expect(screen.getByText('Got an invite? Open the link Manel sent you.')).toBeInTheDocument()
     expect(screen.queryByRole('link')).not.toBeInTheDocument()
     expect(screen.queryByText(/sign up|register|create account/i)).not.toBeInTheDocument()
   })
@@ -170,7 +172,7 @@ describe('app shell', () => {
   it('shows the name, colour dot and admin badge', async () => {
     renderApp('/', signedIn(fakeProfile({ display_name: 'Orla', role: 'admin' })))
     expect(await screen.findByText('Orla')).toBeInTheDocument()
-    expect(screen.getByText('Admin')).toBeInTheDocument()
+    expect(within(screen.getByLabelText('Logged in as')).getByText('Admin')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Film Club' })).toBeInTheDocument()
     const dot = document.querySelector('.colour-dot') as HTMLElement
     expect(dot.style.backgroundColor).toBe('rgb(74, 134, 232)')
