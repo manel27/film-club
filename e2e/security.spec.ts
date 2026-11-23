@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { SEED_VIEWER, userClient } from './fixtures'
+import { SEED_ADMIN, SEED_VIEWER, userClient } from './fixtures'
 
 // The production build's meta CSP, frame guard and referrer policy (SECURITY.md S5)
 // and that a session is never taken from the URL fragment (S9).
@@ -75,6 +75,21 @@ test('key pages load under the CSP with no violations, posters included', async 
     await expect(page.getByRole('heading', { name: heading, exact: true })).toBeVisible()
     expect(await violations()).toEqual([])
   }
+})
+
+test('invite, reset and admin pages load under the CSP with no violations', async ({ page }) => {
+  const violations = await watchCsp(page)
+  // Made-up tokens: the pages still call the Edge Functions, then show the error.
+  for (const kind of ['invite', 'reset']) {
+    await page.goto(`./#/${kind}/${'x'.repeat(43)}`)
+    await expect(page.getByRole('alert')).toContainText('This link is invalid')
+  }
+  await page.goto('./#/login?next=%2Fadmin')
+  await page.getByLabel('Email').fill(SEED_ADMIN.email)
+  await page.getByLabel('Password').fill(SEED_ADMIN.password)
+  await page.getByRole('button', { name: 'Log in' }).click()
+  await expect(page.getByRole('heading', { name: 'Admin', level: 1 })).toBeVisible()
+  expect(await violations()).toEqual([])
 })
 
 test('the app stays hidden inside a frame', async ({ page }) => {
