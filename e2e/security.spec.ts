@@ -70,6 +70,7 @@ test('key pages load under the CSP with no violations, posters included', async 
     ['./#/', 'Films'],
     ['./#/rotation', 'Rotation'],
     ['./#/people', 'People'],
+    ['./#/about', 'About Film Club'],
   ]) {
     await page.goto(path)
     await expect(page.getByRole('heading', { name: heading, exact: true })).toBeVisible()
@@ -89,6 +90,14 @@ test('invite, reset and admin pages load under the CSP with no violations', asyn
   await page.getByLabel('Password').fill(SEED_ADMIN.password)
   await page.getByRole('button', { name: 'Log in' }).click()
   await expect(page.getByRole('heading', { name: 'Admin', level: 1 })).toBeVisible()
+  // The edit dialog with a colour-clash warning (inline swatch colours), then cancelled.
+  await page.getByRole('button', { name: 'Edit Kwame' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Edit Kwame' })
+  await dialog.getByLabel('Hex code').fill('#6aa84e')
+  await expect(dialog.getByText(/Hard to tell apart from/)).toBeVisible()
+  await dialog.getByRole('button', { name: 'Cancel' }).click()
+  await page.getByRole('button', { name: 'Remove login for Kwame' }).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Cancel' }).click()
   expect(await violations()).toEqual([])
 })
 

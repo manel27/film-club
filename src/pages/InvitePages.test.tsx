@@ -24,6 +24,9 @@ vi.mock('../invites/api', () => ({
   revokeLink: vi.fn(),
   fetchAdminPeople: vi.fn(),
   addPerson: vi.fn(),
+  updatePerson: vi.fn(),
+  removeLogin: vi.fn(),
+  fetchExport: vi.fn(),
 }))
 const mocked = vi.mocked(api)
 
@@ -287,5 +290,192 @@ describe('admin page', () => {
     expect(mocked.addPerson).toHaveBeenCalledWith('Zé Novo', '#123abc', 'viewer')
     expect(screen.getByLabelText('Name')).toHaveFocus()
     expect(screen.getByText('Not chosen yet')).toBeInTheDocument()
+  })
+
+  it('warns when a new colour is close to someone else’s, but still saves', async () => {
+    mocked.fetchAdminPeople.mockResolvedValue(adminData())
+    mocked.addPerson.mockResolvedValue()
+    renderApp('/admin', admin())
+    await screen.findByRole('link', { name: 'Kwame' })
+    type('Name', 'Nova')
+    type('Hex code', '#7ab85a')
+    expect(screen.getByLabelText('Colour')).toHaveValue('#7ab85a')
+    expect(screen.getByText(/Hard to tell apart from/)).toHaveTextContent(
+      "Hard to tell apart from Kwame's colour (#6aa84f). You can still save it.",
+    )
+    type('Colour', '#123abc')
+    expect(screen.queryByText(/Hard to tell apart/)).not.toBeInTheDocument()
+    type('Hex code', '#7AB85A')
+    fireEvent.click(screen.getByRole('button', { name: 'Add person' }))
+    expect(await screen.findByText(/Nova added/)).toBeInTheDocument()
+    expect(mocked.addPerson).toHaveBeenCalledWith('Nova', '#7ab85a', 'member')
+
+    type('Name', 'Bad Hex')
+    type('Hex code', '#12')
+    fireEvent.click(screen.getByRole('button', { name: 'Add person' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Use a hex colour like #4a86e8.')
+  })
+
+  it('edits someone’s name, colour and role, then focuses their row again', async () => {
+    mocked.fetchAdminPeople.mockResolvedValue(adminData())
+    mocked.updatePerson.mockResolvedValue()
+    renderApp('/admin', admin())
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit Viggo' }))
+    const dialog = screen.getByRole('dialog', { name: 'Edit Viggo' })
+    const field = (label: string) => within(dialog).getByLabelText(label)
+    expect(field('Name')).toHaveValue('Viggo')
+    expect(field('Role')).toBeEnabled()
+
+    fireEvent.change(field('Name'), { target: { value: 'KWAME' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }))
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(
+      'Someone already has that name.',
+    )
+
+    fireEvent.change(field('Name'), { target: { value: ' Viggo  B ' } })
+    // Close to Kwame's green: warned, not blocked. Its own old colour is no clash.
+    fireEvent.change(field('Hex code'), { target: { value: '#6aa84e' } })
+    expect(within(dialog).getByText(/Hard to tell apart/)).toHaveTextContent('Kwame')
+    fireEvent.change(field('Role'), { target: { value: 'moderator' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }))
+    await waitFor(() =>
+      expect(mocked.updatePerson).toHaveBeenCalledWith(VIGGO, {
+        display_name: 'Viggo B',
+        colour: '#6aa84e',
+        role: 'moderator',
+      }),
+    )
+    expect(await screen.findByText('Saved Viggo.')).toBeInTheDocument()
+    expect(dialog).not.toHaveAttribute('open')
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Edit Viggo' })).toHaveFocus())
+  })
+
+  it("explains the guard's refusals and keeps a colour from being cleared", async () => {
+    mocked.fetchAdminPeople.mockResolvedValue(adminData())
+    mocked.updatePerson.mockRejectedValue({
+      code: '42501',
+      message: 'The last admin cannot be demoted',
+    })
+    renderApp('/admin', admin())
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit Kwame' }))
+    const dialog = screen.getByRole('dialog', { name: 'Edit Kwame' })
+    fireEvent.change(within(dialog).getByLabelText('Hex code'), { target: { value: '' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }))
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('Use a hex colour')
+    expect(mocked.updatePerson).not.toHaveBeenCalled()
+
+    fireEvent.change(within(dialog).getByLabelText('Hex code'), { target: { value: '#6aa84f' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }))
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(
+      'The club needs at least one admin.',
+    )
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    expect(screen.getByRole('button', { name: 'Edit Kwame' })).toHaveFocus()
+
+    // Wren never had a colour: saving without one is fine.
+    mocked.updatePerson.mockResolvedValue()
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Wren' }))
+    fireEvent.click(
+      within(screen.getByRole('dialog', { name: 'Edit Wren' })).getByRole('button', {
+        name: 'Save',
+      }),
+    )
+    await waitFor(() =>
+      expect(mocked.updatePerson).toHaveBeenLastCalledWith('wren', {
+        display_name: 'Wren',
+        colour: null,
+        role: 'member',
+      }),
+    )
+  })
+
+  it('does not let the admin change their own role or remove their own login', async () => {
+    const me = {
+      id: 'profile-1',
+      name: 'Quinn',
+      colour: '#4a86e8',
+      isSystem: false,
+      role: 'admin' as const,
+      isClaimed: true,
+    }
+    mocked.fetchAdminPeople.mockResolvedValue({ ...adminData(), people: [me] })
+    renderApp('/admin', admin())
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit Quinn' }))
+    const role = within(screen.getByRole('dialog')).getByLabelText('Role')
+    expect(role).toBeDisabled()
+    expect(role).toHaveAccessibleDescription(/can't change your own role/)
+    expect(screen.queryByRole('button', { name: 'Remove login for Quinn' })).not.toBeInTheDocument()
+  })
+
+  it('removes a login only after a yes', async () => {
+    mocked.fetchAdminPeople.mockResolvedValue(adminData())
+    mocked.removeLogin.mockResolvedValueOnce({ ok: true }).mockRejectedValueOnce({
+      status: 409,
+      error: 'no_login',
+    })
+    renderApp('/admin', admin())
+    expect(screen.queryByRole('button', { name: 'Remove login for Viggo' })).not.toBeInTheDocument()
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove login for Kwame' }))
+    const dialog = screen.getByRole('dialog', { name: "Remove Kwame's login?" })
+    expect(dialog).toHaveTextContent('scores, attendance and comments stay')
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    expect(mocked.removeLogin).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove login for Kwame' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Yes, remove login' }))
+    expect(
+      await screen.findByText("Kwame's login was removed. Their history stays."),
+    ).toBeInTheDocument()
+    expect(mocked.removeLogin).toHaveBeenCalledWith(KWAME)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove login for Kwame' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Yes, remove login' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent("doesn't have a login any more")
+  })
+
+  it('exports all data as one zip download', async () => {
+    mocked.fetchAdminPeople.mockResolvedValue(adminData())
+    mocked.fetchExport
+      .mockResolvedValueOnce({
+        format: 'film-club-export',
+        exported_at: '2026-11-23T21:00:00Z',
+        schema_version: '20261123140000',
+        row_counts: { films: 0 },
+        tables: { films: [] },
+      })
+      .mockRejectedValueOnce({ code: '42501' })
+    const createObjectURL = vi.fn(() => 'blob:export')
+    const revokeObjectURL = vi.fn()
+    Object.assign(URL, { createObjectURL, revokeObjectURL })
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    renderApp('/admin', admin())
+    fireEvent.click(await screen.findByRole('button', { name: 'Export all data' }))
+    expect(
+      await screen.findByText('Downloaded film-club-export-2026-11-23.zip.'),
+    ).toBeInTheDocument()
+    expect(click).toHaveBeenCalledTimes(1)
+    expect((click.mock.contexts[0] as HTMLAnchorElement).download).toBe(
+      'film-club-export-2026-11-23.zip',
+    )
+    expect(createObjectURL).toHaveBeenCalledWith(expect.any(Blob))
+    await waitFor(() => expect(revokeObjectURL).toHaveBeenCalledWith('blob:export'))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Export all data' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Only the admin can export the data.',
+    )
+    click.mockRestore()
+  })
+})
+
+describe('about page', () => {
+  it('credits TMDB with their logo and notice, linked from every page', async () => {
+    renderApp('/', createFakeAuthBackend({ session: fakeSession(), profile: fakeProfile() }))
+    fireEvent.click(await screen.findByRole('link', { name: 'About' }))
+    expect(await screen.findByRole('heading', { name: 'About Film Club' })).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: 'The Movie Database (TMDB)' })).toBeInTheDocument()
+    expect(
+      screen.getByText('This product uses the TMDB API but is not endorsed or certified by TMDB.'),
+    ).toBeInTheDocument()
   })
 })

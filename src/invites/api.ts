@@ -1,3 +1,4 @@
+import type { ExportData } from '../admin/export'
 import { check, invoke } from '../films/api'
 import type { Person } from '../films/films'
 import { supabase } from '../lib/supabase'
@@ -81,3 +82,20 @@ export async function fetchAdminPeople(): Promise<{ people: AdminPerson[]; links
 /** Admin: a new, unclaimed person (RLS: admins only). */
 export const addPerson = (displayName: string, colour: string, role: NonNullable<Person['role']>) =>
   check(supabase.from('profiles').insert({ display_name: displayName, colour, role }))
+
+/** Admin: someone's name, colour and role (profiles_guard: not your own role; one admin stays). */
+export const updatePerson = (
+  id: string,
+  fields: { display_name: string; colour: string | null; role: NonNullable<Person['role']> },
+) => check(supabase.from('profiles').update(fields).eq('id', id).select('id'), true)
+
+/** Admin: the whole export, as one value (so PostgREST's 1,000-row limit never cuts it). */
+export async function fetchExport(): Promise<ExportData> {
+  const { data, error } = await supabase.rpc('export_data')
+  if (error) throw error
+  return data as unknown as ExportData
+}
+
+/** Admin: deletes the person's login; their profile and history stay (decision A2). */
+export const removeLogin = (profileId: string) =>
+  invoke<{ ok: true }>('admin-remove-login', { profile_id: profileId })

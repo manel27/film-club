@@ -54,6 +54,9 @@ export default function AppShell() {
         </div>
       </header>
       <Outlet />
+      <footer className="shell-footer">
+        <Link to="/about">About</Link>
+      </footer>
     </div>
   )
 }

@@ -11,8 +11,8 @@ after review and approval.
 > The secret key bypasses RLS and counts as "privileged" in the triggers
 > (import-only columns, scores above 10 on an unlocked easter egg). The only
 > code allowed to use it is the one-off **import** and **invite-claim** /
-> **invite-create** / **admin-reset-link** (which must re-check the caller's
-> role themselves), and each of those is reviewed explicitly.
+> **invite-create** / **admin-reset-link** / **admin-remove-login** (which must
+> re-check the caller's role themselves), and each of those is reviewed explicitly.
 
 > [!WARNING]
 > **Never run `supabase db push --include-seed` (or any seed) against
@@ -84,7 +84,8 @@ caller's JWT, re-reads their role from the database (`my_profile()`) and writes
 with the caller's JWT, so RLS and the triggers apply. None uses the secret key.
 The invite and reset link functions (plan 7, `_shared/links.ts`) are the
 exception: they use the secret key through service-role-only RPCs
-(`invite_issue`, `invite_peek`, `invite_redeem`, `invite_rate_hit`).
+(`invite_issue`, `invite_peek`, `invite_redeem`, `invite_rate_hit`), and so does
+`admin-remove-login` (`profile_remove_login`, then Auth's `deleteUser`).
 
 | Function           | Who                           | What                                                                 |
 | ------------------ | ----------------------------- | -------------------------------------------------------------------- |
@@ -93,6 +94,7 @@ exception: they use the secret key through service-role-only RPCs
 | `film-relink-tmdb` | moderators, admins            | links a film to a TMDB id (or refreshes it) and replaces its details  |
 | `invite-create`    | admins                        | a new invite link (14 days) for an unclaimed person; revokes their open one |
 | `admin-reset-link` | admins                        | a new password reset link (24 hours) for a person with a login        |
+| `admin-remove-login` | admins (not their own)      | deletes a person's login (all sessions end); profile and history stay, unclaimed, re-invitable (decision A2) |
 | `invite-preview`   | public (the link's token)     | name, colour and films watched of an open invite                      |
 | `invite-claim`     | public (the link's token)     | creates the login (email + password) and links it to the person       |
 | `reset-claim`      | public (the link's token)     | sets the new password; returns the email so the page can sign in      |
@@ -128,7 +130,7 @@ functions:check` checks format and types).
 
 **Production** (not done by any agent): `supabase secrets set TMDB_TOKEN=…`,
 then `supabase functions deploy tmdb-search film-save film-relink-tmdb invite-create
-admin-reset-link invite-preview invite-claim reset-claim`.
+admin-reset-link admin-remove-login invite-preview invite-claim reset-claim`.
 `config.toml` turns the gateway's legacy JWT check off for them
 (`verify_jwt = false`) because they verify the JWT themselves.
 

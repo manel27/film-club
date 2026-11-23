@@ -34,6 +34,14 @@ export function adminLinkErrorMessage(e: unknown): string {
   return 'Something went wrong. Try again.'
 }
 
+/** Friendly text for a failed admin-remove-login call. */
+export function removeLoginErrorMessage(e: unknown): string {
+  const { status, error } = (e ?? {}) as Partial<FunctionError>
+  if (status === 409 && error === 'self') return "You can't remove your own login."
+  if (status === 409) return "This person doesn't have a login any more."
+  return adminLinkErrorMessage(e)
+}
+
 const PASSWORD_RULE = `Use ${PASSWORD_MIN} or more characters, not only spaces (very long passwords are refused).`
 
 /**

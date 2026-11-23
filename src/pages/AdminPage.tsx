@@ -1,36 +1,47 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { exportZip } from '../admin/export'
 import { useAuth } from '../auth/authContext'
 import Chip from '../components/Chip'
+import ColourField, { HEX } from '../components/ColourField'
 import { errorMessage } from '../films/filmDetail'
 import type { Person } from '../films/films'
 import {
   addPerson,
   createLink,
   fetchAdminPeople,
+  fetchExport,
+  removeLogin,
   revokeLink,
+  updatePerson,
   type AdminPerson,
 } from '../invites/api'
-import { adminLinkErrorMessage, linkLabel, type OpenLink } from '../invites/links'
-import { parseName, renameError, ROLE_NAMES } from '../people/profile'
+import {
+  adminLinkErrorMessage,
+  linkLabel,
+  removeLoginErrorMessage,
+  type OpenLink,
+} from '../invites/links'
+import { parseName, personSaveError, renameError, ROLE_NAMES } from '../people/profile'
 import NotFoundPage from './NotFoundPage'
 
 type Role = NonNullable<Person['role']>
 const ROLES: Role[] = ['member', 'moderator', 'admin', 'viewer']
-const HEX = /^#[0-9a-f]{6}$/i
 /** The id of a person's create / regenerate button: focus comes back to it. */
 const buttonId = (p: Person) => `link-button-${p.id}`
+const editId = (p: Person) => `edit-button-${p.id}`
 
-/** A regenerate or revoke waiting for the admin's yes: it kills a link that may have been sent. */
-interface Pending {
-  person: AdminPerson
-  link: OpenLink
-  action: 'regenerate' | 'revoke'
-}
+/** A destructive action waiting for the admin's yes. */
+type Pending =
+  /** Kills a link that may have been sent. */
+  | { person: AdminPerson; link: OpenLink; action: 'regenerate' | 'revoke' }
+  /** Deletes their login (decision A2). */
+  | { person: AdminPerson; action: 'remove' }
 
 /**
- * Admin → People (#/admin, plan 9; decision I1): everyone with their login
- * status and open link, add a person, create / regenerate / revoke invite and
- * reset links. A new link is shown once, right after it is made.
+ * Admin (#/admin, plan 9; decisions I1, A1–A3): everyone with their login
+ * status and open link; add, edit (name, colour, role) and remove a login;
+ * create / regenerate / revoke invite and reset links (a new link is shown
+ * once, right after it is made); export all data.
  */
 export default function AdminPage() {
   const { profile } = useAuth()
@@ -39,6 +50,7 @@ export default function AdminPage() {
   const [attempt, setAttempt] = useState(0)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState('')
   const [fresh, setFresh] = useState<{
     person: AdminPerson
     kind: OpenLink['kind']
@@ -46,8 +58,10 @@ export default function AdminPage() {
   } | null>(null)
   const [copied, setCopied] = useState('')
   const [pending, setPending] = useState<Pending | null>(null)
+  const [editing, setEditing] = useState<AdminPerson | null>(null)
   const linkRef = useRef<HTMLInputElement>(null)
   const dialog = useRef<HTMLDialogElement>(null)
+  const editDialog = useRef<HTMLDialogElement>(null)
   const cancel = useRef<HTMLButtonElement>(null)
   // Where focus goes once the list has reloaded (never left on <body>).
   const focusNext = useRef<string | null>(null)
@@ -89,6 +103,7 @@ export default function AdminPage() {
   ) {
     setBusy(true)
     setError(null)
+    setNotice('')
     focusNext.current = buttonId(person)
     try {
       await run()
@@ -122,9 +137,23 @@ export default function AdminPage() {
   function confirmPending() {
     if (!pending) return
     dialog.current?.close()
-    const { person, link, action } = pending
-    if (action === 'regenerate') create(person, link.kind)
-    else act(person, () => revokeLink(link.id), errorMessage)
+    if (pending.action === 'remove') {
+      const { person } = pending
+      act(
+        person,
+        async () => {
+          await removeLogin(person.id)
+          setNotice(`${person.name}'s login was removed. Their history stays.`)
+        },
+        removeLoginErrorMessage,
+      )
+    } else if (pending.action === 'regenerate') create(pending.person, pending.link.kind)
+    else act(pending.person, () => revokeLink(pending.link.id), errorMessage)
+  }
+
+  function edit(person: AdminPerson) {
+    setEditing(person)
+    editDialog.current?.showModal()
   }
 
   function done() {
@@ -178,6 +207,7 @@ export default function AdminPage() {
           {error}
         </p>
       )}
+      <p role="status">{notice}</p>
       {failed ? (
         <>
           <p role="alert" className="form-error">
@@ -255,6 +285,27 @@ export default function AdminPage() {
                               Revoke
                             </button>
                           )}
+                          <button
+                            id={editId(p)}
+                            type="button"
+                            className="button button-secondary button-small"
+                            disabled={busy}
+                            aria-label={`Edit ${p.name}`}
+                            onClick={() => edit(p)}
+                          >
+                            Edit
+                          </button>
+                          {p.isClaimed && p.id !== profile.id && (
+                            <button
+                              type="button"
+                              className="button button-danger button-small"
+                              disabled={busy}
+                              aria-label={`Remove login for ${p.name}`}
+                              onClick={() => ask({ person: p, action: 'remove' })}
+                            >
+                              Remove login
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -266,23 +317,36 @@ export default function AdminPage() {
           <AddPerson people={data.people} onAdded={reload} />
         </>
       )}
+      <h2>Data</h2>
+      <ExportData />
       <dialog
         ref={dialog}
         className="confirm-dialog"
         aria-labelledby="confirm-link-heading"
         onClose={() => setPending(null)}
       >
-        {pending && (
+        {pending?.action === 'remove' ? (
           <>
-            <h2 id="confirm-link-heading">
-              {pending.action === 'revoke' ? 'Revoke' : 'Regenerate'} the{' '}
-              {pending.link.kind === 'invite' ? 'invite' : 'reset link'} for {pending.person.name}?
-            </h2>
+            <h2 id="confirm-link-heading">Remove {pending.person.name}'s login?</h2>
             <p>
-              The link already made stops working, even if it was sent.
-              {pending.action === 'regenerate' && ' A new one is made to send instead.'}
+              They are logged out everywhere and can't log in any more. Their films, scores,
+              attendance and comments stay, and you can invite them again later.
             </p>
           </>
+        ) : (
+          pending && (
+            <>
+              <h2 id="confirm-link-heading">
+                {pending.action === 'revoke' ? 'Revoke' : 'Regenerate'} the{' '}
+                {pending.link.kind === 'invite' ? 'invite' : 'reset link'} for {pending.person.name}
+                ?
+              </h2>
+              <p>
+                The link already made stops working, even if it was sent.
+                {pending.action === 'regenerate' && ' A new one is made to send instead.'}
+              </p>
+            </>
+          )
         )}
         <div className="actions">
           {/* First, so showModal() focuses it rather than the destructive button. */}
@@ -295,9 +359,38 @@ export default function AdminPage() {
             Cancel
           </button>
           <button type="button" className="button button-danger" onClick={confirmPending}>
-            {pending?.action === 'revoke' ? 'Yes, revoke' : 'Yes, regenerate'}
+            {pending?.action === 'revoke'
+              ? 'Yes, revoke'
+              : pending?.action === 'remove'
+                ? 'Yes, remove login'
+                : 'Yes, regenerate'}
           </button>
         </div>
+      </dialog>
+      <dialog
+        ref={editDialog}
+        className="confirm-dialog"
+        aria-labelledby="edit-heading"
+        onClose={() => {
+          if (editing) document.getElementById(editId(editing))?.focus()
+          setEditing(null)
+        }}
+      >
+        {editing && data && (
+          <EditPerson
+            key={editing.id}
+            person={editing}
+            people={data.people}
+            isMe={editing.id === profile.id}
+            onClose={() => editDialog.current?.close()}
+            onSaved={() => {
+              setNotice(`Saved ${editing.name}.`)
+              focusNext.current = editId(editing)
+              editDialog.current?.close()
+              reload()
+            }}
+          />
+        )}
       </dialog>
     </main>
   )
@@ -319,11 +412,12 @@ function AddPerson({ people, onAdded }: { people: Person[]; onAdded: () => void 
     setNotice('')
     const parsed = parseName(name, people, '')
     if ('error' in parsed) return setError(parsed.error)
-    if (!HEX.test(colour)) return setError('Pick a colour.')
+    if (!colour) return setError('Pick a colour.')
+    if (!HEX.test(colour)) return setError('Use a hex colour like #4a86e8.')
     setError(null)
     setBusy(true)
     try {
-      await addPerson(parsed.name, colour, role)
+      await addPerson(parsed.name, colour.toLowerCase(), role)
       setNotice(`${parsed.name} added. Create their invite above.`)
       setName('')
       setColour('')
@@ -349,22 +443,7 @@ function AddPerson({ people, onAdded }: { people: Person[]; onAdded: () => void 
           aria-describedby={error ? 'add-error' : undefined}
         />
       </label>
-      <div className="field">
-        <label htmlFor="add-colour">Colour</label>
-        <span className="colour-choice">
-          {/* A colour input always shows some colour: black until one is picked. */}
-          <input
-            id="add-colour"
-            type="color"
-            value={colour || '#000000'}
-            onChange={(e) => setColour(e.target.value)}
-            aria-describedby="add-colour-state"
-          />
-          <span id="add-colour-state" className={colour ? undefined : 'muted'}>
-            {colour || 'Not chosen yet'}
-          </span>
-        </span>
-      </div>
+      <ColourField id="add-colour" value={colour} onChange={setColour} people={people} />
       <label className="field">
         Role
         <select value={role} onChange={(e) => setRole(e.target.value as Role)}>
@@ -385,5 +464,159 @@ function AddPerson({ people, onAdded }: { people: Person[]; onAdded: () => void 
         {busy ? 'Adding…' : 'Add person'}
       </button>
     </form>
+  )
+}
+
+/**
+ * Edit someone's name, colour and role (plan 5: admin only). The database
+ * guard has the last word: an admin can't change their own role and the club
+ * always keeps an admin.
+ */
+function EditPerson({
+  person,
+  people,
+  isMe,
+  onClose,
+  onSaved,
+}: {
+  person: AdminPerson
+  people: Person[]
+  isMe: boolean
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const [name, setName] = useState(person.name)
+  const [colour, setColour] = useState(person.colour ?? '')
+  const [role, setRole] = useState<Role>(person.role ?? 'member')
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const parsed = parseName(name, people, person.id)
+    if ('error' in parsed) return setError(parsed.error)
+    // No colour is fine only for someone who never had one.
+    if (colour ? !HEX.test(colour) : person.colour) {
+      return setError('Use a hex colour like #4a86e8.')
+    }
+    setError(null)
+    setBusy(true)
+    try {
+      await updatePerson(person.id, {
+        display_name: parsed.name,
+        colour: colour ? colour.toLowerCase() : null,
+        role,
+      })
+      onSaved()
+    } catch (e) {
+      setError(personSaveError(e))
+      setBusy(false)
+    }
+  }
+
+  return (
+    <form onSubmit={submit} noValidate className="rotation-form">
+      <h2 id="edit-heading">Edit {person.name}</h2>
+      <label className="field">
+        Name
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          required
+          aria-invalid={!!error}
+          aria-describedby={error ? 'edit-error' : undefined}
+        />
+      </label>
+      <ColourField
+        id="edit-colour"
+        value={colour}
+        onChange={setColour}
+        people={people}
+        exceptId={person.id}
+      />
+      <label className="field">
+        Role
+        <select
+          value={role}
+          onChange={(e) => setRole(e.target.value as Role)}
+          disabled={isMe}
+          aria-describedby={isMe ? 'edit-role-why' : undefined}
+        >
+          {ROLES.map((r) => (
+            <option key={r} value={r}>
+              {ROLE_NAMES[r]}
+            </option>
+          ))}
+        </select>
+      </label>
+      {isMe && (
+        <p id="edit-role-why" className="muted">
+          You can't change your own role, so the club never loses its admin by accident.
+        </p>
+      )}
+      {error && (
+        <p id="edit-error" role="alert" className="form-error">
+          {error}
+        </p>
+      )}
+      <div className="actions">
+        <button type="button" className="button button-secondary" onClick={onClose}>
+          Cancel
+        </button>
+        <button type="submit" className="button" disabled={busy}>
+          {busy ? 'Saving…' : 'Save'}
+        </button>
+      </div>
+    </form>
+  )
+}
+
+/** Export all data (decision A1): one zip with the complete JSON and a CSV per table. */
+function ExportData() {
+  const [busy, setBusy] = useState(false)
+  const [status, setStatus] = useState('')
+  const [error, setError] = useState<string | null>(null)
+
+  async function download() {
+    setBusy(true)
+    setError(null)
+    setStatus('')
+    try {
+      const { name, blob } = exportZip(await fetchExport())
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = name
+      a.click()
+      setTimeout(() => URL.revokeObjectURL(url))
+      setStatus(`Downloaded ${name}.`)
+    } catch (e) {
+      setError(
+        (e as { code?: string } | null)?.code === '42501'
+          ? 'Only the admin can export the data.'
+          : "Couldn't export the data. Check your connection and try again.",
+      )
+    }
+    setBusy(false)
+  }
+
+  return (
+    <section className="rotation-form" aria-labelledby="export-heading">
+      <h3 id="export-heading">Export all data</h3>
+      <p>
+        One zip file: a complete JSON file with everything needed to rebuild the club's data, and a
+        CSV of each table for spreadsheets. No emails or passwords are included. Keep a copy
+        somewhere safe every month.
+      </p>
+      {error && (
+        <p role="alert" className="form-error">
+          {error}
+        </p>
+      )}
+      <p role="status">{status}</p>
+      <button type="button" className="button" disabled={busy} onClick={download}>
+        {busy ? 'Exporting…' : 'Export all data'}
+      </button>
+    </section>
   )
 }

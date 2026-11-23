@@ -1,5 +1,6 @@
-// Invite and reset links (plan 7; decisions I1, I2). Shared by invite-create,
-// admin-reset-link, invite-preview, invite-claim and reset-claim.
+// Invite and reset links (plan 7; decisions I1, I2) and removing a login (A2).
+// Shared by invite-create, admin-reset-link, invite-preview, invite-claim,
+// reset-claim and admin-remove-login.
 //
 // These are the only functions that use the secret key (supabase/README.md):
 // invites can't be inserted or claimed from a browser. The admin ones check
@@ -259,3 +260,44 @@ export const resetClaim = publicLink(() => 'reset', async (req, db, body, hash) 
   }
   return json(req, 200, { email: updated.data.user.email })
 })
+
+/**
+ * POST { profile_id } -> { ok } (decision A2: leavers). Admins only. Deletes
+ * the person's login (auth user), which ends all their sessions; their
+ * profile and history stay, unclaimed, so they can be invited again, and
+ * their open link is revoked. 409 { error: 'self' } for the admin's own
+ * login (so the last admin always keeps theirs), 'no_login' for someone
+ * without one or a system profile.
+ */
+export async function removeLogin(req: Request): Promise<Response> {
+  if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders(req) })
+  if (req.method !== 'POST') return json(req, 405, { error: 'method_not_allowed' })
+  try {
+    const me = await getCaller(req)
+    if (!me) return json(req, 401, { error: 'unauthorized' })
+    if (me.role !== 'admin') return json(req, 403, { error: 'forbidden' })
+
+    const b = await readBody(req)
+    if (typeof b?.profile_id !== 'string' || !UUID.test(b.profile_id)) {
+      return json(req, 400, { error: 'invalid' })
+    }
+    const db = serviceClient()
+    // Also re-checks, under the admins lock, that the caller is an admin with a login.
+    const { data: login, error } = await db.rpc('profile_remove_login', {
+      p_profile_id: b.profile_id,
+      p_admin_id: me.id,
+    })
+    if (error?.code === '23503') return json(req, 404, { error: 'not_found' })
+    if (error?.hint === 'forbidden') return json(req, 403, { error: 'forbidden' })
+    if (error?.hint === 'self' || error?.hint === 'no_login') {
+      return json(req, 409, { error: error.hint })
+    }
+    if (error) throw error
+    // profiles.auth_user_id is `on delete set null`: the profile stays, unclaimed.
+    const deleted = await db.auth.admin.deleteUser(login)
+    if (deleted.error) throw deleted.error
+    return json(req, 200, { ok: true })
+  } catch (e) {
+    return fail(req, e)
+  }
+}

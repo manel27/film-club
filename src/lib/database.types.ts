@@ -757,6 +757,7 @@ export type Database = {
       }
     }
     Functions: {
+      export_data: { Args: Record<PropertyKey, never>; Returns: Json }
       film_duplicate_check: {
         Args: {
           p_original_title?: string
@@ -815,6 +816,7 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      profile_remove_login: { Args: { p_admin_id: string; p_profile_id: string }; Returns: string }
       tmdb_search_hit: { Args: Record<PropertyKey, never>; Returns: boolean }
     }
     Enums: {
