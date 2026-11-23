@@ -78,10 +78,13 @@ test('key pages load under the CSP with no violations, posters included', async 
 })
 
 test('the app stays hidden inside a frame on another site', async ({ page, baseURL }) => {
-  await page.route('http://framer.test/', (route) =>
+  // 127.0.0.1 is another origin than localhost, and still local (a public
+  // origin can't frame localhost at all in Chromium).
+  const framer = 'http://127.0.0.1:4318/framer'
+  await page.route(framer, (route) =>
     route.fulfill({ contentType: 'text/html', body: `<iframe src="${baseURL}"></iframe>` }),
   )
-  await page.goto('http://framer.test/')
+  await page.goto(framer)
   const frame = page.frameLocator('iframe')
   await expect(frame.locator('#root')).toBeAttached()
   await expect(frame.locator('html')).toHaveCSS('display', 'none')
