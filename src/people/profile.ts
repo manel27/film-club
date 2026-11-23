@@ -102,6 +102,14 @@ export function renameError(error: unknown): string {
   return errorMessage(error)
 }
 
+/** Friendly text for a failed admin edit of someone (profiles_guard's refusals, then as a rename). */
+export function personSaveError(error: unknown): string {
+  const { message } = (error ?? {}) as { message?: string }
+  if (message?.includes('last admin')) return 'The club needs at least one admin.'
+  if (message?.includes('own role')) return "You can't change your own role."
+  return renameError(error)
+}
+
 export const ROLE_NAMES: Record<NonNullable<Person['role']>, string> = {
   admin: 'Admin',
   moderator: 'Moderator',

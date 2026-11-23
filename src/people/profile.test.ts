@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import type { FilmItem, Person } from '../films/films'
-import { mean, normaliseName, parseName, profileStats, profileTabs, renameError } from './profile'
+import {
+  mean,
+  normaliseName,
+  parseName,
+  personSaveError,
+  profileStats,
+  profileTabs,
+  renameError,
+} from './profile'
 
 const film = (id: number, extra: Partial<FilmItem> = {}): FilmItem => ({
   id,
@@ -125,5 +133,21 @@ describe('renameError', () => {
     expect(renameError({ code: '23505' })).toBe('Someone already has that name.')
     expect(renameError({ code: '23514' })).toBe('Use 1 to 50 characters, with a letter or digit.')
     expect(renameError({ code: '42501' })).toBe("You can't change that.")
+  })
+})
+
+describe('personSaveError', () => {
+  it("explains the guard's refusals, otherwise like a rename", () => {
+    const guard = (message: string) => ({ code: '42501', message })
+    expect(personSaveError(guard('The last admin cannot be demoted'))).toBe(
+      'The club needs at least one admin.',
+    )
+    expect(personSaveError(guard('Admins cannot change their own role'))).toBe(
+      "You can't change your own role.",
+    )
+    expect(personSaveError({ code: '23505' })).toBe('Someone already has that name.')
+    expect(personSaveError(guard('Only the admin can change role, colour or sheet keyword'))).toBe(
+      "You can't change that.",
+    )
   })
 })

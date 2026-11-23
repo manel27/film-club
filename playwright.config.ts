@@ -28,7 +28,7 @@ export default defineConfig({
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
-      testIgnore: /(add|delete)-film|rotation|profiles|invites/,
+      testIgnore: /(add|delete)-film|rotation|profiles|invites|admin-people/,
     },
     // Add and delete films, write rotation data, rename and add people, which other tests count or show: run after them.
     {
@@ -36,6 +36,13 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'] },
       testMatch: /(add|delete)-film|rotation|profiles|invites/,
       dependencies: ['chromium'],
+    },
+    // Edits people and checks the export's counts against the database: last, on its own.
+    {
+      name: 'chromium-admin',
+      use: { ...devices['Desktop Chrome'] },
+      testMatch: /admin-people/,
+      dependencies: ['chromium-writes'],
     },
   ],
   webServer: {

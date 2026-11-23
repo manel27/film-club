@@ -426,6 +426,9 @@ verify_jwt = false
 [functions.admin-reset-link]
 verify_jwt = false
 
+[functions.admin-remove-login]
+verify_jwt = false
+
 [functions.invite-preview]
 verify_jwt = false
 

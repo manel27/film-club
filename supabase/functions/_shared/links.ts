@@ -1,5 +1,6 @@
-// Invite and reset links (plan 7; decisions I1, I2). Shared by invite-create,
-// admin-reset-link, invite-preview, invite-claim and reset-claim.
+// Invite and reset links (plan 7; decisions I1, I2) and removing a login (A2).
+// Shared by invite-create, admin-reset-link, invite-preview, invite-claim,
+// reset-claim and admin-remove-login.
 //
 // These are the only functions that use the secret key (supabase/README.md):
 // invites can't be inserted or claimed from a browser. The admin ones check
@@ -259,3 +260,50 @@ export const resetClaim = publicLink(() => 'reset', async (req, db, body, hash) 
   }
   return json(req, 200, { email: updated.data.user.email })
 })
+
+/**
+ * POST { profile_id } -> { ok } (decisions A2, A4: leavers). Admins only.
+ * profile_remove_login unlinks the person from their login (an admin or
+ * moderator becomes a member) and revokes their open link, then their auth
+ * user is deleted, which ends all their sessions. Their profile and history
+ * stay, unclaimed, so they can be invited again. 409 { error: 'self' } for
+ * the admin's own login, 'no_login' for someone without one or a system
+ * profile; 403 if the caller isn't (any more) an admin with a login.
+ * 502 { error: 'login_not_deleted' } if Auth then fails: the person already
+ * has no access, and the orphaned auth user's id is logged (supabase/README.md).
+ */
+export async function removeLogin(req: Request): Promise<Response> {
+  if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders(req) })
+  if (req.method !== 'POST') return json(req, 405, { error: 'method_not_allowed' })
+  try {
+    const me = await getCaller(req)
+    if (!me) return json(req, 401, { error: 'unauthorized' })
+    if (me.role !== 'admin') return json(req, 403, { error: 'forbidden' })
+
+    const b = await readBody(req)
+    if (typeof b?.profile_id !== 'string' || !UUID.test(b.profile_id)) {
+      return json(req, 400, { error: 'invalid' })
+    }
+    const db = serviceClient()
+    // Re-checks, under the admins lock, that the caller is still an admin with a login.
+    const { data: login, error } = await db.rpc('profile_remove_login', {
+      p_profile_id: b.profile_id,
+      p_admin_id: me.id,
+    })
+    if (error?.code === '23503') return json(req, 404, { error: 'not_found' })
+    if (error?.hint === 'forbidden') return json(req, 403, { error: 'forbidden' })
+    if (error?.hint === 'self' || error?.hint === 'no_login') {
+      return json(req, 409, { error: error.hint })
+    }
+    if (error) throw error
+    const deleted = await db.auth.admin.deleteUser(login)
+    if (deleted.error) {
+      // Only the id (never the email): delete this auth user before re-inviting with that email.
+      console.error('admin-remove-login: orphaned auth user', login, deleted.error.code ?? '')
+      return json(req, 502, { error: 'login_not_deleted' })
+    }
+    return json(req, 200, { ok: true })
+  } catch (e) {
+    return fail(req, e)
+  }
+}

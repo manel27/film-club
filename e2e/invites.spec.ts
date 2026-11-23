@@ -75,7 +75,7 @@ test('admin adds a person and invites them; they claim it and log in', async ({
   await page.getByRole('button', { name: 'Add person' }).click()
   await expect(page.getByText(`${INVITEE.name} added.`)).toBeVisible()
   const row = page.getByRole('row').filter({ hasText: INVITEE.name })
-  await expect(row).toContainText('Not claimed yet')
+  await expect(row).toContainText('No login')
 
   const link = await newLink(page, `Create invite for ${INVITEE.name}`)
   expect(link.startsWith('http://localhost:4317/film-club/#/invite/')).toBe(true)

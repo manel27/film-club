@@ -5,6 +5,7 @@ import {
   linkErrorMessage,
   linkLabel,
   passwordProblem,
+  removeLoginErrorMessage,
   watchedLine,
 } from './links'
 
@@ -76,5 +77,19 @@ describe('linkLabel', () => {
     expect(linkLabel({ ...link, kind: 'reset', expiresAt: '2026-07-01T09:00:00Z' }, now)).toBe(
       'Reset link expired 1 Jul, 10:00',
     )
+  })
+})
+
+describe('removeLoginErrorMessage', () => {
+  it('explains the refusals, otherwise like the other admin calls', () => {
+    expect(removeLoginErrorMessage({ status: 409, error: 'self' })).toBe(
+      "You can't remove your own login.",
+    )
+    expect(removeLoginErrorMessage({ status: 409, error: 'no_login' })).toMatch(/any more/)
+    expect(removeLoginErrorMessage({ status: 403 })).toBe('Only the admin can do that.')
+    expect(removeLoginErrorMessage({ status: 502, error: 'login_not_deleted' })).toMatch(
+      /access is removed.*Delete it in Supabase/,
+    )
+    expect(removeLoginErrorMessage({ status: 0 })).toMatch(/Couldn't reach/)
   })
 })
