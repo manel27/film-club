@@ -1,7 +1,7 @@
 -- Security audit S1: a JWT whose session has ended (logout, password reset,
 -- revoked) gets nothing, though its signature and expiry are still good.
 begin;
-select plan(11);
+select plan(13);
 
 -- A live session: everything as usual.
 select tests.login_as('member');
@@ -21,6 +21,18 @@ select is(tests.row_count('select id from public.films'), 0, 'it reads no films'
 select is((select count(*)::integer from public.my_profile()), 0, 'my_profile() is empty');
 select throws_ok($$insert into public.comments (film_id, author_id, body) values (8, tests.profile_id('member'), 'still here?')$$,
   '42501', null, 'it cannot comment');
+reset role;
+
+-- A session past its not_after (Auth's time-box) has ended too.
+select tests.login_as('member');
+reset role;
+update auth.sessions set not_after = now() + interval '1 hour' where user_id = tests.auth_user_id('member');
+select set_config('role', 'authenticated', true);
+select is(app.current_role(), 'member'::public.profile_role, 'a session before its not_after is live');
+reset role;
+update auth.sessions set not_after = now() - interval '1 second' where user_id = tests.auth_user_id('member');
+select set_config('role', 'authenticated', true);
+select is(app.current_role(), null, 'a session past its not_after has no role');
 reset role;
 
 -- Someone else's live session id doesn't help.

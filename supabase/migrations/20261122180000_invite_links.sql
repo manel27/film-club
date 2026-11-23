@@ -184,22 +184,28 @@ $$;
 -- locks themselves out. 10 failures an hour per IP, and 100 an hour from
 -- everyone together (subject '*'), so a spoofed IP header can't buy unlimited
 -- guesses. Per-IP subjects are 'ip:<address>', clipped to 64 characters.
--- invite_rate_ok asks; invite_rate_fail records one failure.
+-- An open link skips those caps (audit S3) and has its own instead: 10 failed
+-- claims an hour per token ('token:<hash>'), which only its holder can fill.
+-- invite_rate_ok asks (with p_token: for that open link); invite_rate_fail
+-- records one failure.
 
-create function public.invite_rate_ok(p_ip text)
+create function public.invite_rate_ok(p_ip text, p_token text default null)
 returns boolean
 language sql
 stable
 security invoker
 set search_path = ''
 as $$
-  select coalesce(sum(r.count) filter (where r.subject = left('ip:' || p_ip, 64)), 0) < 10
-     and coalesce(sum(r.count) filter (where r.subject = '*'), 0) < 100
+  select case when p_token is null then
+      coalesce(sum(r.count) filter (where r.subject = left('ip:' || p_ip, 64)), 0) < 10
+      and coalesce(sum(r.count) filter (where r.subject = '*'), 0) < 100
+    else coalesce(sum(r.count) filter (where r.subject = left('token:' || p_token, 64)), 0) < 10
+    end
   from public.rate_limits r
   where r.bucket = 'invite-link' and r.window_start = date_trunc('hour', now());
 $$;
 
-create function public.invite_rate_fail(p_ip text)
+create function public.invite_rate_fail(p_ip text, p_token text default null)
 returns void
 language plpgsql
 volatile
@@ -213,7 +219,9 @@ begin
   delete from public.rate_limits where bucket = 'invite-link' and window_start < win;
 
   insert into public.rate_limits as r (bucket, subject, window_start, count)
-  values ('invite-link', left('ip:' || p_ip, 64), win, 1), ('invite-link', '*', win, 1)
+  select 'invite-link', subject, win, 1
+  from unnest(array[left('ip:' || p_ip, 64), '*', left('token:' || p_token, 64)]) subject
+  where subject is not null
   on conflict (bucket, subject, window_start) do update set count = r.count + 1;
 end;
 $$;
@@ -221,10 +229,10 @@ $$;
 revoke execute on function public.invite_issue(uuid, text, bytea, uuid) from public, anon, authenticated;
 revoke execute on function public.invite_peek(bytea, text) from public, anon, authenticated;
 revoke execute on function public.invite_redeem(bytea, text, uuid) from public, anon, authenticated;
-revoke execute on function public.invite_rate_ok(text) from public, anon, authenticated;
-revoke execute on function public.invite_rate_fail(text) from public, anon, authenticated;
+revoke execute on function public.invite_rate_ok(text, text) from public, anon, authenticated;
+revoke execute on function public.invite_rate_fail(text, text) from public, anon, authenticated;
 grant execute on function public.invite_issue(uuid, text, bytea, uuid) to service_role;
 grant execute on function public.invite_peek(bytea, text) to service_role;
 grant execute on function public.invite_redeem(bytea, text, uuid) to service_role;
-grant execute on function public.invite_rate_ok(text) to service_role;
-grant execute on function public.invite_rate_fail(text) to service_role;
+grant execute on function public.invite_rate_ok(text, text) to service_role;
+grant execute on function public.invite_rate_fail(text, text) to service_role;

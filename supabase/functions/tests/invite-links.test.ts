@@ -487,6 +487,21 @@ Deno.test(
           'invite-link',
         )
         assertEquals(data!.map((r) => r.subject.length).sort(), [1, 64])
+
+        // An open link's own cap: 10 failed claims an hour, from anywhere, then that link is refused.
+        await admin.from('rate_limits').delete().eq('bucket', 'invite-link')
+        const fay = await addPerson('Deno Fay')
+        const fayToken = tokenOf((await call(invite, 'orla', { profile_id: fay })).body.link)
+        const taken = { email: 'kwame@example.test', password: 'long-enough' }
+        for (let i = 0; i < 10; i++) {
+          assertEquals((await call(claim, null, { token: fayToken, ...taken })).status, 409)
+        }
+        assertEquals((await call(claim, null, { token: fayToken, ...taken })).status, 429)
+        assertEquals((await call(preview, null, { token: fayToken })).status, 429)
+        // Other links are untouched.
+        const gus = await addPerson('Deno Gus')
+        const gusToken = tokenOf((await call(invite, 'orla', { profile_id: gus })).body.link)
+        assertEquals((await call(preview, null, { token: gusToken })).status, 200)
       })
     } finally {
       for (const email of emails) {

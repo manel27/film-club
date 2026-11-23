@@ -1,7 +1,7 @@
 -- Invite and reset links (phase 11, plan 7; decisions I1, I2): the kind
 -- column and its guards, and the Edge Function RPCs (secret key only).
 begin;
-select plan(55);
+select plan(58);
 
 -- ---------------------------------------------------------------- RPCs: secret key only
 select tests.login_as('admin');
@@ -163,6 +163,13 @@ select ok(not public.invite_rate_ok('198.51.100.9'), '100 failures an hour from 
 select lives_ok($$select public.invite_rate_fail(repeat('z', 500))$$, 'a huge address is accepted');
 reset role;
 select is((select max(char_length(subject)) from public.rate_limits where bucket = 'invite-link'), 64, 'subjects are clipped to 64 characters');
+select tests.login_service_role();
+select ok(public.invite_rate_ok('198.51.100.9', 'abc'), 'an open link is not held back by the overall cap');
+select is((select count(*)::integer from (select public.invite_rate_fail('198.51.100.' || n, 'abc') from generate_series(1, 10) n) x), 10,
+  '10 failed claims on one link, from different addresses');
+select ok(not public.invite_rate_ok('198.51.100.200', 'abc') and public.invite_rate_ok('198.51.100.200', 'def'),
+  'that link is refused for an hour; other links are not');
+reset role;
 select tests.login_service_role();
 select lives_ok($$select public.invite_rate_fail('*')$$, 'an address of * never clashes with the overall count');
 reset role;

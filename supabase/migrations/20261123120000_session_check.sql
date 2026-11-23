@@ -4,7 +4,8 @@
 -- reset (decision I3: every other session ends) an already-issued access
 -- token kept reading and writing until it expired. The two role helpers that
 -- every RLS policy and guard goes through now also require the token's
--- session to still exist in auth.sessions; a logged-out, reset or revoked
+-- session to still exist in auth.sessions (and not be past its not_after,
+-- the time-box Auth can set on sessions); a logged-out, reset or revoked
 -- session gets nothing, like a visitor. jwt_expiry is also down to 10 minutes
 -- (config.toml; the hosted project is set by the owner).
 --
@@ -26,6 +27,7 @@ as $$
           then (auth.jwt() ->> 'session_id')::uuid
       end
       and s.user_id = auth.uid()
+      and (s.not_after is null or s.not_after > now())
   );
 $$;
 
@@ -57,5 +59,6 @@ as $$
     and app.session_is_live();
 $$;
 
-revoke execute on function app.session_is_live() from public;
-grant execute on function app.session_is_live() to authenticated, service_role;
+-- Only the two helpers above call it (as its owner, SECURITY DEFINER), so no
+-- role needs to execute it directly.
+revoke execute on function app.session_is_live() from public, anon, authenticated, service_role;

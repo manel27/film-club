@@ -142,6 +142,9 @@ admin-reset-link invite-preview invite-claim reset-claim`.
   session still exists in `auth.sessions` (security audit S1), so a token of
   a logged-out or reset session gets nothing even before it expires. Tokens
   last 10 minutes (`jwt_expiry = 600`; set the same on the hosted project).
+  So after a password reset, a tab still open on another device shows empty
+  lists for up to 10 minutes, then its token can't be refreshed and it is
+  signed out.
 - **No duplicate films**, for everyone including the secret key: unique TMDB id,
   unique normalised title + year for manual films, and a trigger for manual vs
   TMDB cross-matches (titles and original titles).

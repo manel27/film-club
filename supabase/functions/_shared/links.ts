@@ -58,6 +58,8 @@ export async function tokenHash(token: string): Promise<string> {
  * on the hosted proxy); the global cap of 100 failures an hour (invite_rate_fail) bounds
  * spoofing, and open links skip both caps, so a flood can't lock invitees out. Once the
  * hosted headers are confirmed, key on the proxy-set one only.
+ * The caps are not what stops guessing: a token has 256 bits of entropy, so no number of
+ * guesses finds one. They only keep junk traffic down.
  */
 export function clientIp(req: Request): string {
   return req.headers.get('cf-connecting-ip') ??
@@ -122,10 +124,13 @@ const FAILED = new Set([400, 404, 409])
 
 /**
  * Public endpoint: POST, then the link is looked up first (plan 7.5, audit
- * S3). An open link is always served: the caps never refuse it, so nobody
- * can lock real invitees out by flooding junk. Anything else is refused once
- * the caps are reached: 10 failures an hour per IP and 100 an hour overall
- * (invite_rate_ok / invite_rate_fail). Only failed attempts count.
+ * S3). An open link skips the per-IP and overall caps, so nobody can lock
+ * real invitees out by flooding junk: even a capped address gets a 200 for a
+ * valid token. That is safe because the token's 256 bits of entropy, not the
+ * caps, are what stop guessing. An open link has its own cap instead: 10
+ * failed claims an hour (e.g. email taken), which only its holder can fill.
+ * Anything else is refused once 10 failures an hour per IP or 100 overall are
+ * reached (invite_rate_ok / invite_rate_fail). Only failed attempts count.
  * `kindOf` says which kind of link the endpoint takes.
  */
 function publicLink(kindOf: (body: Record<string, unknown>) => LinkKind, handle: Public) {
@@ -146,14 +151,14 @@ function publicLink(kindOf: (body: Record<string, unknown>) => LinkKind, handle:
         if (peek.error) throw peek.error
         person = peek.data
       }
-      if (!person) {
-        const { data: allowed, error } = await db.rpc('invite_rate_ok', { p_ip: ip })
-        if (error) throw error
-        if (!allowed) return json(req, 429, { error: 'rate_limited' })
-      }
+      // An open link is limited by its own failures, anything else by the IP and overall caps.
+      const limits = { p_ip: ip, p_token: person ? hash!.slice(2) : null }
+      const { data: allowed, error } = await db.rpc('invite_rate_ok', limits)
+      if (error) throw error
+      if (!allowed) return json(req, 429, { error: 'rate_limited' })
       const res = person ? await handle(req, db, body!, hash!, person) : json(req, 404, INVALID)
       if (FAILED.has(res.status)) {
-        const counted = await db.rpc('invite_rate_fail', { p_ip: ip })
+        const counted = await db.rpc('invite_rate_fail', limits)
         if (counted.error) throw counted.error
       }
       return res
