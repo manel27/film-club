@@ -16,13 +16,15 @@ const hashes = (html: string, tag: string) =>
  * <script>/<style> in index.html are allowed by hash, computed here.
  * frame-ancestors is ignored in a <meta>; index.html's frame guard covers it.
  */
-function csp(supabaseUrl: string): Plugin {
+function csp(supabaseUrl: string | undefined): Plugin {
   return {
     name: 'film-club-csp',
     apply: 'build',
     transformIndexHtml: {
       order: 'post',
       handler(html) {
+        // Never ship a build without its CSP (assertBuildEnv also checks production builds).
+        if (!supabaseUrl) throw new Error('VITE_SUPABASE_URL is required to build the CSP.')
         const policy = [
           "default-src 'self'",
           `script-src 'self' ${hashes(html, 'script')}`,
@@ -52,6 +54,6 @@ export default defineConfig(({ command, mode }) => {
 
   return {
     base: '/film-club/',
-    plugins: [react(), ...(env.VITE_SUPABASE_URL ? [csp(env.VITE_SUPABASE_URL)] : [])],
+    plugins: [react(), csp(env.VITE_SUPABASE_URL)],
   }
 })

@@ -1,7 +1,7 @@
 import unittest
 
 from migration.parse_sheet import SheetFormatError, css_colour_map, is_coloured, parse_html
-from migration.text import parse_link, parse_score, split_tags, title_norm
+from migration.text import https_url, parse_link, parse_score, split_tags, title_norm
 
 from . import helpers
 
@@ -90,6 +90,14 @@ class TextTest(unittest.TestCase):
         link = parse_link("https://letterboxd.com/film/iron-tulip-1984/")
         self.assertEqual((link.site, link.title, link.year), ("letterboxd", "iron tulip", 1984))
         self.assertIsNone(parse_link(None))
+
+    def test_https_url(self):
+        # Matches the films_source_url_https CHECK: only https (or nothing) is stored.
+        self.assertEqual(https_url("https://letterboxd.com/film/x/"), "https://letterboxd.com/film/x/")
+        self.assertEqual(https_url(" HTTP://en.wikipedia.org/wiki/X "), "https://en.wikipedia.org/wiki/X")
+        self.assertEqual(https_url("Https://x.test"), "https://x.test")
+        for bad in (None, "", "javascript:alert(1)", "ftp://x.test/a", "//x.test/a", "/wiki/X"):
+            self.assertIsNone(https_url(bad), bad)
 
 
 if __name__ == "__main__":
