@@ -1,0 +1,40 @@
+# Weekly update PRs (SECURITY.md S6). Packages that must move together share a
+# PR (any update type); other minor and patch bumps come grouped in one PR per
+# ecosystem; other majors come one by one. Security updates are separate and
+# not limited by these settings.
+#
+# Not covered: the Edge Functions' Deno `npm:` / `jsr:` specifiers
+# (supabase/functions) and supabase/functions/deno.lock are bumped by hand.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    groups:
+      # A dependency joins the first group it matches.
+      vitest:
+        patterns: ['vitest*', '@vitest/*']
+      react:
+        patterns: ['react', 'react-dom', '@types/react*']
+      playwright:
+        patterns: ['playwright', '@playwright/*']
+      minor-and-patch:
+        update-types: [minor, patch]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+  - package-ecosystem: pip
+    directory: /migration
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 2
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]

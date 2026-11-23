@@ -4,4 +4,7 @@ import { readSupabaseEnv } from './supabaseEnv'
 
 const { url, publishableKey } = readSupabaseEnv(import.meta.env)
 
-export const supabase = createClient<Database>(url, publishableKey)
+// No OAuth or magic links: never take a session from the URL (login CSRF).
+export const supabase = createClient<Database>(url, publishableKey, {
+  auth: { detectSessionInUrl: false },
+})

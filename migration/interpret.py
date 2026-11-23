@@ -17,7 +17,7 @@ from typing import Any
 from . import dupes, tmdb
 from .config import Config, ConfigError, FilmOverride, Person
 from .parse_sheet import is_coloured, normalise_colour
-from .text import clean_spaces, fold, parse_link, parse_score, split_tags, title_norm, year_tag
+from .text import clean_spaces, fold, https_url, parse_link, parse_score, split_tags, title_norm, year_tag
 
 IMPORT_FORMAT = "film-club-import/1"
 MAX_COMMENT = 4000
@@ -463,7 +463,7 @@ def interpret(sheet: dict[str, Any], cfg: Config, today: dt.date | None = None) 
             "is_planned": is_planned,
             "labels": labels,
             "title_colour": colour,
-            "source_url": row["link"],
+            "source_url": https_url(row["link"]),
             "tmdb_query": tmdb.build_query(final_title, year_hint, link),
             "tmdb": None,
         }

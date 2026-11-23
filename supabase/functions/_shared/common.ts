@@ -120,14 +120,17 @@ export async function tmdbFilm(tmdbId: number): Promise<Record<string, unknown> 
   const m = await tmdb(`/movie/${tmdbId}`, { language: 'en-US', append_to_response: 'credits' })
   if (!m) return null
   const text = (v: unknown) => (typeof v === 'string' && v.trim() ? v : null)
+  // Same rule as the films_*_path_tmdb CHECKs: anything else is dropped, not saved.
+  const imagePath = (v: unknown) =>
+    typeof v === 'string' && /^\/[A-Za-z0-9._-]+$/.test(v) ? v : null
   return {
     tmdb_id: tmdbId,
     title: text(m.title) ?? text(m.original_title) ?? `TMDB ${tmdbId}`,
     original_title: text(m.original_title),
     release_year: yearOf(m.release_date),
     release_date: text(m.release_date),
-    poster_path: text(m.poster_path),
-    backdrop_path: text(m.backdrop_path),
+    poster_path: imagePath(m.poster_path),
+    backdrop_path: imagePath(m.backdrop_path),
     overview: text(m.overview),
     runtime_min: typeof m.runtime === 'number' && m.runtime > 0 ? m.runtime : null,
     genres: ((m.genres ?? []) as { name?: string }[]).map((g) => g.name).filter(Boolean),
