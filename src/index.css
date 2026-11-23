@@ -855,7 +855,9 @@ a.button {
 
 .main-nav {
   display: flex;
-  gap: 1rem;
+  /* Five links (with Admin) don't fit one line on a phone. */
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
   margin-right: auto;
 }
 
@@ -1101,7 +1103,7 @@ a.chip:hover,
   vertical-align: middle;
 }
 
-/* ---------------------------------------------------------------- about and footer */
+/* ---------------------------------------------------------------- about */
 
 .about-page {
   text-align: left;
@@ -1111,12 +1113,6 @@ a.chip:hover,
   display: block;
   height: 1.125rem;
   width: auto;
-}
-
-.shell-footer {
-  padding: 1.5rem 1rem;
-  text-align: center;
-  font-size: 0.875rem;
 }
 
 /* On a phone each person is a card: name first, then labelled facts. */

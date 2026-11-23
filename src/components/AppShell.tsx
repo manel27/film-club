@@ -27,6 +27,7 @@ export default function AppShell() {
           <NavLink to="/rotation">Rotation</NavLink>
           <NavLink to="/people">People</NavLink>
           {profile?.role === 'admin' && <NavLink to="/admin">Admin</NavLink>}
+          <NavLink to="/about">About</NavLink>
         </nav>
         <div className="header-tools">
           <ThemePicker />
@@ -54,9 +55,6 @@ export default function AppShell() {
         </div>
       </header>
       <Outlet />
-      <footer className="shell-footer">
-        <Link to="/about">About</Link>
-      </footer>
     </div>
   )
 }

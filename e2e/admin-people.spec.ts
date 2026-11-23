@@ -263,8 +263,19 @@ test('non-admins can do none of it', async ({ page }) => {
 
 test('About credits TMDB with its bundled logo and notice', async ({ page }) => {
   await logIn(page, SEED_MEMBER.email, SEED_MEMBER.password)
-  await page.getByRole('contentinfo').getByRole('link', { name: 'About' }).click()
+  const about = page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'About' })
+  await about.click()
   await expect(page.getByRole('heading', { name: 'About Film Club' })).toBeVisible()
+  await expect(about).toHaveAttribute('aria-current', 'page')
+  // The header nav fits a phone in every theme, nothing scrolls sideways.
+  await page.setViewportSize({ width: 375, height: 800 })
+  // Themes switched on the page only (the picker would save Kwame's choice to the database).
+  for (const theme of ['superman', 'batman', 'letterboxd']) {
+    await page.evaluate((t) => (document.documentElement.dataset.theme = t), theme)
+    await expect(about).toBeInViewport()
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375)
+  }
+  await page.setViewportSize({ width: 1280, height: 720 })
   await expect(
     page.getByText('This product uses the TMDB API but is not endorsed or certified by TMDB.'),
   ).toBeVisible()

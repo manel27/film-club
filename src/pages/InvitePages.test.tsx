@@ -476,10 +476,14 @@ describe('admin page', () => {
 })
 
 describe('about page', () => {
-  it('credits TMDB with their logo and notice, linked from every page', async () => {
-    renderApp('/', createFakeAuthBackend({ session: fakeSession(), profile: fakeProfile() }))
-    fireEvent.click(await screen.findByRole('link', { name: 'About' }))
+  it('credits TMDB with their logo and notice, linked from the header nav', async () => {
+    // From a page that loads no data (this file mocks the films and rotation APIs away).
+    renderApp('/nowhere', createFakeAuthBackend({ session: fakeSession(), profile: fakeProfile() }))
+    const nav = await screen.findByRole('navigation', { name: 'Main' })
+    fireEvent.click(within(nav).getByRole('link', { name: 'About' }))
     expect(await screen.findByRole('heading', { name: 'About Film Club' })).toBeInTheDocument()
+    expect(within(nav).getByRole('link', { name: 'About' })).toHaveAttribute('aria-current', 'page')
+    expect(screen.queryByRole('contentinfo')).not.toBeInTheDocument()
     expect(screen.getByRole('img', { name: 'The Movie Database (TMDB)' })).toBeInTheDocument()
     expect(
       screen.getByText('This product uses the TMDB API but is not endorsed or certified by TMDB.'),
