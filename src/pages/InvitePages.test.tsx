@@ -212,7 +212,7 @@ describe('admin page', () => {
     const row = (name: string) => screen.getByRole('link', { name }).closest('tr')!
     await screen.findByRole('link', { name: 'Kwame' })
     expect(row('Kwame')).toHaveTextContent('Has a login')
-    expect(row('Viggo')).toHaveTextContent('Not claimed yet')
+    expect(row('Viggo')).toHaveTextContent('No login')
     expect(row('Viggo')).toHaveTextContent('Invite until 1 Jan')
     expect(row('Wren')).toHaveTextContent('Needs a colour before an invite')
     expect(screen.getByRole('button', { name: 'Create reset link for Kwame' })).toBeInTheDocument()
@@ -322,6 +322,7 @@ describe('admin page', () => {
     renderApp('/admin', admin())
     fireEvent.click(await screen.findByRole('button', { name: 'Edit Viggo' }))
     const dialog = screen.getByRole('dialog', { name: 'Edit Viggo' })
+    expect(within(dialog).getByLabelText('Name')).toHaveFocus()
     const field = (label: string) => within(dialog).getByLabelText(label)
     expect(field('Name')).toHaveValue('Viggo')
     expect(field('Role')).toBeEnabled()
@@ -448,6 +449,7 @@ describe('admin page', () => {
     const revokeObjectURL = vi.fn()
     Object.assign(URL, { createObjectURL, revokeObjectURL })
     const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    const timers = vi.spyOn(window, 'setTimeout')
     renderApp('/admin', admin())
     fireEvent.click(await screen.findByRole('button', { name: 'Export all data' }))
     expect(
@@ -458,7 +460,12 @@ describe('admin page', () => {
       'film-club-export-2026-11-23.zip',
     )
     expect(createObjectURL).toHaveBeenCalledWith(expect.any(Blob))
-    await waitFor(() => expect(revokeObjectURL).toHaveBeenCalledWith('blob:export'))
+    // Revoked a minute later, not at once (Safari may still be starting the download).
+    expect(revokeObjectURL).not.toHaveBeenCalled()
+    const later = timers.mock.calls.find(([, ms]) => ms === 60_000)
+    ;(later![0] as () => void)()
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:export')
+    timers.mockRestore()
 
     fireEvent.click(screen.getByRole('button', { name: 'Export all data' }))
     expect(await screen.findByRole('alert')).toHaveTextContent(

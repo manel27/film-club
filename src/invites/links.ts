@@ -39,6 +39,9 @@ export function removeLoginErrorMessage(e: unknown): string {
   const { status, error } = (e ?? {}) as Partial<FunctionError>
   if (status === 409 && error === 'self') return "You can't remove your own login."
   if (status === 409) return "This person doesn't have a login any more."
+  if (status === 502 && error === 'login_not_deleted') {
+    return 'Their access is removed, but their login could not be deleted. Delete it in Supabase before inviting them again with the same email.'
+  }
   return adminLinkErrorMessage(e)
 }
 

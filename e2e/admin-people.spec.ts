@@ -157,7 +157,7 @@ test('admin removes a login: history stays, old sessions end, they can be invite
   await expect(dialog.getByRole('button', { name: 'Cancel' })).toBeFocused()
   await dialog.getByRole('button', { name: 'Yes, remove login' }).click()
   await expect(page.getByText(`${LEAVER.name}'s login was removed.`)).toBeVisible()
-  await expect(row).toContainText('Not claimed yet')
+  await expect(row).toContainText('No login')
   await expect(page.getByRole('button', { name: `Create invite for ${LEAVER.name}` })).toBeFocused()
 
   expect(await findUserByEmail(client, LEAVER.email)).toBeFalsy()

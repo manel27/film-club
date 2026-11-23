@@ -262,12 +262,15 @@ export const resetClaim = publicLink(() => 'reset', async (req, db, body, hash) 
 })
 
 /**
- * POST { profile_id } -> { ok } (decision A2: leavers). Admins only. Deletes
- * the person's login (auth user), which ends all their sessions; their
- * profile and history stay, unclaimed, so they can be invited again, and
- * their open link is revoked. 409 { error: 'self' } for the admin's own
- * login (so the last admin always keeps theirs), 'no_login' for someone
- * without one or a system profile.
+ * POST { profile_id } -> { ok } (decisions A2, A4: leavers). Admins only.
+ * profile_remove_login unlinks the person from their login (an admin or
+ * moderator becomes a member) and revokes their open link, then their auth
+ * user is deleted, which ends all their sessions. Their profile and history
+ * stay, unclaimed, so they can be invited again. 409 { error: 'self' } for
+ * the admin's own login, 'no_login' for someone without one or a system
+ * profile; 403 if the caller isn't (any more) an admin with a login.
+ * 502 { error: 'login_not_deleted' } if Auth then fails: the person already
+ * has no access, and the orphaned auth user's id is logged (supabase/README.md).
  */
 export async function removeLogin(req: Request): Promise<Response> {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders(req) })
@@ -282,7 +285,7 @@ export async function removeLogin(req: Request): Promise<Response> {
       return json(req, 400, { error: 'invalid' })
     }
     const db = serviceClient()
-    // Also re-checks, under the admins lock, that the caller is an admin with a login.
+    // Re-checks, under the admins lock, that the caller is still an admin with a login.
     const { data: login, error } = await db.rpc('profile_remove_login', {
       p_profile_id: b.profile_id,
       p_admin_id: me.id,
@@ -293,9 +296,12 @@ export async function removeLogin(req: Request): Promise<Response> {
       return json(req, 409, { error: error.hint })
     }
     if (error) throw error
-    // profiles.auth_user_id is `on delete set null`: the profile stays, unclaimed.
     const deleted = await db.auth.admin.deleteUser(login)
-    if (deleted.error) throw deleted.error
+    if (deleted.error) {
+      // Only the id (never the email): delete this auth user before re-inviting with that email.
+      console.error('admin-remove-login: orphaned auth user', login, deleted.error.code ?? '')
+      return json(req, 502, { error: 'login_not_deleted' })
+    }
     return json(req, 200, { ok: true })
   } catch (e) {
     return fail(req, e)

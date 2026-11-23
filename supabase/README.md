@@ -94,7 +94,7 @@ exception: they use the secret key through service-role-only RPCs
 | `film-relink-tmdb` | moderators, admins            | links a film to a TMDB id (or refreshes it) and replaces its details  |
 | `invite-create`    | admins                        | a new invite link (14 days) for an unclaimed person; revokes their open one |
 | `admin-reset-link` | admins                        | a new password reset link (24 hours) for a person with a login        |
-| `admin-remove-login` | admins (not their own)      | deletes a person's login (all sessions end); profile and history stay, unclaimed, re-invitable (decision A2) |
+| `admin-remove-login` | admins (not their own)      | unlinks and deletes a person's login (all sessions end); admins and moderators become members; profile and history stay, re-invitable (A2, A4) |
 | `invite-preview`   | public (the link's token)     | name, colour and films watched of an open invite                      |
 | `invite-claim`     | public (the link's token)     | creates the login (email + password) and links it to the person       |
 | `reset-claim`      | public (the link's token)     | sets the new password; returns the email so the page can sign in      |
@@ -111,6 +111,16 @@ no configuration is needed.
 linking it, the invite stays open and the email is taken by a login with no
 profile: delete that user in the dashboard (Authentication → Users) and the
 invitee can claim again.
+
+**Removed login not deleted.** `admin-remove-login` unlinks the person first
+(and makes an admin or moderator a member, decision A4), then deletes their
+auth user. If that last step fails, the admin page says so and the function
+returns 502 and logs `admin-remove-login: orphaned auth user <uuid>` (the id,
+never the email). The person already has no access (no profile is linked, so
+every request gets nothing), but their email is still taken: before inviting
+them again with the same email, delete that user in the dashboard
+(Authentication → Users, search by the id) or with SQL:
+`delete from auth.users where id = '<uuid>';`.
 
 **Local secrets.** `supabase start` reads `functions/.env` (git-ignored). Copy
 `functions/.env.example` and fill in:

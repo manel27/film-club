@@ -252,7 +252,7 @@ export default function AdminPage() {
                         <Chip person={p} />
                       </td>
                       <td data-label="Role">{p.role && ROLE_NAMES[p.role]}</td>
-                      <td data-label="Login">{p.isClaimed ? 'Has a login' : 'Not claimed yet'}</td>
+                      <td data-label="Login">{p.isClaimed ? 'Has a login' : 'No login'}</td>
                       <td data-label="Link">{link ? linkLabel(link) : '—'}</td>
                       <td>
                         <div className="actions">
@@ -331,6 +331,9 @@ export default function AdminPage() {
             <p>
               They are logged out everywhere and can't log in any more. Their films, scores,
               attendance and comments stay, and you can invite them again later.
+              {pending.person.role === 'admin' || pending.person.role === 'moderator'
+                ? ` They become a member: if they come back, give them their ${ROLE_NAMES[pending.person.role].toLowerCase()} role again.`
+                : ''}
             </p>
           </>
         ) : (
@@ -520,6 +523,8 @@ function EditPerson({
       <label className="field">
         Name
         <input
+          // The dialog opens on the field the admin most likely came to change.
+          autoFocus
           value={name}
           onChange={(e) => setName(e.target.value)}
           required
@@ -588,7 +593,8 @@ function ExportData() {
       a.href = url
       a.download = name
       a.click()
-      setTimeout(() => URL.revokeObjectURL(url))
+      // Not at once: Safari may still be starting the download.
+      setTimeout(() => URL.revokeObjectURL(url), 60_000)
       setStatus(`Downloaded ${name}.`)
     } catch (e) {
       setError(

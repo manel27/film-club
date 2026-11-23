@@ -87,6 +87,9 @@ describe('removeLoginErrorMessage', () => {
     )
     expect(removeLoginErrorMessage({ status: 409, error: 'no_login' })).toMatch(/any more/)
     expect(removeLoginErrorMessage({ status: 403 })).toBe('Only the admin can do that.')
+    expect(removeLoginErrorMessage({ status: 502, error: 'login_not_deleted' })).toMatch(
+      /access is removed.*Delete it in Supabase/,
+    )
     expect(removeLoginErrorMessage({ status: 0 })).toMatch(/Couldn't reach/)
   })
 })

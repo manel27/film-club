@@ -2,8 +2,9 @@ import tmdbLogo from '../assets/tmdb-logo.svg'
 
 /**
  * About (#/about, plan 9): TMDB attribution as TMDB's terms require (their
- * logo, bundled here so the CSP stays img-src 'self', less prominent than
- * our own name, and their exact notice) and short credits.
+ * logo, less prominent than our own name, and their exact notice) and short
+ * credits. The logo is bundled, not hot-linked: Vite inlines it as a data:
+ * URI, which the CSP's img-src allows.
  */
 export default function AboutPage() {
   return (

@@ -58,7 +58,7 @@ const remove = (token: string | null, profile_id: unknown) =>
 
 async function profileOf(id: string) {
   const { data, error } = await admin.from('profiles')
-    .select('auth_user_id, claimed_at, is_claimed').eq('id', id).single()
+    .select('auth_user_id, claimed_at, is_claimed, role').eq('id', id).single()
   if (error) throw error
   return data
 }
@@ -74,6 +74,29 @@ async function history(id: string) {
 
 const EMAIL = 'deno-leaver@example.test'
 const PASSWORD = 'leaver-password'
+const emails = [EMAIL]
+const people: string[] = []
+
+/** A person with a login (email `deno-<key>@example.test`, PASSWORD) and the given role. */
+async function personWithLogin(name: string, key: string, role: string) {
+  const email = `deno-${key}@example.test`
+  if (!emails.includes(email)) emails.push(email)
+  const made = await admin.auth.admin.createUser({ email, password: PASSWORD, email_confirm: true })
+  if (made.error) throw made.error
+  const p = await admin.from('profiles').insert({
+    display_name: name,
+    colour: '#336699',
+    role,
+    auth_user_id: made.data.user.id,
+    claimed_at: new Date().toISOString(),
+  }).select('id').single()
+  if (p.error) throw p.error
+  people.push(p.data.id)
+  return { id: p.data.id as string, email, userId: made.data.user.id }
+}
+async function userExists(id: string) {
+  return !(await admin.auth.admin.getUserById(id)).error
+}
 
 Deno.test(
   { name: 'admin-remove-login', sanitizeResources: false, sanitizeOps: false },
@@ -81,21 +104,8 @@ Deno.test(
     let leaver = ''
     let film = 0
     try {
-      // A person with a login and some history.
-      const made = await admin.auth.admin.createUser({
-        email: EMAIL,
-        password: PASSWORD,
-        email_confirm: true,
-      })
-      if (made.error) throw made.error
-      const p = await admin.from('profiles').insert({
-        display_name: 'Deno Leaver',
-        colour: '#336699',
-        auth_user_id: made.data.user.id,
-        claimed_at: new Date().toISOString(),
-      }).select('id').single()
-      if (p.error) throw p.error
-      leaver = p.data.id
+      // An admin with a login and some history (A4: they come back as a member).
+      leaver = (await personWithLogin('Deno Leaver', 'leaver', 'admin')).id
       const f = await admin.from('films').insert({
         title: 'Deno Leaver Film',
         release_year: 1999,
@@ -145,18 +155,58 @@ Deno.test(
         assertEquals((await signIn('orla@example.test')).error, null)
       })
 
-      await t.step('if Auth fails, nothing is lost and it can be retried', async () => {
+      await t.step('if Auth fails: no access anyway, 502, and the orphan is logged', async () => {
+        const mod = await personWithLogin('Deno Orphan', 'orphan', 'moderator')
+        const old = await signIn(mod.email, PASSWORD)
+        if (old.error) throw old.error
         const realFetch = globalThis.fetch
+        const realError = console.error
+        const logged: unknown[][] = []
         globalThis.fetch = (input, init) =>
           /\/auth\/v1\/admin\/users\/[\w-]+/.test(String(input)) && init?.method === 'DELETE'
             ? Promise.resolve(Response.json({ msg: 'down' }, { status: 500 }))
             : realFetch(input, init)
+        console.error = (...args: unknown[]) => logged.push(args)
+        let res
         try {
-          assertEquals((await remove(orla, leaver)).status, 500)
+          res = await remove(orla, mod.id)
         } finally {
           globalThis.fetch = realFetch
+          console.error = realError
         }
-        assert((await profileOf(leaver)).is_claimed, 'still claimed')
+        assertEquals([res.status, res.body], [502, { error: 'login_not_deleted' }])
+        assert(logged.some((args) => args.includes(mod.userId)), 'the orphan id is logged')
+        assert(!JSON.stringify(logged).includes(mod.email), 'the email is logged')
+        // Unlinked and a member (A4) already: the leftover login gets nothing.
+        assertEquals(await profileOf(mod.id), {
+          auth_user_id: null,
+          claimed_at: null,
+          is_claimed: false,
+          role: 'member',
+        })
+        const reads = await browser(old.data.session.access_token).from('profiles').select('id')
+        assertEquals(reads.data, [], 'the leftover login reads people')
+        assert(await userExists(mod.userId), 'the orphan is still there to clean up')
+        assertEquals((await remove(orla, mod.id)).body, { error: 'no_login' })
+      })
+
+      await t.step('two admins removing each other at once: one wins', async () => {
+        const a = await personWithLogin('Deno Admin A', 'admin-a', 'admin')
+        const b = await personWithLogin('Deno Admin B', 'admin-b', 'admin')
+        const [ta, tb] = await Promise.all(
+          [a, b].map(async (x) => {
+            const { data, error } = await signIn(x.email, PASSWORD)
+            if (error) throw error
+            return data.session.access_token
+          }),
+        )
+        const results = await Promise.all([remove(ta, b.id), remove(tb, a.id)])
+        assertEquals(results.map((r) => r.status).sort(), [200, 403])
+        const [winner, loser] = results[0].status === 200 ? [a, b] : [b, a]
+        assertEquals((await profileOf(winner.id)).role, 'admin')
+        assert((await profileOf(winner.id)).is_claimed, 'the winner keeps their login')
+        assertEquals((await profileOf(loser.id)).role, 'member')
+        assertEquals(await userExists(loser.userId), false)
       })
 
       await t.step('removes the login; history stays; old sessions get nothing', async () => {
@@ -174,7 +224,8 @@ Deno.test(
           auth_user_id: null,
           claimed_at: null,
           is_claimed: false,
-        })
+          role: 'member',
+        }, 'unlinked, and an admin becomes a member (A4)')
         assertEquals(await history(leaver), before, 'films, scores, attendance, comments')
         const { count } = await admin.from('invites').select('id', { count: 'exact', head: true })
           .eq('profile_id', leaver).is('used_at', null).is('revoked_at', null)
@@ -197,13 +248,21 @@ Deno.test(
         assertEquals([claimed.status, claimed.body], [200, { ok: true }])
         assert((await profileOf(leaver)).is_claimed)
         assertEquals(await history(leaver), before)
+        // Back with member rights, not admin ones.
+        const back = await signIn(EMAIL, PASSWORD)
+        if (back.error) throw back.error
+        const access = back.data.session.access_token
+        const me = await browser(access).rpc('my_profile').single<{ role: string }>()
+        assertEquals(me.data?.role, 'member')
+        assertEquals((await remove(access, P('a3'))).status, 403, 'they can remove logins')
       })
     } finally {
       const { data } = await admin.auth.admin.listUsers({ perPage: 1000 })
-      const user = data?.users.find((u) => u.email === EMAIL)
-      if (user) await admin.auth.admin.deleteUser(user.id)
+      for (const user of data?.users ?? []) {
+        if (emails.includes(user.email ?? '')) await admin.auth.admin.deleteUser(user.id)
+      }
       if (film) await admin.from('films').delete().eq('id', film)
-      if (leaver) await admin.from('profiles').delete().eq('id', leaver)
+      if (people.length) await admin.from('profiles').delete().in('id', people)
     }
   },
 )
