@@ -47,6 +47,7 @@ const MOVIES: Record<number, Record<string, unknown>> = {
     original_title: 'Filme Um',
     release_date: '2011-05-06',
     poster_path: '/stub1.jpg',
+    backdrop_path: 'https://evil.test/x.jpg', // not a TMDB path: dropped (films_backdrop_path_tmdb)
     overview: 'A stub.',
     runtime: 95,
     genres: [{ id: 1, name: 'Drama' }],
@@ -295,6 +296,7 @@ Deno.test(
         assertEquals(film.directors, ['Director 777001'])
         assertEquals(film.genres, ['Drama'])
         assertEquals(film.runtime_min, 95)
+        assertEquals([film.poster_path, film.backdrop_path], ['/stub1.jpg', null])
         assertEquals(film.created_by, P('a2'))
         assertEquals(film.day_order, 1)
         const details = tmdbCalls.findLast((c) => c.path === '/3/movie/777001')!
