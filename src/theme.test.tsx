@@ -11,6 +11,8 @@ vi.mock('./films/api', () => ({
   fetchFilmsData: async () => ({ films: [], people: [], scored: new Set() }),
   fetchFilm: async () => null,
 }))
+// The admin page's data comes from Supabase too (tested in pages/InvitePages.test.tsx).
+vi.mock('./invites/api', () => ({}))
 vi.mock('./rotation/api', () => ({
   fetchRotation: async () => ({
     ...{ epoch: null, weekStart: null, standings: [], passes: [], decisions: [] },

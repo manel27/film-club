@@ -69,6 +69,17 @@ class LinkInfo:
         return "film" in fold(self.disambiguator)
 
 
+def https_url(url: str | None) -> str | None:
+    """The link as stored in ``films.source_url``: ``http://`` becomes
+    ``https://`` (scheme in lower case); anything else is dropped, since the DB
+    CHECK films_source_url_https would refuse it."""
+    url = (url or "").strip()
+    for scheme in ("https://", "http://"):
+        if url[: len(scheme)].lower() == scheme:
+            return "https://" + url[len(scheme) :]
+    return None
+
+
 def parse_link(url: str | None) -> LinkInfo | None:
     """Extract a title and year hint from a Wikipedia or Letterboxd URL."""
     if not url:

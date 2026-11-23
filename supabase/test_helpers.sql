@@ -43,15 +43,39 @@ as $$
   end::uuid;
 $$;
 
--- Act as a logged-in browser user (role `authenticated` + JWT claims), as
--- PostgREST does. Transaction-local. Go back to postgres with `reset role;`.
+-- A live auth session for the user, as Supabase Auth creates on login (the
+-- role helpers require one, migration 20261123120000). Null when there is no
+-- such user. SECURITY DEFINER: browser roles can't write auth.sessions.
+create or replace function tests.new_session(uid uuid)
+returns uuid
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  sid uuid;
+begin
+  if not exists (select 1 from auth.users u where u.id = uid) then
+    return null;
+  end if;
+  insert into auth.sessions (id, user_id, created_at, updated_at)
+  values (gen_random_uuid(), uid, now(), now())
+  returning id into sid;
+  return sid;
+end;
+$$;
+
+-- Act as a logged-in browser user (role `authenticated` + JWT claims with a
+-- live session_id), as PostgREST does. Transaction-local. Go back to postgres
+-- with `reset role;`.
 create or replace function tests.login_as_uid(uid uuid)
 returns void
 language plpgsql
 as $$
 begin
   perform set_config('request.jwt.claims',
-    json_build_object('sub', uid, 'role', 'authenticated', 'aud', 'authenticated')::text, true);
+    json_build_object('sub', uid, 'role', 'authenticated', 'aud', 'authenticated',
+                      'session_id', tests.new_session(uid))::text, true);
   perform set_config('role', 'authenticated', true);
 end;
 $$;

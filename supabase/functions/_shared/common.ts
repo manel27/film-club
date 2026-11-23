@@ -7,7 +7,7 @@
 //    logged.
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2.119.0'
 
-const SITE_ORIGIN = 'https://manel27.github.io'
+export const SITE_ORIGIN = 'https://manel27.github.io'
 const LOCAL_ORIGIN = /^http:\/\/(localhost|127\.0\.0\.1):\d+$/
 
 /** CORS for the site only (plus localhost when this is the local stack). */
@@ -36,6 +36,8 @@ export type Role = 'admin' | 'moderator' | 'member' | 'viewer'
 
 export interface Caller {
   db: SupabaseClient
+  /** Their profile id. */
+  id: string
   role: Role
 }
 
@@ -61,9 +63,9 @@ export async function getCaller(req: Request): Promise<Caller | null> {
   })
   const { data, error } = await db.auth.getUser(token)
   if (error || !data.user) return null
-  const me = await db.rpc('my_profile').maybeSingle<{ role: Role }>()
+  const me = await db.rpc('my_profile').maybeSingle<{ id: string; role: Role }>()
   if (me.error) throw me.error
-  return me.data ? { db, role: me.data.role } : null
+  return me.data ? { db, id: me.data.id, role: me.data.role } : null
 }
 
 export const isStaff = (role: Role) => role === 'admin' || role === 'moderator'
@@ -118,14 +120,17 @@ export async function tmdbFilm(tmdbId: number): Promise<Record<string, unknown> 
   const m = await tmdb(`/movie/${tmdbId}`, { language: 'en-US', append_to_response: 'credits' })
   if (!m) return null
   const text = (v: unknown) => (typeof v === 'string' && v.trim() ? v : null)
+  // Same rule as the films_*_path_tmdb CHECKs: anything else is dropped, not saved.
+  const imagePath = (v: unknown) =>
+    typeof v === 'string' && /^\/[A-Za-z0-9._-]+$/.test(v) ? v : null
   return {
     tmdb_id: tmdbId,
     title: text(m.title) ?? text(m.original_title) ?? `TMDB ${tmdbId}`,
     original_title: text(m.original_title),
     release_year: yearOf(m.release_date),
     release_date: text(m.release_date),
-    poster_path: text(m.poster_path),
-    backdrop_path: text(m.backdrop_path),
+    poster_path: imagePath(m.poster_path),
+    backdrop_path: imagePath(m.backdrop_path),
     overview: text(m.overview),
     runtime_min: typeof m.runtime === 'number' && m.runtime > 0 ? m.runtime : null,
     genres: ((m.genres ?? []) as { name?: string }[]).map((g) => g.name).filter(Boolean),

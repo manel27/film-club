@@ -22,8 +22,8 @@
     "db:stop": "supabase stop",
     "db:reset": "supabase db reset --local",
     "db:test": "supabase test db",
-    "functions:check": "deno fmt --check --line-width 100 --single-quote --no-semicolons supabase/functions && deno check --no-lock supabase/functions/*/index.ts",
-    "functions:test": "deno test --no-lock --allow-net --allow-env --allow-run=npx --allow-read supabase/functions/tests/",
+    "functions:check": "deno fmt --check --line-width 100 --single-quote --no-semicolons supabase/functions && deno check --no-config --lock=supabase/functions/deno.lock --frozen supabase/functions/*/index.ts supabase/functions/tests/*.ts",
+    "functions:test": "deno test --no-config --lock=supabase/functions/deno.lock --frozen --allow-net --allow-env --allow-run=npx --allow-read supabase/functions/tests/",
     "functions:coverage": "npm run functions:test -- --coverage=coverage/deno",
     "db:types": "supabase gen types typescript --local --schema public > src/lib/database.types.ts && prettier --write src/lib/database.types.ts"
   },
