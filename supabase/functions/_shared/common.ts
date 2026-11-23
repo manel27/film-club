@@ -7,7 +7,7 @@
 //    logged.
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2.119.0'
 
-const SITE_ORIGIN = 'https://manel27.github.io'
+export const SITE_ORIGIN = 'https://manel27.github.io'
 const LOCAL_ORIGIN = /^http:\/\/(localhost|127\.0\.0\.1):\d+$/
 
 /** CORS for the site only (plus localhost when this is the local stack). */
@@ -36,6 +36,8 @@ export type Role = 'admin' | 'moderator' | 'member' | 'viewer'
 
 export interface Caller {
   db: SupabaseClient
+  /** Their profile id. */
+  id: string
   role: Role
 }
 
@@ -61,9 +63,9 @@ export async function getCaller(req: Request): Promise<Caller | null> {
   })
   const { data, error } = await db.auth.getUser(token)
   if (error || !data.user) return null
-  const me = await db.rpc('my_profile').maybeSingle<{ role: Role }>()
+  const me = await db.rpc('my_profile').maybeSingle<{ id: string; role: Role }>()
   if (me.error) throw me.error
-  return me.data ? { db, role: me.data.role } : null
+  return me.data ? { db, id: me.data.id, role: me.data.role } : null
 }
 
 export const isStaff = (role: Role) => role === 'admin' || role === 'moderator'
