@@ -1,8 +1,9 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { Link, useNavigate, useParams } from 'react-router'
+import { Link, useNavigate } from 'react-router'
 import { useAuth } from '../auth/authContext'
 import ThemePicker from '../components/ThemePicker'
 import { claimReset, previewInvite } from '../invites/api'
+import { NO_TOKEN_MESSAGE, useLinkToken } from '../invites/useLinkToken'
 import { linkErrorMessage, passwordProblem, PASSWORD_MIN } from '../invites/links'
 
 /**
@@ -10,7 +11,7 @@ import { linkErrorMessage, passwordProblem, PASSWORD_MIN } from '../invites/link
  * password, which ends the person's other sessions and signs in here.
  */
 export default function ResetPage() {
-  const { token = '' } = useParams()
+  const token = useLinkToken('/reset')
   const { signIn } = useAuth()
   const navigate = useNavigate()
   const [password, setPassword] = useState('')
@@ -21,6 +22,7 @@ export default function ResetPage() {
   const [loadError, setLoadError] = useState<string | null>(null)
 
   useEffect(() => {
+    if (!token) return
     let current = true
     previewInvite(token, 'reset').then(
       (p) => current && setName(p.name),
@@ -53,10 +55,10 @@ export default function ResetPage() {
   return (
     <main className="page page-narrow">
       <h1>Film Club</h1>
-      {loadError ? (
+      {!token || loadError ? (
         <>
           <p role="alert" className="form-error">
-            {loadError}
+            {token ? loadError : NO_TOKEN_MESSAGE}
           </p>
           <p>
             <Link to="/login">Go to the login page</Link>

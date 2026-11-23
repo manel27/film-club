@@ -1,8 +1,9 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { Link, useNavigate, useParams } from 'react-router'
+import { Link, useNavigate } from 'react-router'
 import { useAuth } from '../auth/authContext'
 import ThemePicker from '../components/ThemePicker'
 import { claimInvite, previewInvite, type InvitePreview } from '../invites/api'
+import { NO_TOKEN_MESSAGE, useLinkToken } from '../invites/useLinkToken'
 import { linkErrorMessage, passwordProblem, PASSWORD_MIN, watchedLine } from '../invites/links'
 import { textOn } from '../lib/colour'
 
@@ -11,7 +12,7 @@ import { textOn } from '../lib/colour'
  * password to create the login, which signs in and opens the app.
  */
 export default function InvitePage() {
-  const { token = '' } = useParams()
+  const token = useLinkToken('/invite')
   const { signIn } = useAuth()
   const navigate = useNavigate()
   const [preview, setPreview] = useState<InvitePreview | null>(null)
@@ -23,6 +24,7 @@ export default function InvitePage() {
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
+    if (!token) return
     let current = true
     previewInvite(token).then(
       (p) => current && setPreview(p),
@@ -54,10 +56,10 @@ export default function InvitePage() {
   return (
     <main className="page page-narrow">
       <h1>Film Club</h1>
-      {loadError ? (
+      {!token || loadError ? (
         <>
           <p role="alert" className="form-error">
-            {loadError}
+            {token ? loadError : NO_TOKEN_MESSAGE}
           </p>
           <p>
             <Link to="/login">Go to the login page</Link>

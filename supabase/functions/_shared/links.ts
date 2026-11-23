@@ -56,7 +56,8 @@ export async function tokenHash(token: string): Promise<string> {
  * The visitor's IP, as the platform's proxy reports it.
  * shortcut: cf-connecting-ip / the first x-forwarded-for entry may be client-set (unverified
  * on the hosted proxy); the global cap of 100 failures an hour (invite_rate_fail) bounds
- * spoofing. Once the hosted headers are confirmed, key on the proxy-set one only.
+ * spoofing, and open links skip both caps, so a flood can't lock invitees out. Once the
+ * hosted headers are confirmed, key on the proxy-set one only.
  */
 export function clientIp(req: Request): string {
   return req.headers.get('cf-connecting-ip') ??
@@ -102,36 +103,55 @@ export async function issueLink(req: Request, kind: LinkKind): Promise<Response>
   }
 }
 
+interface Person {
+  display_name: string
+  colour: string
+  watched: number
+}
+
 type Public = (
   req: Request,
   db: ReturnType<typeof serviceClient>,
   body: Record<string, unknown>,
   hash: string,
+  person: Person,
 ) => Promise<Response>
 
 /** Answers that count against the rate limit: a bad link or a refused claim. */
 const FAILED = new Set([400, 404, 409])
 
 /**
- * Public endpoint: POST, a well-formed token, and the rate limit (plan 7.5):
- * only failed attempts count, 10 an hour per IP and 100 an hour overall
- * (invite_rate_ok / invite_rate_fail), so reloading a good link never locks
- * anyone out.
+ * Public endpoint: POST, then the link is looked up first (plan 7.5, audit
+ * S3). An open link is always served: the caps never refuse it, so nobody
+ * can lock real invitees out by flooding junk. Anything else is refused once
+ * the caps are reached: 10 failures an hour per IP and 100 an hour overall
+ * (invite_rate_ok / invite_rate_fail). Only failed attempts count.
+ * `kindOf` says which kind of link the endpoint takes.
  */
-function publicLink(handle: Public) {
+function publicLink(kindOf: (body: Record<string, unknown>) => LinkKind, handle: Public) {
   return async (req: Request): Promise<Response> => {
     if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders(req) })
     if (req.method !== 'POST') return json(req, 405, { error: 'method_not_allowed' })
     try {
       const db = serviceClient()
       const ip = clientIp(req)
-      const { data: allowed, error } = await db.rpc('invite_rate_ok', { p_ip: ip })
-      if (error) throw error
-      if (!allowed) return json(req, 429, { error: 'rate_limited' })
       const body = await readBody(req)
-      const res = !body || typeof body.token !== 'string' || !TOKEN.test(body.token)
-        ? json(req, 404, INVALID)
-        : await handle(req, db, body, await tokenHash(body.token))
+      const hash = body && typeof body.token === 'string' && TOKEN.test(body.token)
+        ? await tokenHash(body.token)
+        : null
+      let person: Person | null = null
+      if (hash) {
+        const peek = await db.rpc('invite_peek', { p_token_hash: hash, p_kind: kindOf(body!) })
+          .maybeSingle<Person>()
+        if (peek.error) throw peek.error
+        person = peek.data
+      }
+      if (!person) {
+        const { data: allowed, error } = await db.rpc('invite_rate_ok', { p_ip: ip })
+        if (error) throw error
+        if (!allowed) return json(req, 429, { error: 'rate_limited' })
+      }
+      const res = person ? await handle(req, db, body!, hash!, person) : json(req, 404, INVALID)
       if (FAILED.has(res.status)) {
         const counted = await db.rpc('invite_rate_fail', { p_ip: ip })
         if (counted.error) throw counted.error
@@ -161,14 +181,13 @@ function authRefusal(req: Request, code: string | undefined): Response | null {
  * POST { token, kind? } -> { name, colour, watched }: only who an open link is
  * for. kind 'reset' checks a reset link (the reset page), else an invite.
  */
-export const invitePreview = publicLink(async (req, db, body, hash) => {
-  const kind: LinkKind = body.kind === 'reset' ? 'reset' : 'invite'
-  const { data, error } = await db.rpc('invite_peek', { p_token_hash: hash, p_kind: kind })
-    .maybeSingle<{ display_name: string; colour: string; watched: number }>()
-  if (error) throw error
-  if (!data) return json(req, 404, INVALID)
-  return json(req, 200, { name: data.display_name, colour: data.colour, watched: data.watched })
-})
+export const invitePreview = publicLink(
+  (body) => body.kind === 'reset' ? 'reset' : 'invite',
+  (req, _db, _body, _hash, person) =>
+    Promise.resolve(
+      json(req, 200, { name: person.display_name, colour: person.colour, watched: person.watched }),
+    ),
+)
 
 /**
  * POST { token, email, password } -> { ok }. Creates the login (confirmed, no
@@ -178,10 +197,7 @@ export const invitePreview = publicLink(async (req, db, body, hash) => {
  * function dies between the two steps, see supabase/README.md (orphaned
  * login). The page then signs in.
  */
-export const inviteClaim = publicLink(async (req, db, body, hash) => {
-  const peek = await db.rpc('invite_peek', { p_token_hash: hash, p_kind: 'invite' }).maybeSingle()
-  if (peek.error) throw peek.error
-  if (!peek.data) return json(req, 404, INVALID)
+export const inviteClaim = publicLink(() => 'invite', async (req, db, body, hash) => {
   const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : ''
   if (!EMAIL.test(email) || email.length > 254) return json(req, 400, { error: 'invalid_email' })
   if (!validPassword(body.password)) return json(req, 400, { error: 'invalid_password' })
@@ -216,17 +232,12 @@ export const inviteClaim = publicLink(async (req, db, body, hash) => {
 /**
  * POST { token, password } -> { email }. Sets a new password for the reset
  * link's person, uses the link up and ends the person's sessions on every
- * device (decision I3). If the password can't be set, the link stays usable.
- * The page then signs in with the returned email.
+ * device (decision I3; tokens of ended sessions get nothing from the
+ * database, migration 20261123120000). If the password can't be set, the
+ * link stays usable. The page then signs in with the returned email.
  */
-export const resetClaim = publicLink(async (req, db, body, hash) => {
-  if (!validPassword(body.password)) {
-    // Same answer as a bad link unless the link is good, so it can't be probed.
-    const peek = await db.rpc('invite_peek', { p_token_hash: hash, p_kind: 'reset' })
-      .maybeSingle()
-    if (peek.error) throw peek.error
-    return peek.data ? json(req, 400, { error: 'invalid_password' }) : json(req, 404, INVALID)
-  }
+export const resetClaim = publicLink(() => 'reset', async (req, db, body, hash) => {
+  if (!validPassword(body.password)) return json(req, 400, { error: 'invalid_password' })
   const used = await db.rpc('invite_redeem', { p_token_hash: hash, p_kind: 'reset' })
     .maybeSingle<{ invite_id: string; auth_user_id: string }>()
   if (used.error && used.error.code !== '23514') throw used.error

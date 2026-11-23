@@ -16,8 +16,8 @@ import RotationPage from './pages/RotationPage'
 // Everything except the login, invite and reset pages needs a session (RequireAuth).
 export const routes: RouteObject[] = [
   { path: '/login', element: <LoginPage /> },
-  { path: '/invite/:token', element: <InvitePage /> },
-  { path: '/reset/:token', element: <ResetPage /> },
+  { path: '/invite/:token?', element: <InvitePage /> },
+  { path: '/reset/:token?', element: <ResetPage /> },
   {
     element: (
       <RequireAuth>

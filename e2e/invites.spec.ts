@@ -85,6 +85,8 @@ test('admin adds a person and invites them; they claim it and log in', async ({
   const invitee = await openFresh(browser, link)
   await expect(invitee.getByRole('heading', { name: `Welcome, ${INVITEE.name}` })).toBeVisible()
   await expect(invitee.getByText('Welcome to the club!')).toBeVisible()
+  // The token is dropped from the address bar and history once read (audit S10).
+  await expect(invitee).toHaveURL(/\/film-club\/#\/invite$/)
   await invitee.screenshot({ path: `${SCREENSHOTS}/invite.png` })
   await invitee.getByLabel('Email').fill(INVITEE.email)
   await invitee.getByLabel(/^Password/).fill(E2E_PASSWORD)
@@ -159,6 +161,9 @@ test('expired, revoked and made-up invite links are refused', async ({ page, bro
   const madeUp = await openFresh(browser, './#/invite/not-a-real-token')
   await expect(madeUp.getByRole('alert')).toHaveText(BAD_LINK)
   await madeUp.screenshot({ path: `${SCREENSHOTS}/invite-invalid.png` })
+  // A reload after the token was dropped explains itself.
+  await madeUp.reload()
+  await expect(madeUp.getByRole('alert')).toContainText('Open the link Manel sent you again.')
 })
 
 test('a reset link sets a new password once', async ({ page, browser }) => {

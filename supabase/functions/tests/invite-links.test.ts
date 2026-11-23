@@ -346,6 +346,13 @@ Deno.test(
           // Ana is logged in elsewhere: that session must end (decision I3).
           const old = await signIn('deno-ana@example.test', 'ana-password')
           if (old.error) throw old.error
+          // Her old access token, as a browser would use it against the database.
+          const oldDb = createClient(apiUrl, env.PUBLISHABLE_KEY, {
+            ...noSession,
+            global: { headers: { Authorization: `Bearer ${old.data.session!.access_token}` } },
+          })
+          const before = await oldDb.from('profiles').select('id')
+          assert((before.data ?? []).length > 0, 'the old session reads people before the reset')
 
           for (const password of ['short', ' '.repeat(10), 'é'.repeat(37)]) {
             const bad = await call(resetClaim, null, { token, password })
@@ -379,6 +386,12 @@ Deno.test(
           assert(refreshed.error, 'the old session can still be refreshed')
           const user = await client.auth.getUser(old.data.session!.access_token)
           assert(user.error, 'the old access token still works')
+          // Still signed and unexpired, but its session is gone: the database gives it nothing (S1).
+          const after = await oldDb.from('profiles').select('id')
+          assertEquals([after.error, after.data], [null, []], 'the old access token reads people')
+          const comment = await oldDb.from('comments')
+            .insert({ film_id: 8, author_id: ana, body: 'written after the reset' })
+          assertEquals(comment.error?.code, '42501', 'the old access token can comment')
         },
       )
 
@@ -451,7 +464,20 @@ Deno.test(
               .status === 404
         ) n++
         assertEquals(n, 90, 'failures allowed before the overall cap (10 already used)')
-        assertEquals((await call(preview, null, { token }, home)).status, 429, 'everyone is capped')
+        assertEquals(
+          (await call(preview, null, { token: 'guess' }, { 'cf-connecting-ip': 'fresh' })).status,
+          429,
+          'once the overall cap is reached, junk is refused from every address',
+        )
+        // ...but an open link is still served, even from a capped address (S3).
+        assertEquals((await call(preview, null, { token }, ip)).status, 200)
+        const claimed = await call(claim, null, {
+          token,
+          email: 'deno-eve@example.test',
+          password: 'eve-password',
+        }, ip)
+        emails.push('deno-eve@example.test')
+        assertEquals([claimed.status, claimed.body], [200, { ok: true }], 'a capped claim')
 
         // A huge header is clipped, not stored whole.
         await admin.from('rate_limits').delete().eq('bucket', 'invite-link')

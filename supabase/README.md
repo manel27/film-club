@@ -138,7 +138,10 @@ admin-reset-link invite-preview invite-claim reset-claim`.
   no grants at all. Logged-in users without a profile see nothing.
 - Role helpers live in the private `app` schema (not exposed by the API):
   `app.current_profile_id()`, `app.current_role()`, `app.is_staff()`,
-  `app.is_admin()`, `app.can_write()`.
+  `app.is_admin()`, `app.can_write()`. They return nothing unless the JWT's
+  session still exists in `auth.sessions` (security audit S1), so a token of
+  a logged-out or reset session gets nothing even before it expires. Tokens
+  last 10 minutes (`jwt_expiry = 600`; set the same on the hosted project).
 - **No duplicate films**, for everyone including the secret key: unique TMDB id,
   unique normalised title + year for manual films, and a trigger for manual vs
   TMDB cross-matches (titles and original titles).

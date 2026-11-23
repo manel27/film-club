@@ -61,6 +61,8 @@ describe('invite page', () => {
     expect(await screen.findByRole('heading', { name: 'Welcome, Viggo' })).toBeInTheDocument()
     expect(screen.getByText("You've been at 3 club screenings so far.")).toBeInTheDocument()
     expect(mocked.previewInvite).toHaveBeenCalledWith('tok123')
+    // Read once, then dropped from the address bar and history (audit S10).
+    expect(window.location.hash).toBe('#/invite')
 
     type('Email', ` ${TEST_EMAIL} `)
     type(/^Password/, TEST_PASSWORD)
@@ -98,6 +100,20 @@ describe('invite page', () => {
   })
 })
 
+describe('link pages without a token (reloaded after the token was dropped)', () => {
+  it.each(['/invite', '/reset'])(
+    '%s says to open the link again, without asking the server',
+    async (path) => {
+      renderApp(path)
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        'Open the link Manel sent you again.',
+      )
+      expect(mocked.previewInvite).not.toHaveBeenCalled()
+      expect(screen.getByRole('link', { name: 'Go to the login page' })).toBeInTheDocument()
+    },
+  )
+})
+
 describe('reset page', () => {
   it('sets the new password, then signs in with the returned email', async () => {
     mocked.previewInvite.mockResolvedValue({ name: 'Quinn', colour: '#4a86e8', watched: 2 })
@@ -107,6 +123,7 @@ describe('reset page', () => {
       await screen.findByRole('heading', { name: 'Set a new password for Quinn' }),
     ).toBeInTheDocument()
     expect(mocked.previewInvite).toHaveBeenCalledWith('tok456', 'reset')
+    expect(window.location.hash).toBe('#/reset')
     type(/^New password/, TEST_PASSWORD)
     type('Confirm new password', TEST_PASSWORD)
     fireEvent.click(screen.getByRole('button', { name: 'Save and log in' }))
