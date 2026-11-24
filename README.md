@@ -126,14 +126,14 @@ otherwise.
   complete JSON file plus a CSV per table, no emails or passwords). Keep it
   somewhere private and safe, such as your own cloud drive, and keep the old
   ones. It is a record to rebuild from, not a backup button: there is no
-  one-click restore. If there has been no export for 30 days, admins see a
-  reminder at the top of every page until they export again.
+  one-click restore from it. If there has been no export for 30 days, admins
+  see a reminder at the top of every page until they export again.
 
 ### Keeping the database awake
 
-The free Supabase plan pauses a project after a week with no activity. The
-**Keep-alive** workflow (`.github/workflows/keepalive.yml`) makes one harmless
-read every 3 days so that doesn't happen.
+The free Supabase plan pauses a project after a period of inactivity (roughly
+a week). The **Keep-alive** workflow (`.github/workflows/keepalive.yml`) makes
+one harmless read every 3 days so that doesn't happen.
 
 - **See it:** the repository's **Actions** tab → **Keep-alive**.
 - **Run it by hand:** Actions → Keep-alive → **Run workflow**.
@@ -141,12 +141,18 @@ read every 3 days so that doesn't happen.
   down, project paused, or the URL or key changed). Run it by hand once; if it
   fails again, check the project in the Supabase dashboard.
 - **If Supabase pauses the project anyway:** open the Supabase dashboard,
-  choose the project and press **Restore**. It takes a few minutes; the data is
-  intact.
-- **Important:** GitHub switches off scheduled workflows in public
-  repositories after 60 days with no activity in the repository. It emails a
-  warning first. To switch it back on, press **Enable workflow** on the
-  Keep-alive page in the Actions tab (or push any commit).
+  choose the project and press **Restore**. It takes a few minutes and the
+  data is intact. This one-click restore only works for a limited time (the
+  dashboard shows how many days are left); after that you can only download a
+  backup file and restore it into a new project. Another reason for the
+  monthly export.
+- **Important:** in a public repository, GitHub automatically switches off
+  scheduled workflows when there has been no repository activity for 60 days.
+  The keep-alive's own runs probably don't count as activity. Pushing a commit
+  before day 60 resets that clock, but once the workflow is switched off a
+  commit does **not** switch it back on: go to Actions → Keep-alive and press
+  **Enable workflow**. If the repository is quiet, set yourself a reminder
+  every 6 weeks or so to check the Actions tab (or push a small change).
 
 ### Deploying
 

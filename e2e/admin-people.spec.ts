@@ -183,8 +183,6 @@ test('admin removes a login: history stays, old sessions end, they can be invite
   await expect(invitee.getByRole('banner').getByText(LEAVER.name)).toBeVisible()
 })
 
-// Before the next test: it leaves last_export_at in app_settings, so that
-// test's export and its row counts agree.
 test('admin is reminded to export until they do; a member never is', async ({ page }) => {
   const reminder = page
     .getByRole('status')
@@ -219,6 +217,11 @@ test('admin is reminded to export until they do; a member never is', async ({ pa
 test('admin exports all data: one zip with the complete JSON and a CSV per table', async ({
   page,
 }) => {
+  // The export then only updates last_export_at, so its row counts match the database's.
+  const { error } = await adminClient()
+    .from('app_settings')
+    .upsert({ key: 'last_export_at', value: new Date().toISOString() })
+  if (error) throw error
   await openAdmin(page)
   const [download] = await Promise.all([
     page.waitForEvent('download'),

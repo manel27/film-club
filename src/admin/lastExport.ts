@@ -29,13 +29,13 @@ export const announceExport = (at: string) =>
  * it can't be read, so nobody is nagged over a network error), else { at },
  * at null when there has never been an export.
  */
-export function useLastExport(enabled: boolean) {
+export function useLastExport() {
   const [state, setState] = useState<{ at: string | null }>()
   useEffect(() => {
-    if (!enabled) return
     let live = true
     fetchLastExport().then(
-      (at) => live && setState({ at }),
+      // An export that finished first wins over a slow fetch.
+      (at) => live && setState((s) => s ?? { at }),
       () => {},
     )
     const onExport = (e: Event) => setState({ at: (e as CustomEvent<string>).detail })
@@ -44,6 +44,6 @@ export function useLastExport(enabled: boolean) {
       live = false
       window.removeEventListener(EXPORTED, onExport)
     }
-  }, [enabled])
+  }, [])
   return state
 }

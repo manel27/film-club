@@ -187,7 +187,7 @@ describe('app shell', () => {
     ).toHaveAttribute('href', '/admin')
   })
 
-  it('reminds an admin when the last export is 30 days old, not when it is recent', async () => {
+  it('reminds an admin when the last export is long ago, not when it is recent', async () => {
     const fetchLastExport = vi.mocked((await import('./invites/api')).fetchLastExport)
     fetchLastExport.mockResolvedValueOnce('2026-01-01T12:00:00Z')
     renderApp('/', signedIn(fakeProfile({ role: 'admin' })))

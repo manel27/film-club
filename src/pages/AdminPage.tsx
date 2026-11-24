@@ -584,7 +584,7 @@ function ExportData() {
   const [status, setStatus] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [unsaved, setUnsaved] = useState(false)
-  const last = useLastExport(true)
+  const last = useLastExport()
 
   async function download() {
     setBusy(true)

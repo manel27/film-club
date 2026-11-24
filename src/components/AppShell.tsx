@@ -63,7 +63,7 @@ export default function AppShell() {
 
 /** Admins only: a nudge to export the data when the last export is 30+ days old, or never. */
 function ExportReminder() {
-  const last = useLastExport(true)
+  const last = useLastExport()
   if (!last || !exportOverdue(last.at)) return null
   return (
     <p role="status" className="export-reminder">
