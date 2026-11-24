@@ -277,6 +277,9 @@ describe('rotation page', () => {
 
     fireEvent.change(within(form).getByLabelText('Person'), { target: { value: ME } })
     fireEvent.click(within(form).getByLabelText('Add or subtract (correction)'))
+    expect(within(form).getByLabelText(/Points to add/)).toHaveAccessibleDescription(
+      'Points never go below 0: a larger subtraction leaves 0.',
+    )
     fireEvent.change(within(form).getByLabelText(/Points to add/), { target: { value: '0' } })
     fireEvent.change(within(form).getByLabelText('Reason'), { target: { value: 'Fix' } })
     fireEvent.click(save)

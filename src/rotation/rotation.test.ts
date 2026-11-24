@@ -214,6 +214,16 @@ describe('rules (plan 6.1)', () => {
     expect(run('2026-03-03', { adjustments }).points.bea).toBe(1)
   })
 
+  it('a −5 correction on 2 points leaves 0; a later screening attended makes it 1', () => {
+    const adjustments = [
+      ...START,
+      adj({ profileId: 'bea', delta: -5, effectiveAt: '2026-03-03T10:00:00Z' }),
+    ]
+    expect(run('2026-03-03', { adjustments }).points.bea).toBe(0)
+    const attended = film({ screenedOn: SAT[0], assignedId: 'ana', presentIds: ['bea'] })
+    expect(run(SAT[0], { adjustments, films: [attended] }).points.bea).toBe(1)
+  })
+
   it('same-day adjustments run in entry (id) order, whatever their time', () => {
     const later = adj({ profileId: 'ana', setTo: 8, effectiveAt: '2026-03-03T20:00:00Z' })
     const earlier = adj({ profileId: 'ana', delta: 1, effectiveAt: '2026-03-03T09:00:00Z' })
