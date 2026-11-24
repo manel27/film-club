@@ -928,6 +928,8 @@ a.button {
 
 .table-scroll {
   overflow-x: auto;
+  /* Keeps screen-reader text in cells inside the scroll box, not widening the page. */
+  position: relative;
 }
 
 .rotation-table {
@@ -1116,6 +1118,11 @@ a.chip:hover,
 
 .about-page {
   text-align: left;
+}
+
+/* On a phone the actions stay readable; the role columns scroll sideways instead. */
+.roles-table tbody th {
+  min-width: 11rem;
 }
 
 .tmdb-logo img {
