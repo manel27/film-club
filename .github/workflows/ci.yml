@@ -96,10 +96,7 @@ jobs:
       # The Edge Functions call a fake TMDB that the e2e setup starts
       # (e2e/tmdbStub.ts); the token is a placeholder, real TMDB is never used.
       - name: Point the local Edge Functions at the fake TMDB
-        run: |
-          printf 'TMDB_TOKEN=%s\nTMDB_BASE_URL=%s\n' \
-            placeholder-not-a-real-token http://host.docker.internal:54399 \
-            > supabase/functions/.env
+        run: npm run functions:env # the same script as locally, so the two can't drift
       - name: Start local Supabase (for e2e)
         run: >-
           npx supabase start
