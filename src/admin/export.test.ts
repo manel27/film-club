@@ -51,6 +51,11 @@ describe('toCsv', () => {
     ).toBe('﻿id,name,note\r\n1,Inês,\r\n2,\'=1+1,"a,b"\r\n')
     expect(toCsv([])).toBe('')
   })
+
+  it('writes the header from the known columns, even with no rows', () => {
+    expect(toCsv([], ['id', 'body'])).toBe('\uFEFFid,body\r\n')
+    expect(toCsv([{ id: 1, body: 'hi' }], ['id', 'body'])).toBe('\uFEFFid,body\r\n1,hi\r\n')
+  })
 })
 
 const data: ExportData = {
@@ -68,6 +73,15 @@ const data: ExportData = {
 }
 
 describe('exportFiles', () => {
+  it("gives an empty table a header line from the export's columns", () => {
+    const files = exportFiles({
+      ...data,
+      columns: { comments: ['id', 'film_id', 'body'] },
+      tables: { comments: [] },
+    })
+    expect(files[1]).toEqual({ name: 'csv/comments.csv', text: '\uFEFFid,film_id,body\r\n' })
+  })
+
   it('is the complete JSON plus one CSV per table', () => {
     const files = exportFiles(data)
     expect(files.map((f) => f.name)).toEqual([

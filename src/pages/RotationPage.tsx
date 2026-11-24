@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useLayoutEffect, useRef, useState, type FormEvent } from 'react'
 import { Link } from 'react-router'
 import { useAuth } from '../auth/authContext'
 import Chip, { PersonName } from '../components/Chip'
@@ -23,7 +23,7 @@ const isDate = (v: string) => {
 function useNotice() {
   const [notice, setNotice] = useState({ text: '', n: 0 })
   const ref = useRef<HTMLParagraphElement>(null)
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (notice.n) ref.current?.focus()
   }, [notice])
   const element = (
@@ -447,9 +447,18 @@ function StaffTools({ rotation, data }: { rotation: Rotation; data: RotationData
               value={adj.value}
               onChange={(e) => setAdj({ ...adj, value: e.target.value })}
               aria-invalid={!!invalid}
-              aria-describedby={invalid ? 'adjust-invalid' : undefined}
+              aria-describedby={
+                [adj.kind === 'delta' && 'adjust-floor', invalid && 'adjust-invalid']
+                  .filter(Boolean)
+                  .join(' ') || undefined
+              }
             />
           </label>
+        )}
+        {adj.kind === 'delta' && (
+          <p id="adjust-floor" className="muted">
+            Points never go below 0: a larger subtraction leaves 0.
+          </p>
         )}
         <label className="field">
           Effective from

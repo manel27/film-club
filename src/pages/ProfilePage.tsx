@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type KeyboardEvent,
+} from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
 import { useAuth } from '../auth/authContext'
 import { FilmRow, PosterTile, ViewToggle } from '../components/FilmViews'
@@ -228,7 +236,7 @@ function RenameForm(props: {
   const noticeRef = useRef<HTMLParagraphElement>(null)
   // After the form closes, focus goes to the notice (saved) or back to the button (cancelled).
   const focusNext = useRef<'notice' | 'button' | null>(null)
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (editing) return
     if (focusNext.current === 'notice') noticeRef.current?.focus()
     if (focusNext.current === 'button') editButton.current?.focus()

@@ -174,6 +174,7 @@ const adminData = () => ({
       isSystem: false,
       role: 'member' as const,
       isClaimed: true,
+      loginRemovedAt: null,
     },
     {
       id: VIGGO,
@@ -182,6 +183,7 @@ const adminData = () => ({
       isSystem: false,
       role: 'member' as const,
       isClaimed: false,
+      loginRemovedAt: null,
     },
     {
       id: 'wren',
@@ -190,6 +192,7 @@ const adminData = () => ({
       isSystem: false,
       role: 'member' as const,
       isClaimed: false,
+      loginRemovedAt: '2026-11-20T23:30:00Z',
     },
   ],
   links: [
@@ -219,6 +222,9 @@ describe('admin page', () => {
     await screen.findByRole('link', { name: 'Kwame' })
     expect(row('Kwame')).toHaveTextContent('Has a login')
     expect(row('Viggo')).toHaveTextContent('No login')
+    // 23:30 UTC on 20 Nov is already 20 Nov in Lisbon (UTC+0 in winter).
+    expect(row('Wren')).toHaveTextContent('Login removed 20 Nov 2026')
+    expect(screen.getByText('Logins removed before 24 Nov 2026 show as “No login”.')).toBeVisible()
     expect(row('Viggo')).toHaveTextContent('Invite until 1 Jan')
     expect(row('Wren')).toHaveTextContent('Needs a colour before an invite')
     expect(screen.getByRole('button', { name: 'Create reset link for Kwame' })).toBeInTheDocument()
@@ -404,6 +410,7 @@ describe('admin page', () => {
       isSystem: false,
       role: 'admin' as const,
       isClaimed: true,
+      loginRemovedAt: null,
     }
     mocked.fetchAdminPeople.mockResolvedValue({ ...adminData(), people: [me] })
     renderApp('/admin', admin())

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react'
 import { exportZip } from '../admin/export'
 import { announceExport, exportDate, useLastExport } from '../admin/lastExport'
 import { useAuth } from '../auth/authContext'
@@ -20,6 +20,7 @@ import {
 import {
   adminLinkErrorMessage,
   linkLabel,
+  loginLabel,
   removeLoginErrorMessage,
   type OpenLink,
 } from '../invites/links'
@@ -81,14 +82,14 @@ export default function AdminPage() {
     }
   }, [isAdmin, attempt])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (fresh) {
       linkRef.current?.focus()
       linkRef.current?.select()
     }
   }, [fresh])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!data || !focusNext.current) return
     document.getElementById(focusNext.current)?.focus()
     focusNext.current = null
@@ -254,7 +255,7 @@ export default function AdminPage() {
                         <Chip person={p} />
                       </td>
                       <td data-label="Role">{p.role && ROLE_NAMES[p.role]}</td>
-                      <td data-label="Login">{p.isClaimed ? 'Has a login' : 'No login'}</td>
+                      <td data-label="Login">{loginLabel(p)}</td>
                       <td data-label="Link">{link ? linkLabel(link) : '—'}</td>
                       <td>
                         <div className="actions">
@@ -316,6 +317,8 @@ export default function AdminPage() {
               </tbody>
             </table>
           </div>
+          {/* login_removed_at exists from migration 20261124180000: no earlier history. */}
+          <p className="muted">Logins removed before 24 Nov 2026 show as “No login”.</p>
           <AddPerson people={data.people} onAdded={reload} />
         </>
       )}

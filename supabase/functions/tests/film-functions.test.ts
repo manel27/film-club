@@ -66,6 +66,8 @@ const credits = (id: number) => ({
     { job: 'Writer', name: 'Someone Else' },
   ],
 })
+/** HTTP status of Film Two's broken credits call (5xx or 429). */
+let brokenCreditsStatus = 500
 const stub = Deno.serve({ hostname: '127.0.0.1', port: 0, onListen() {} }, (req) => {
   const url = new URL(req.url)
   tmdbCalls.push({
@@ -89,7 +91,7 @@ const stub = Deno.serve({ hostname: '127.0.0.1', port: 0, onListen() {} }, (req)
   if (!movie) return Response.json({ status_message: 'not found' }, { status: 404 })
   if (m[2]) {
     // Film Two's credits are broken: the search must still work.
-    if (movie.id === 777002) return new Response('oops', { status: 500 })
+    if (movie.id === 777002) return new Response('oops', { status: brokenCreditsStatus })
     return Response.json(credits(movie.id as number))
   }
   return Response.json({ ...movie, credits: credits(movie.id as number) })
@@ -187,6 +189,7 @@ Deno.test(
         })
         const two = res.body.results.find((r: { tmdb_id: number }) => r.tmdb_id === 777002)
         assertEquals(two.directors, [], 'a failed credits call loses only the director')
+        assertEquals(two.title, 'Stub Film Two')
         const search1 = tmdbCalls.find((c) => c.path === '/3/search/movie')!
         assertEquals(search1.params.get('language'), 'en-US')
         assertEquals(search1.auth, `Bearer ${FAKE_TOKEN}`)
@@ -197,6 +200,23 @@ Deno.test(
           screened_on: '2026-01-10',
           kind: 'normal',
         })
+      })
+
+      await t.step('tmdb-search: a rate-limited (429) credits call also degrades', async () => {
+        brokenCreditsStatus = 429
+        try {
+          const res = await call(search, 'kwame', { query: 'stub' })
+          assertEquals(res.status, 200)
+          const byId = Object.fromEntries(
+            res.body.results.map((r: { tmdb_id: number; directors: string[] }) => [
+              r.tmdb_id,
+              r.directors,
+            ]),
+          )
+          assertEquals(byId, { 777001: ['Director 777001'], 777002: [] })
+        } finally {
+          brokenCreditsStatus = 500
+        }
       })
 
       await t.step('tmdb-search: bad input and TMDB failures', async () => {
@@ -391,6 +411,22 @@ Deno.test(
         })
         film = await filmRow(id)
         assertEquals([film.tmdb_id, film.directors, film.tmdb_fetched_at], [null, [], null])
+        // Moved back to a day that has another film: after it, not its old day_order.
+        assertEquals([film.screened_on, film.day_order], ['2026-12-12', 2])
+
+        // An edit that keeps the date keeps the day_order.
+        const sameDay = await call(save, 'tamsin', {
+          id,
+          tmdb_id: null,
+          title: 'A Home Movie',
+          release_year: 2005,
+          ...screening,
+          kind: 'cinema',
+          assigned_id: P('c1'),
+        })
+        assertEquals(sameDay.status, 200)
+        film = await filmRow(id)
+        assertEquals([film.kind, film.day_order], ['cinema', 2])
       })
 
       await t.step('CORS: only the site (and localhost on the local stack)', async () => {

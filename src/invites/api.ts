@@ -42,6 +42,8 @@ export const revokeLink = (id: string) =>
 
 export interface AdminPerson extends Person {
   isClaimed: boolean
+  /** When the login was last removed (null: never, or it has one now). */
+  loginRemovedAt: string | null
 }
 
 /** Admin: everyone but the system profiles, and every open (unused, unrevoked) link. */
@@ -49,7 +51,7 @@ export async function fetchAdminPeople(): Promise<{ people: AdminPerson[]; links
   const [people, links] = await Promise.all([
     supabase
       .from('profile_directory')
-      .select('id, display_name, colour, role, is_claimed, is_system')
+      .select('id, display_name, colour, role, is_claimed, is_system, login_removed_at')
       .eq('is_system', false),
     supabase
       .from('invites')
@@ -68,6 +70,7 @@ export async function fetchAdminPeople(): Promise<{ people: AdminPerson[]; links
         isSystem: false,
         role: p.role ?? undefined,
         isClaimed: p.is_claimed!,
+        loginRemovedAt: p.login_removed_at,
       }))
       .sort((a, b) => a.name.localeCompare(b.name)),
     links: (links.data ?? []).map((l) => ({

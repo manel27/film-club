@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Link, useLocation, useSearchParams } from 'react-router'
 import { useAuth } from '../auth/authContext'
 import { Dot, FilmRow, PosterTile, ViewToggle } from '../components/FilmViews'
@@ -58,7 +58,7 @@ export default function FilmsPage() {
   const { state: navState } = useLocation()
   const [notice] = useState((navState as { notice?: string } | null)?.notice)
   const noticeRef = useRef<HTMLParagraphElement>(null)
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!notice) return
     noticeRef.current?.focus()
     // Shown once: drop it from the history entry (React Router keeps it in
@@ -339,7 +339,9 @@ function PresentFilter(props: {
   onModeChange: (mode: 'any' | 'all') => void
 }) {
   const ref = useRef<HTMLDetailsElement>(null)
-  useEffect(() => {
+  // Layout effect: the listener must exist as soon as the filter is on screen. A passive
+  // effect can still be pending then, so an early outside click was missed (flaky test).
+  useLayoutEffect(() => {
     const close = (e: PointerEvent) => {
       if (ref.current?.open && !ref.current.contains(e.target as Node)) ref.current.open = false
     }

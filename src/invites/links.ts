@@ -84,6 +84,25 @@ const when = (iso: string) =>
     timeZone: 'Europe/Lisbon',
   })
 
+/** "24 Nov 2026" (Lisbon). */
+export const dayLabel = (iso: string) =>
+  new Date(iso).toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'Europe/Lisbon',
+  })
+
+/** Admin -> People: "Has a login", "Login removed 24 Nov 2026" or "No login" (never had one). */
+export function loginLabel(p: { isClaimed: boolean; loginRemovedAt: string | null }): string {
+  if (p.isClaimed) return 'Has a login'
+  if (!p.loginRemovedAt) return 'No login'
+  // An unreadable date still says the login was removed, never "Invalid Date".
+  return Number.isNaN(Date.parse(p.loginRemovedAt))
+    ? 'Login removed'
+    : `Login removed ${dayLabel(p.loginRemovedAt)}`
+}
+
 /** Short, for a phone: "Invite until 6 Dec, 20:10" or "Reset link expired 1 Jul, 10:00". */
 export function linkLabel(link: OpenLink, now = new Date()): string {
   const name = link.kind === 'invite' ? 'Invite' : 'Reset link'

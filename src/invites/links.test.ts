@@ -4,6 +4,7 @@ import {
   INVALID_LINK_MESSAGE,
   linkErrorMessage,
   linkLabel,
+  loginLabel,
   passwordProblem,
   removeLoginErrorMessage,
   watchedLine,
@@ -60,6 +61,21 @@ describe('watchedLine', () => {
     expect(watchedLine(0)).toBe('Welcome to the club!')
     expect(watchedLine(1)).toBe("You've been at 1 club screening so far.")
     expect(watchedLine(42)).toBe("You've been at 42 club screenings so far.")
+  })
+})
+
+describe('loginLabel', () => {
+  it('tells a removed login from one never given', () => {
+    expect(loginLabel({ isClaimed: true, loginRemovedAt: null })).toBe('Has a login')
+    expect(loginLabel({ isClaimed: false, loginRemovedAt: null })).toBe('No login')
+    // 23:30 UTC in July is the next day in Lisbon (summer time).
+    expect(loginLabel({ isClaimed: false, loginRemovedAt: '2026-07-20T23:30:00Z' })).toBe(
+      'Login removed 21 Jul 2026',
+    )
+  })
+
+  it('never shows "Invalid Date" for an unreadable date', () => {
+    expect(loginLabel({ isClaimed: false, loginRemovedAt: 'garbage' })).toBe('Login removed')
   })
 })
 

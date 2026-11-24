@@ -21,6 +21,7 @@ export function fakeProfile(overrides: Partial<MyProfile> = {}): MyProfile {
     is_system: false,
     created_at: '2026-11-18T00:00:00Z',
     updated_at: '2026-11-18T00:00:00Z',
+    login_removed_at: null,
     ...overrides,
   }
 }
