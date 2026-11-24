@@ -1118,6 +1118,11 @@ a.chip:hover,
   text-align: left;
 }
 
+/* Keeps the roles table's screen-reader text inside its scroll box, not widening the page. */
+.about-page .table-scroll {
+  position: relative;
+}
+
 .tmdb-logo img {
   display: block;
   height: 1.125rem;
