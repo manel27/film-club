@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { fetchLastExport } from '../invites/api'
+import { dayLabel } from '../invites/links'
 
 const DAY = 86_400_000
 /** Fired on window after an export, so the banner and the Admin page agree at once. */
@@ -12,13 +13,7 @@ export function exportOverdue(lastExport: string | null, now = Date.now()): bool
 }
 
 /** "24 Nov 2026" (Lisbon), for "Last export: …". */
-export const exportDate = (iso: string) =>
-  new Date(iso).toLocaleDateString('en-GB', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-    timeZone: 'Europe/Lisbon',
-  })
+export const exportDate = dayLabel
 
 /** Tells every useLastExport() an export just happened. */
 export const announceExport = (at: string) =>

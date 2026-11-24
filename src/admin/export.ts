@@ -6,6 +6,8 @@ export interface ExportData {
   exported_at: string
   schema_version: string | null
   row_counts: Record<string, number>
+  /** Each table's column names (migration 20261124180000; older exports have none). */
+  columns?: Record<string, string[]>
   tables: Record<string, Record<string, unknown>[]>
 }
 
@@ -25,12 +27,15 @@ export function csvCell(value: unknown): string {
 }
 
 /**
- * A table as CSV: a header row from the first row's columns, CRLF line ends,
- * and a byte-order mark so Excel reads it as UTF-8. Empty for no rows.
+ * A table as CSV: a header row (the given columns, else the first row's), CRLF
+ * line ends, and a byte-order mark so Excel reads it as UTF-8. With no rows
+ * and no columns there is nothing to write.
  */
-export function toCsv(rows: Record<string, unknown>[]): string {
-  if (!rows.length) return ''
-  const columns = Object.keys(rows[0])
+export function toCsv(
+  rows: Record<string, unknown>[],
+  columns = Object.keys(rows[0] ?? {}),
+): string {
+  if (!columns.length) return ''
   const lines = [columns, ...rows.map((r) => columns.map((c) => r[c]))]
   return '﻿' + lines.map((cells) => cells.map(csvCell).join(',') + '\r\n').join('')
 }
@@ -40,7 +45,7 @@ export const exportFiles = (data: ExportData) => [
   { name: 'film-club-export.json', text: JSON.stringify(data, null, 2) },
   ...Object.entries(data.tables).map(([table, rows]) => ({
     name: `csv/${table}.csv`,
-    text: toCsv(rows),
+    text: toCsv(rows, data.columns?.[table]),
   })),
 ]
 

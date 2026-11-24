@@ -357,6 +357,7 @@ export type Database = {
           id: string
           is_claimed: boolean | null
           is_system: boolean
+          login_removed_at: string | null
           role: Database['public']['Enums']['profile_role']
           sheet_keyword: string | null
           updated_at: string
@@ -371,6 +372,7 @@ export type Database = {
           id?: string
           is_claimed?: never
           is_system?: boolean
+          login_removed_at?: string | null
           role?: Database['public']['Enums']['profile_role']
           sheet_keyword?: string | null
           updated_at?: string
@@ -384,6 +386,7 @@ export type Database = {
           id?: string
           is_claimed?: never
           is_system?: boolean
+          login_removed_at?: string | null
           role?: Database['public']['Enums']['profile_role']
           sheet_keyword?: string | null
           updated_at?: string
@@ -713,6 +716,7 @@ export type Database = {
           id: string
           is_claimed: boolean | null
           is_system: boolean
+          login_removed_at: string | null
           role: Database['public']['Enums']['profile_role']
           sheet_keyword: string | null
           updated_at: string
@@ -726,6 +730,7 @@ export type Database = {
           id?: string | null
           is_claimed?: boolean | null
           is_system?: boolean | null
+          login_removed_at?: string | null
           role?: Database['public']['Enums']['profile_role'] | null
           sheet_keyword?: string | null
           updated_at?: string | null
@@ -738,6 +743,7 @@ export type Database = {
           id?: string | null
           is_claimed?: boolean | null
           is_system?: boolean | null
+          login_removed_at?: string | null
           role?: Database['public']['Enums']['profile_role'] | null
           sheet_keyword?: string | null
           updated_at?: string | null
@@ -806,6 +812,7 @@ export type Database = {
           id: string
           is_claimed: boolean | null
           is_system: boolean
+          login_removed_at: string | null
           role: Database['public']['Enums']['profile_role']
           sheet_keyword: string | null
           updated_at: string

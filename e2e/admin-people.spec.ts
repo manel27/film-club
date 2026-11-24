@@ -157,7 +157,7 @@ test('admin removes a login: history stays, old sessions end, they can be invite
   await expect(dialog.getByRole('button', { name: 'Cancel' })).toBeFocused()
   await dialog.getByRole('button', { name: 'Yes, remove login' }).click()
   await expect(page.getByText(`${LEAVER.name}'s login was removed.`)).toBeVisible()
-  await expect(row).toContainText('No login')
+  await expect(row).toContainText(/Login removed \d+ \w+ \d{4}/)
   await expect(page.getByRole('button', { name: `Create invite for ${LEAVER.name}` })).toBeFocused()
 
   expect(await findUserByEmail(client, LEAVER.email)).toBeFalsy()
@@ -264,7 +264,7 @@ test('admin exports all data: one zip with the complete JSON and a CSV per table
   expect(text).not.toContain('@example.test')
   expect(text).not.toContain('token_hash')
   expect(files['csv/profiles.csv'].split('\r\n')[0]).toBe(
-    '﻿id,display_name,sheet_keyword,colour,role,is_claimed,claimed_at,is_system,created_at,updated_at',
+    '﻿id,display_name,sheet_keyword,colour,role,is_claimed,claimed_at,is_system,created_at,updated_at,login_removed_at',
   )
 })
 
