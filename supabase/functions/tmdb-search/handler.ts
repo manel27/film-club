@@ -50,7 +50,10 @@ export async function handler(req: Request): Promise<Response> {
         }
         const [credits, watched] = await Promise.all([
           // A failed credits call only loses that result's director.
-          tmdb(`/movie/${film.tmdb_id}/credits`).catch(() => null),
+          tmdb(`/movie/${film.tmdb_id}/credits`).catch((e) => {
+            console.warn('credits unavailable', e instanceof Error ? e.message : String(e))
+            return null
+          }),
           clashes(me.db, { ...film, release_year: film.year }),
         ])
         const w = watched[0]

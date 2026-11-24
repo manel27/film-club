@@ -204,6 +204,7 @@ Deno.test('rotation_standings (SQL) equals computeStandings (TS) on the same dat
     await adjust({ profile_id: ORLA, set_to: 4, effective_at: '2026-07-16T20:00:00Z' })
     await adjust({ profile_id: ORLA, delta: -2, effective_at: '2026-07-16T08:00:00Z' })
     await adjust({ profile_id: WREN, delta: -50, effective_at: '2026-07-17T08:00:00Z' }) // floor at 0
+    await assertSame('a correction below 0 stops at 0')
     await adjust({ profile_id: WREN, delta: 1, effective_at: '2026-07-17T09:00:00Z' })
     // Two films on the same date with the same day_order: id decides.
     await film({
