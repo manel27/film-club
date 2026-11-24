@@ -103,6 +103,63 @@ hand in the dashboard if even that fails).
   Use the hosted project's secret key from the Supabase dashboard (API keys),
   keep the env file outside the repository and delete it afterwards.
 
+## Running the club (admin guide)
+
+Everything below is on the **Admin** page (only admins see it) unless it says
+otherwise.
+
+- **Invite someone.** Add them with **Add person** (name, colour, role), or
+  find them in the list if they are already there from the history. Press
+  **Create invite**, then **Copy link** and send it to them privately: it is
+  shown only once. They open it, choose an email and password, and are in. A
+  person needs a colour before they can be invited.
+- **Reset a password.** For someone who already has a login, press **Create
+  reset link** and send it the same way. They choose a new password; the old
+  one and their open sessions stop working. **Revoke** kills a link you sent
+  by mistake; **Regenerate** replaces it.
+- **Remove a login.** **Remove login** deletes their email and password, so
+  they can't log in any more. Everything else stays: their name, colour,
+  films, attendance, scores and comments. You can invite them again later.
+- **Change roles and colours.** **Edit** next to a person. You can't change
+  your own role, and the club always keeps at least one admin.
+- **Export the data every month.** **Export all data** downloads one zip (a
+  complete JSON file plus a CSV per table, no emails or passwords). Keep it
+  somewhere private and safe, such as your own cloud drive, and keep the old
+  ones. It is a record to rebuild from, not a backup button: there is no
+  one-click restore from it. If there has been no export for 30 days, admins
+  see a reminder at the top of every page until they export again.
+
+### Keeping the database awake
+
+The free Supabase plan pauses a project after a period of inactivity (roughly
+a week). The **Keep-alive** workflow (`.github/workflows/keepalive.yml`) makes
+one harmless read every 3 days so that doesn't happen.
+
+- **See it:** the repository's **Actions** tab → **Keep-alive**.
+- **Run it by hand:** Actions → Keep-alive → **Run workflow**.
+- **A failure email from GitHub** means the ping didn't get through (Supabase
+  down, project paused, or the URL or key changed). Run it by hand once; if it
+  fails again, check the project in the Supabase dashboard.
+- **If Supabase pauses the project anyway:** open the Supabase dashboard,
+  choose the project and press **Restore**. It takes a few minutes and the
+  data is intact. This one-click restore only works for a limited time (the
+  dashboard shows how many days are left); after that you can only download a
+  backup file and restore it into a new project. Another reason for the
+  monthly export.
+- **Important:** in a public repository, GitHub automatically switches off
+  scheduled workflows when there has been no repository activity for 60 days.
+  The keep-alive's own runs probably don't count as activity. Pushing a commit
+  before day 60 resets that clock, but once the workflow is switched off a
+  commit does **not** switch it back on: go to Actions → Keep-alive and press
+  **Enable workflow**. If the repository is quiet, set yourself a reminder
+  every 6 weeks or so to check the Actions tab (or push a small change).
+
+### Deploying
+
+Merging to `main` deploys the site to GitHub Pages automatically. Database
+changes (`supabase/migrations/`) and Edge Functions are **not** deployed
+automatically: they are pushed by hand, and only with the owner's OK.
+
 ## Secret scanning
 
 Commits are scanned by [gitleaks](https://github.com/gitleaks/gitleaks) both

@@ -27,6 +27,8 @@ vi.mock('../invites/api', () => ({
   updatePerson: vi.fn(),
   removeLogin: vi.fn(),
   fetchExport: vi.fn(),
+  fetchLastExport: vi.fn(),
+  saveLastExport: vi.fn(),
 }))
 const mocked = vi.mocked(api)
 
@@ -43,7 +45,11 @@ function renderApp(path: string, fake = createFakeAuthBackend()) {
 const type = (label: string | RegExp, value: string) =>
   fireEvent.change(screen.getByLabelText(label), { target: { value } })
 
-beforeEach(() => vi.resetAllMocks())
+beforeEach(() => {
+  vi.resetAllMocks()
+  mocked.fetchLastExport.mockResolvedValue(new Date().toISOString())
+  mocked.saveLastExport.mockResolvedValue()
+})
 
 // jsdom has <dialog> but not showModal()/close().
 beforeAll(() => {
@@ -470,6 +476,43 @@ describe('admin page', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Export all data' }))
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'Only the admin can export the data.',
+    )
+    expect(mocked.saveLastExport).toHaveBeenCalledTimes(1)
+    click.mockRestore()
+  })
+
+  it('records the export date for the 30-day reminder, and the banner goes', async () => {
+    mocked.fetchAdminPeople.mockResolvedValue(adminData())
+    mocked.fetchLastExport.mockResolvedValue(null)
+    mocked.fetchExport.mockResolvedValue({
+      format: 'film-club-export',
+      exported_at: '2026-11-23T21:00:00Z',
+      schema_version: '20261123140000',
+      row_counts: {},
+      tables: {},
+    })
+    mocked.saveLastExport.mockRejectedValueOnce(new Error('offline'))
+    Object.assign(URL, { createObjectURL: () => 'blob:export', revokeObjectURL: () => {} })
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    renderApp('/admin', admin())
+    expect(await screen.findByText('Last export: never')).toBeInTheDocument()
+    expect(
+      screen.getByText(/No data export in the last 30 days \(last: never\)/),
+    ).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Export all data' }))
+    // The save failed: the download still counts, with a note.
+    expect(await screen.findByText(/Couldn't save the export date/)).toBeInTheDocument()
+    expect(screen.getByText(/^Downloaded film-club-export-2026-11-23\.zip\./)).toBeInTheDocument()
+    const at = mocked.saveLastExport.mock.calls[0][0]
+    expect(Date.now() - Date.parse(at)).toBeLessThan(60_000)
+    expect(screen.getByText(/^Last export: \d+ \w+ \d{4}$/)).toBeInTheDocument()
+    expect(screen.queryByText(/No data export in the last 30 days/)).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Export all data' }))
+    await waitFor(() => expect(mocked.saveLastExport).toHaveBeenCalledTimes(2))
+    await waitFor(() =>
+      expect(screen.queryByText(/Couldn't save the export date/)).not.toBeInTheDocument(),
     )
     click.mockRestore()
   })

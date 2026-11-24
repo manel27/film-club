@@ -795,6 +795,7 @@ export type Database = {
           invite_id: string
         }[]
       }
+      keepalive: { Args: Record<PropertyKey, never>; Returns: boolean }
       my_profile: {
         Args: Record<PropertyKey, never>
         Returns: {

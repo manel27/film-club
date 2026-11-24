@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { exportZip } from '../admin/export'
+import { announceExport, exportDate, useLastExport } from '../admin/lastExport'
 import { useAuth } from '../auth/authContext'
 import Chip from '../components/Chip'
 import ColourField, { HEX } from '../components/ColourField'
@@ -12,6 +13,7 @@ import {
   fetchExport,
   removeLogin,
   revokeLink,
+  saveLastExport,
   updatePerson,
   type AdminPerson,
 } from '../invites/api'
@@ -581,11 +583,14 @@ function ExportData() {
   const [busy, setBusy] = useState(false)
   const [status, setStatus] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [unsaved, setUnsaved] = useState(false)
+  const last = useLastExport()
 
   async function download() {
     setBusy(true)
     setError(null)
     setStatus('')
+    setUnsaved(false)
     try {
       const { name, blob } = exportZip(await fetchExport())
       const url = URL.createObjectURL(blob)
@@ -596,6 +601,10 @@ function ExportData() {
       // Not at once: Safari may still be starting the download.
       setTimeout(() => URL.revokeObjectURL(url), 60_000)
       setStatus(`Downloaded ${name}.`)
+      // The download is what counts; the date only feeds the 30-day reminder.
+      const at = new Date().toISOString()
+      announceExport(at)
+      await saveLastExport(at).catch(() => setUnsaved(true))
     } catch (e) {
       setError(
         (e as { code?: string } | null)?.code === '42501'
@@ -619,10 +628,16 @@ function ExportData() {
           {error}
         </p>
       )}
-      <p role="status">{status}</p>
+      <p role="status">
+        {status}
+        {unsaved && " Couldn't save the export date, so the reminder may come back."}
+      </p>
       <button type="button" className="button" disabled={busy} onClick={download}>
         {busy ? 'Exporting…' : 'Export all data'}
-      </button>
+      </button>{' '}
+      {last && (
+        <span className="muted">Last export: {last.at ? exportDate(last.at) : 'never'}</span>
+      )}
     </section>
   )
 }

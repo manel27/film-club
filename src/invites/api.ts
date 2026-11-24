@@ -96,6 +96,27 @@ export async function fetchExport(): Promise<ExportData> {
   return data as unknown as ExportData
 }
 
+/**
+ * When the last "Export all data" download happened (app_settings.last_export_at),
+ * or null when never, or when the value isn't a date or is over a day in the
+ * future (so a bad value shows "never" and the reminder, not silence).
+ */
+export async function fetchLastExport(): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('app_settings')
+    .select('value')
+    .eq('key', 'last_export_at')
+    .maybeSingle()
+  if (error) throw error
+  const value = data?.value
+  // NaN (not a date) fails the comparison too.
+  return typeof value === 'string' && Date.parse(value) <= Date.now() + 86_400_000 ? value : null
+}
+
+/** Admin: records an export (RLS: admins only), for the 30-day reminder. */
+export const saveLastExport = (at: string) =>
+  check(supabase.from('app_settings').upsert({ key: 'last_export_at', value: at }))
+
 /** Admin: deletes the person's login; their profile and history stay (decision A2). */
 export const removeLogin = (profileId: string) =>
   invoke<{ ok: true }>('admin-remove-login', { profile_id: profileId })

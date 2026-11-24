@@ -75,9 +75,9 @@ select is(
   0, 'invites cannot be created or deleted from a browser (Edge Functions only)');
 
 select is(
-  (select count(*)::int from pg_proc p
+  (select array_agg(p.proname::text) from pg_proc p
    where p.pronamespace = 'public'::regnamespace and has_function_privilege('anon', p.oid, 'execute')),
-  0, 'anon cannot execute any public function');
+  array['keepalive'], 'anon can execute no public function but keepalive() (always true, no data)');
 
 select ok(not has_schema_privilege('anon', 'app', 'usage'), 'anon has no access to the app helper schema');
 
