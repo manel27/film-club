@@ -24,26 +24,27 @@ npm run dev                  # http://localhost:5173/film-club/
 
 Useful scripts:
 
-| Command                 | What it does                            |
-| ----------------------- | --------------------------------------- |
-| `npm run dev`           | Start the dev server                    |
-| `npm run lint`          | ESLint                                  |
-| `npm run typecheck`     | TypeScript type check                   |
-| `npm test`              | Unit tests (Vitest)                     |
-| `npm run build`         | Production build into `dist/`           |
-| `npm run e2e`           | End-to-end tests (Playwright)           |
-| `npm run db:start`      | Start the local Supabase stack          |
-| `npm run db:test`       | Database tests (pgTAP)                  |
-| `npm run db:reset`      | Rebuild the local database              |
-| `npm run db:types`      | Regenerate `database.types.ts`          |
-| `npm run functions:env` | Write `supabase/functions/.env` for e2e |
+| Command                 | What it does                                               |
+| ----------------------- | ---------------------------------------------------------- |
+| `npm run dev`           | Start the dev server                                       |
+| `npm run lint`          | ESLint                                                     |
+| `npm run typecheck`     | TypeScript type check                                      |
+| `npm test`              | Unit tests (Vitest)                                        |
+| `npm run build`         | Production build into `dist/`                              |
+| `npm run e2e`           | End-to-end tests (Playwright)                              |
+| `npm run db:start`      | Start the local Supabase stack                             |
+| `npm run db:test`       | Database tests (pgTAP)                                     |
+| `npm run db:reset`      | Rebuild the local database                                 |
+| `npm run db:types`      | Regenerate `database.types.ts`                             |
+| `npm run functions:env` | Write `supabase/functions/.env` for e2e (never overwrites) |
 
 For end-to-end tests, install the browser once with
 `npx playwright install --with-deps chromium` (the `--with-deps` part needs sudo
 on Linux/WSL). They run against the **local** Supabase stack: first run
 `npm run functions:env` (writes the git-ignored `supabase/functions/.env` that
 points the Edge Functions at the e2e fake TMDB, with a placeholder token; CI runs
-the same script), then start the stack (`npm run db:start`). Playwright reads the stack's URL and throwaway dev keys
+the same script; it never overwrites an existing file, so delete yours first if
+it should point at the fake TMDB), then start the stack (`npm run db:start`). Playwright reads the stack's URL and throwaway dev keys
 from `supabase status`, builds the app into `dist-e2e/` pointed at it, creates
 synthetic test logins (`*@example.test`) and removes them afterwards. It refuses
 to run against anything that isn't on your machine.

@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { SEED_ADMIN } from './fixtures'
 
+// /films/1 is "The Quiet Orchard" in supabase/seed.sql (fixed id).
 // Every main page fits a 360px phone in every theme: no page-level sideways scroll.
 const PAGES = ['/', '/films/1', '/rotation', '/people', 'profile', '/admin', '/about']
 const THEMES = ['letterboxd', 'superman', 'batman']
@@ -29,6 +30,8 @@ test('the main pages fit a 360px screen in every theme', async ({ page }) => {
         () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
       )
       expect(overflow, `${path} in ${theme}`).toBe(0)
+      const bodyWidth = await page.evaluate(() => document.body.scrollWidth)
+      expect(bodyWidth, `${path} body in ${theme}`).toBeLessThanOrEqual(360)
     }
   }
 })

@@ -224,6 +224,7 @@ describe('admin page', () => {
     expect(row('Viggo')).toHaveTextContent('No login')
     // 23:30 UTC on 20 Nov is already 20 Nov in Lisbon (UTC+0 in winter).
     expect(row('Wren')).toHaveTextContent('Login removed 20 Nov 2026')
+    expect(screen.getByText('Logins removed before 24 Nov 2026 show as “No login”.')).toBeVisible()
     expect(row('Viggo')).toHaveTextContent('Invite until 1 Jan')
     expect(row('Wren')).toHaveTextContent('Needs a colour before an invite')
     expect(screen.getByRole('button', { name: 'Create reset link for Kwame' })).toBeInTheDocument()

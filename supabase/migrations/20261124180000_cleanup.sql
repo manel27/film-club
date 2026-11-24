@@ -34,7 +34,7 @@ begin
     if old.auth_user_id is not null then
       new.login_removed_at := now();
     end if;
-  else
+  elsif old.auth_user_id is null then
     new.login_removed_at := null;
   end if;
   return new;

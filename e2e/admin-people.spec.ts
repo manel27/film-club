@@ -254,9 +254,9 @@ test('admin exports all data: one zip with the complete JSON and a CSV per table
     if (error) throw error
     expect(data.row_counts[table], table).toBe(count)
     expect(data.tables[table], table).toHaveLength(count!)
-    // Header + one line per row (no field in the seed has a line break).
+    // Header (always, even for an empty table) + one line per row (no line breaks in the seed).
     const lines = files[`csv/${table}.csv`].split('\r\n').filter(Boolean)
-    expect(lines.length, table).toBe(count ? count + 1 : 0)
+    expect(lines.length, table).toBe(count! + 1)
   }
   // Nothing secret: no auth ids, emails or link tokens.
   const text = JSON.stringify(files)

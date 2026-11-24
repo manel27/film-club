@@ -317,6 +317,8 @@ export default function AdminPage() {
               </tbody>
             </table>
           </div>
+          {/* login_removed_at exists from migration 20261124180000: no earlier history. */}
+          <p className="muted">Logins removed before 24 Nov 2026 show as “No login”.</p>
           <AddPerson people={data.people} onAdded={reload} />
         </>
       )}
