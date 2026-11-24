@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { createMemoryRouter, RouterProvider } from 'react-router'
 import { describe, expect, it, vi } from 'vitest'
 import { AuthProvider } from './auth/AuthProvider'
@@ -17,7 +17,7 @@ vi.mock('./films/api', () => ({
   fetchFilm: async () => null,
 }))
 // The admin page's data comes from Supabase too (tested in pages/InvitePages.test.tsx).
-vi.mock('./invites/api', () => ({}))
+vi.mock('./invites/api', () => ({ fetchLastExport: vi.fn(async () => null) }))
 vi.mock('./rotation/api', () => ({
   fetchRotation: async () => ({
     ...{ epoch: null, weekStart: null, standings: [], passes: [], decisions: [] },
@@ -177,6 +177,42 @@ describe('app shell', () => {
     const dot = document.querySelector('.colour-dot') as HTMLElement
     expect(dot.style.backgroundColor).toBe('rgb(74, 134, 232)')
   })
+
+  it('reminds an admin, on every page, when there has never been an export', async () => {
+    renderApp('/rotation', signedIn(fakeProfile({ role: 'admin' })))
+    const banner = await screen.findByText(/No data export in the last 30 days \(last: never\)/)
+    expect(banner).toHaveAttribute('role', 'status')
+    expect(
+      within(banner).getByRole('link', { name: 'Export it from the Admin page' }),
+    ).toHaveAttribute('href', '/admin')
+  })
+
+  it('reminds an admin when the last export is 30 days old, not when it is recent', async () => {
+    const fetchLastExport = vi.mocked((await import('./invites/api')).fetchLastExport)
+    fetchLastExport.mockResolvedValueOnce('2026-01-01T12:00:00Z')
+    renderApp('/', signedIn(fakeProfile({ role: 'admin' })))
+    expect(await screen.findByText(/\(last: 1 Jan 2026\)/)).toBeInTheDocument()
+    cleanup()
+
+    fetchLastExport.mockResolvedValueOnce(new Date().toISOString())
+    renderApp('/', signedIn(fakeProfile({ role: 'admin' })))
+    await screen.findByText('Quinn')
+    await act(() => Promise.resolve())
+    expect(screen.queryByText(/No data export/)).not.toBeInTheDocument()
+  })
+
+  it.each(['moderator', 'member', 'viewer'] as const)(
+    'never reminds a %s (and never asks)',
+    async (role) => {
+      const fetchLastExport = vi.mocked((await import('./invites/api')).fetchLastExport)
+      fetchLastExport.mockClear()
+      renderApp('/', signedIn(fakeProfile({ role })))
+      await screen.findByText('Quinn')
+      await act(() => Promise.resolve())
+      expect(screen.queryByText(/No data export/)).not.toBeInTheDocument()
+      expect(fetchLastExport).not.toHaveBeenCalled()
+    },
+  )
 
   it('shows a moderator badge', async () => {
     renderApp('/', signedIn(fakeProfile({ role: 'moderator' })))

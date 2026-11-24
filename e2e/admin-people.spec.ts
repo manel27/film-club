@@ -183,6 +183,39 @@ test('admin removes a login: history stays, old sessions end, they can be invite
   await expect(invitee.getByRole('banner').getByText(LEAVER.name)).toBeVisible()
 })
 
+// Before the next test: it leaves last_export_at in app_settings, so that
+// test's export and its row counts agree.
+test('admin is reminded to export until they do; a member never is', async ({ page }) => {
+  const reminder = page
+    .getByRole('status')
+    .filter({ hasText: 'No data export in the last 30 days' })
+  const { error } = await adminClient().from('app_settings').delete().eq('key', 'last_export_at')
+  if (error) throw error
+
+  await logIn(page, SEED_MEMBER.email, SEED_MEMBER.password)
+  await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible()
+  await expect(reminder).toHaveCount(0)
+  await page.getByRole('button', { name: 'Log out' }).click()
+
+  await logIn(page, E2E_ADMIN.email, E2E_PASSWORD)
+  await expect(reminder).toContainText('(last: never)')
+  await reminder.getByRole('link', { name: 'Export it from the Admin page' }).click()
+  await expect(page.getByRole('heading', { name: 'Admin', level: 1 })).toBeVisible()
+  await expect(page.getByText('Last export: never')).toBeVisible()
+  await Promise.all([
+    page.waitForEvent('download'),
+    page.getByRole('button', { name: 'Export all data' }).click(),
+  ])
+  await expect(reminder).toHaveCount(0)
+  await expect(page.getByText(/^Last export: \d+ \w+ \d{4}$/)).toBeVisible()
+
+  // Saved: still gone after a reload.
+  await page.reload()
+  await expect(page.getByRole('heading', { name: 'Admin', level: 1 })).toBeVisible()
+  await expect(page.getByText(/^Last export: \d+ \w+ \d{4}$/)).toBeVisible()
+  await expect(reminder).toHaveCount(0)
+})
+
 test('admin exports all data: one zip with the complete JSON and a CSV per table', async ({
   page,
 }) => {

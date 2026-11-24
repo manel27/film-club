@@ -1,5 +1,6 @@
 import { Link, NavLink, Outlet } from 'react-router'
 import { useAuth } from '../auth/authContext'
+import { exportDate, exportOverdue, useLastExport } from '../admin/lastExport'
 import { useLogOut } from '../auth/useLogOut'
 import ThemePicker from './ThemePicker'
 
@@ -54,7 +55,20 @@ export default function AppShell() {
           )}
         </div>
       </header>
+      {profile?.role === 'admin' && <ExportReminder />}
       <Outlet />
     </div>
+  )
+}
+
+/** Admins only: a nudge to export the data when the last export is 30+ days old, or never. */
+function ExportReminder() {
+  const last = useLastExport(true)
+  if (!last || !exportOverdue(last.at)) return null
+  return (
+    <p role="status" className="export-reminder">
+      No data export in the last 30 days (last: {last.at ? exportDate(last.at) : 'never'}).{' '}
+      <Link to="/admin">Export it from the Admin page</Link>
+    </p>
   )
 }

@@ -107,6 +107,15 @@ a {
   border-bottom: 3px solid var(--highlight);
 }
 
+/* Admins only: the 30-day export reminder under the header. */
+.export-reminder {
+  margin: 0;
+  padding: 0.5rem 1rem;
+  text-align: center;
+  background: var(--surface);
+  border-bottom: 1px solid var(--accent-2);
+}
+
 .header-tools {
   display: flex;
   flex-wrap: wrap;

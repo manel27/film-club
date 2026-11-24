@@ -1,0 +1,31 @@
+name: Keep-alive
+
+# The free Supabase plan pauses a project after a week without activity
+# (plan 2.4). Every 3 days this calls keepalive(), a read-only RPC that always
+# returns true. A failed run makes GitHub email the repository owner: that
+# email is the alert. GitHub disables schedules in public repos after 60 days
+# with no repository activity; re-enable from the Actions tab.
+
+on:
+  schedule:
+    - cron: '23 5 */3 * *'
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Call keepalive()
+        env:
+          # Public values (already in the built site), not secrets.
+          URL: ${{ vars.VITE_SUPABASE_URL }}
+          KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
+        run: |
+          body=$(curl --fail-with-body -sS --retry 3 --retry-delay 20 --retry-all-errors --max-time 30 \
+            -X POST "$URL/rest/v1/rpc/keepalive" \
+            -H "apikey: $KEY" -H "Content-Type: application/json" -d '{}')
+          echo "Response: $body"
+          [ "$body" = "true" ] || { echo "::error::Expected true from keepalive()"; exit 1; }
