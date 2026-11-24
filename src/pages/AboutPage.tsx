@@ -11,18 +11,21 @@ const ADMIN = [true, false, false, false]
 const PERMISSIONS: [string, boolean[]][] = [
   ['See films, scores, comments, people and the rotation', EVERYONE],
   ['Mark your own attendance', MEMBERS],
-  ['Enter and edit your own score', MEMBERS],
+  ['Pick a theme (viewers: saved in this browser only)', EVERYONE],
+  ['Enter, edit and delete your own score', MEMBERS],
   ['Post comments, and edit or delete your own', MEMBERS],
   ['Record your own pass (for the coming week or later)', MEMBERS],
-  ['Change your display name and theme', MEMBERS],
+  ['Change your display name', MEMBERS],
   ['Add and edit films', STAFF],
   ["Mark other people's attendance", STAFF],
   ["Enter, edit and delete other people's scores", STAFF],
   ["Record other people's passes and who chooses next", STAFF],
-  ['Adjust the rotation: starting points, corrections, clearing an owed turn (each logged)', STAFF],
+  ['Adjust the rotation: starting points, corrections, clearing an owed turn', STAFF],
   ['Delete films', ADMIN],
   ["Edit and delete anyone's comments", ADMIN],
   ['Add people, and make invite and password-reset links', ADMIN],
+  ['Revoke invite and reset links', ADMIN],
+  ['Set the rotation start date', ADMIN],
   ["Change people's roles and colours", ADMIN],
   ['Remove a login', ADMIN],
   ['Export all data', ADMIN],
@@ -46,10 +49,10 @@ export default function AboutPage() {
       <p>
         Everyone has one of four roles. Members take part: they come, score and comment. Moderators
         also look after the films and the rotation for everyone. The admin also looks after people,
-        logins and the club's data. Viewers can only look.
+        logins and the club's data. Viewers can look and pick a theme, nothing else.
       </p>
       <div className="table-scroll" role="region" aria-label="Roles" tabIndex={0}>
-        <table className="rotation-table">
+        <table className="rotation-table roles-table">
           <caption className="sr-only">What each role can do</caption>
           <thead>
             <tr>
@@ -77,9 +80,12 @@ export default function AboutPage() {
         </table>
       </div>
       <ul>
-        <li>Viewers can look at everything but can't change anything.</li>
+        <li>
+          Viewers can look at everything but can't change anything except their theme, which is
+          saved only in their browser.
+        </li>
         <li>Nobody can change their own role.</li>
-        <li>Jurassic Shark 2's scores are locked for everyone.</li>
+        <li>Jurassic Shark 2's scores are locked, and the film can't be deleted, for everyone.</li>
       </ul>
       <h2>Film data</h2>
       <a href="https://www.themoviedb.org/" className="tmdb-logo">

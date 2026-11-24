@@ -25,7 +25,10 @@ describe('AboutPage roles', () => {
   it('marks each permission for the right roles, with text for screen readers', () => {
     render(<AboutPage />)
     expect(marks('See films')).toEqual(['yes', 'yes', 'yes', 'yes'])
-    expect(marks('Enter and edit your own score')).toEqual(['yes', 'yes', 'yes', 'no'])
+    expect(marks('Enter, edit and delete your own score')).toEqual(['yes', 'yes', 'yes', 'no'])
+    expect(marks('Change your display name')).toEqual(['yes', 'yes', 'yes', 'no'])
+    expect(marks('Pick a theme')).toEqual(['yes', 'yes', 'yes', 'yes'])
+    expect(marks('Revoke invite and reset links')).toEqual(['yes', 'no', 'no', 'no'])
     expect(marks('Add and edit films')).toEqual(['yes', 'yes', 'no', 'no'])
     expect(marks('Delete films')).toEqual(['yes', 'no', 'no', 'no'])
     expect(marks('Export all data')).toEqual(['yes', 'no', 'no', 'no'])
@@ -37,8 +40,14 @@ describe('AboutPage roles', () => {
 
   it('notes what the table cannot show', () => {
     render(<AboutPage />)
-    expect(screen.getByText(/Viewers can look at everything/)).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        /Viewers can look at everything but can't change anything except their theme/,
+      ),
+    ).toBeInTheDocument()
     expect(screen.getByText('Nobody can change their own role.')).toBeInTheDocument()
-    expect(screen.getByText(/Jurassic Shark 2's scores are locked/)).toBeInTheDocument()
+    expect(
+      screen.getByText(/Jurassic Shark 2's scores are locked, and the film can't be deleted/),
+    ).toBeInTheDocument()
   })
 })
