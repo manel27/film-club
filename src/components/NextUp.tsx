@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useLayoutEffect, useRef } from 'react'
 import { useAuth } from '../auth/authContext'
 import type { Person } from '../films/films'
 import { rotationWrites } from '../rotation/api'
@@ -18,7 +18,7 @@ export function NextUp({ rotation }: { rotation: Rotation }) {
   const heading = useRef<HTMLHeadingElement>(null)
   // Disabled while busy, a button loses focus (or is gone): put it back once done.
   const refocus = useRef<React.RefObject<HTMLElement | null> | null>(null)
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!refocus.current || busy) return
     ;(refocus.current.current ?? heading.current)?.focus()
     refocus.current = null

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { useAuth } from '../auth/authContext'
 import { fetchFilm, filmWrites, type FilmDetailData, type FilmRecord } from '../films/api'
@@ -22,7 +22,7 @@ const BackLink = () => (
 /** Focuses the element with this id after the next render (once it exists). */
 function useFocusLater() {
   const target = useRef('')
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (target.current) document.getElementById(target.current)?.focus()
     target.current = ''
   })
