@@ -53,9 +53,10 @@ describe('profileStats', () => {
     [99, 11],
   ])
 
-  it('counts watched, chosen, scores and comments, and averages, without the easter egg', () => {
+  it('counts present, watched (present or scored), chosen, scores, comments and averages, without the easter egg', () => {
     expect(profileStats('me', films, scores, [1, 1, 4, 99])).toEqual({
-      watched: 2,
+      present: 2,
+      watched: 3, // 1 and 2 present, 4 scored without attendance
       chosen: 4,
       scores: 2,
       avgGiven: 7,
@@ -66,6 +67,7 @@ describe('profileStats', () => {
 
   it('gives null averages when there is nothing to average', () => {
     expect(profileStats('nobody', films, new Map(), [])).toEqual({
+      present: 0,
       watched: 0,
       chosen: 0,
       scores: 0,
@@ -75,14 +77,23 @@ describe('profileStats', () => {
     })
   })
 
-  it('splits the tabs without the easter egg or future screenings (P3, P4)', () => {
-    const tabs = profileTabs('me', films, '2026-01-03')
-    expect(tabs.watched.map((f) => f.id)).toEqual([1, 2])
-    expect(tabs['not-watched'].map((f) => f.id)).toEqual([3, 4])
-    // Today counts as shown.
-    expect(profileTabs('me', [film(6, { screenedOn: '2026-01-04' })], '2026-01-04')).toEqual({
+  it('splits the tabs by presence and by present-or-scored, without the easter egg or future screenings (P3, P4)', () => {
+    const tabs = profileTabs('me', films, scores, '2026-01-03')
+    const ids = Object.fromEntries(Object.entries(tabs).map(([t, fs]) => [t, fs.map((f) => f.id)]))
+    expect(ids).toEqual({
+      present: [1, 2],
+      'not-present': [3, 4],
+      watched: [1, 2, 4], // 4: scored, not present
+      'not-watched': [3],
+    })
+    // Today counts as shown; a future film is in no tab even when present and scored.
+    const today = film(6, { screenedOn: '2026-01-04' })
+    const future = film(7, { screenedOn: '2026-01-05', presentIds: ['me'] })
+    expect(profileTabs('me', [today, future], new Map([[7, 8]]), '2026-01-04')).toEqual({
+      present: [],
+      'not-present': [today],
       watched: [],
-      'not-watched': [expect.objectContaining({ id: 6 })],
+      'not-watched': [today],
     })
   })
 })

@@ -1048,6 +1048,8 @@ a.chip:hover,
 
 .tabs {
   display: flex;
+  /* Four tabs don't fit a phone on one line. */
+  flex-wrap: wrap;
   gap: 0.25rem;
   border-bottom: 1px solid var(--border);
 }

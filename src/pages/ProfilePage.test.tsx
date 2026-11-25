@@ -109,7 +109,8 @@ describe('profile page', () => {
     expect(screen.getByText('Quinn', { selector: '.profile-chip' })).toHaveStyle({
       color: '#000000',
     })
-    expect(stat('Films watched')).toBe('1')
+    expect(stat('Films present')).toBe('1')
+    expect(stat('Films watched')).toBe('2') // Night Bus: scored, not present
     expect(stat('Films chosen')).toBe('2') // the future film counts
     expect(stat('Average of the films they chose')).toBe('6.00')
     expect(stat('Scores given')).toBe('2')
@@ -118,47 +119,76 @@ describe('profile page', () => {
     expect(screen.getByText('Attendance before 2023 may be incomplete.')).toBeInTheDocument()
   })
 
-  it('switches between watched and not watched, marks scored-but-absent films, and shows posters', async () => {
+  it('switches between the four tabs, marks scored-but-absent films on Not present, and shows posters', async () => {
     const { router } = renderPage(`/people/${ME}`)
-    const watched = await screen.findByRole('tab', { name: 'Watched (1)' })
-    expect(watched).toHaveAttribute('aria-selected', 'true')
-    const panel = screen.getByRole('tabpanel')
-    expect(
-      within(panel)
-        .getAllByRole('listitem')
-        .map((li) => li.textContent),
-    ).toEqual([expect.stringContaining('Glass River')])
-    expect(within(panel).queryByText('Scored, not present')).not.toBeInTheDocument()
+    const titles = () =>
+      within(screen.getByRole('tabpanel'))
+        .queryAllByRole('listitem')
+        .map((li) => li.querySelector('a[href^="/films/"]')?.textContent)
+    const tab = (name: string) => screen.getByRole('tab', { name: new RegExp(`^${name} \\(`) })
+    expect(await screen.findByRole('tab', { name: 'Present (1)' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
+    expect(titles()).toEqual(['Glass River'])
+    expect(screen.queryByText('Scored, not present')).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Not watched (2)' }))
-    expect(router.state.location.search).toBe('?tab=not-watched')
+    fireEvent.click(screen.getByRole('tab', { name: 'Not present (2)' }))
+    expect(router.state.location.search).toBe('?tab=not-present')
+    expect(titles()).toEqual(['Night Bus', 'Old Reel'])
     const rows = within(screen.getByRole('tabpanel')).getAllByRole('listitem')
-    expect(rows.map((r) => r.querySelector('a[href^="/films/"]')?.textContent)).toEqual([
-      'Night Bus',
-      'Old Reel',
-    ])
     expect(within(rows[0]).getByText('Scored, not present')).toBeInTheDocument()
-
     expect(within(rows[1]).queryByText('Scored, not present')).not.toBeInTheDocument()
     expect(screen.getByRole('tabpanel')).toHaveAttribute('tabindex', '0')
 
-    // Arrow keys move between the tabs (and wrap); Home and End jump.
-    const notWatched = screen.getByRole('tab', { name: 'Not watched (2)' })
-    fireEvent.keyDown(notWatched, { key: 'ArrowLeft' })
-    expect(screen.getByRole('tab', { name: 'Watched (1)' })).toHaveFocus()
-    fireEvent.keyDown(screen.getByRole('tab', { name: 'Watched (1)' }), { key: 'ArrowLeft' })
-    expect(notWatched).toHaveFocus()
-    expect(notWatched).toHaveAttribute('aria-selected', 'true')
-    fireEvent.keyDown(notWatched, { key: 'Home' })
-    expect(screen.getByRole('tab', { name: 'Watched (1)' })).toHaveFocus()
-    fireEvent.keyDown(screen.getByRole('tab', { name: 'Watched (1)' }), { key: 'End' })
-    expect(notWatched).toHaveFocus()
-    fireEvent.keyDown(notWatched, { key: 'ArrowRight' })
-    expect(screen.getByRole('tab', { name: 'Watched (1)' })).toHaveFocus()
+    // Watched = present or scored; the marker is only on Not present.
+    fireEvent.click(screen.getByRole('tab', { name: 'Watched (2)' }))
+    expect(router.state.location.search).toBe('?tab=watched')
+    expect(titles()).toEqual(['Glass River', 'Night Bus'])
+    expect(screen.queryByText('Scored, not present')).not.toBeInTheDocument()
 
+    fireEvent.click(screen.getByRole('tab', { name: 'Not watched (1)' }))
+    expect(router.state.location.search).toBe('?tab=not-watched')
+    expect(titles()).toEqual(['Old Reel'])
+
+    // Arrow keys move between the tabs (and wrap); Home and End jump.
+    fireEvent.keyDown(tab('Not watched'), { key: 'ArrowRight' })
+    expect(tab('Present')).toHaveFocus()
+    expect(tab('Present')).toHaveAttribute('aria-selected', 'true')
+    expect(router.state.location.search).toBe('') // the default isn't in the URL
+    fireEvent.keyDown(tab('Present'), { key: 'ArrowLeft' })
+    expect(tab('Not watched')).toHaveFocus()
+    fireEvent.keyDown(tab('Not watched'), { key: 'ArrowLeft' })
+    expect(tab('Watched')).toHaveFocus()
+    fireEvent.keyDown(tab('Watched'), { key: 'Home' })
+    expect(tab('Present')).toHaveFocus()
+    fireEvent.keyDown(tab('Present'), { key: 'ArrowRight' })
+    expect(tab('Not present')).toHaveFocus()
+    fireEvent.keyDown(tab('Not present'), { key: 'End' })
+    expect(tab('Not watched')).toHaveFocus()
+    expect(tab('Not watched')).toHaveAttribute('aria-selected', 'true')
+
+    fireEvent.click(tab('Present'))
     fireEvent.click(screen.getByRole('button', { name: 'Poster grid' }))
     expect(router.state.location.search).toBe('?view=grid')
     expect(screen.getByRole('img', { name: 'Glass River (2001)' })).toBeInTheDocument()
+  })
+
+  it('opens the tab named in the URL (old ?tab=watched links mean the new Watched)', async () => {
+    renderPage(`/people/${ME}?tab=watched`)
+    expect(await screen.findByRole('tab', { name: 'Watched (2)' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
+  })
+
+  it('falls back to Present for an unknown tab in the URL', async () => {
+    renderPage(`/people/${ME}?tab=bogus`)
+    expect(await screen.findByRole('tab', { name: 'Present (1)' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
+    expect(screen.getAllByRole('tab', { selected: true })).toHaveLength(1)
   })
 
   it('renames yourself: trimmed, saved, header profile refreshed, notice focused', async () => {

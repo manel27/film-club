@@ -32,7 +32,9 @@ async function logIn(page: Page, email: string, password: string) {
   await expect(page.getByRole('heading', { name: 'Films', exact: true })).toBeVisible()
 }
 
-test('a profile shows stats and switches between watched and not watched', async ({ page }) => {
+test('a profile shows stats and switches between present, not present, watched and not watched', async ({
+  page,
+}) => {
   await logIn(page, SEED_VIEWER.email, SEED_VIEWER.password)
   await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'People' }).click()
   await page.getByRole('link', { name: 'Orla' }).click()
@@ -41,7 +43,9 @@ test('a profile shows stats and switches between watched and not watched', async
   await expect(page.getByText('Admin', { exact: true })).toBeVisible()
   const stats = page.locator('.profile-stats')
   // The easter egg's 11 and choice count nowhere.
-  await expect(stats).toContainText('Films watched5')
+  await expect(stats).toContainText('Films present5')
+  // Present at 5, and scored Neon Harbour without attendance.
+  await expect(stats).toContainText('Films watched6')
   await expect(stats).toContainText('Films chosen2')
   await expect(stats).toContainText('Scores given3')
   await expect(stats).toContainText('Average score given8.20')
@@ -50,13 +54,19 @@ test('a profile shows stats and switches between watched and not watched', async
   await expect(page.getByRole('button', { name: 'Edit name' })).toHaveCount(0)
 
   const panel = page.getByRole('tabpanel')
-  await expect(page.getByRole('tab', { name: 'Watched (5)' })).toHaveAttribute(
+  await expect(page.getByRole('tab', { name: 'Present (5)' })).toHaveAttribute(
     'aria-selected',
     'true',
   )
   await expect(panel).toContainText('The Quiet Orchard')
   await expect(panel).not.toContainText('Neon Harbour')
-  await page.getByRole('tab', { name: /Not watched/ }).click()
+  await page.getByRole('tab', { name: 'Watched (6)' }).click()
+  await expect(panel).toContainText('The Quiet Orchard')
+  await expect(panel).toContainText('Neon Harbour')
+  await expect(panel).not.toContainText('Scored, not present')
+  await page.getByRole('tab', { name: /^Not watched/ }).click()
+  await expect(panel).not.toContainText('Neon Harbour')
+  await page.getByRole('tab', { name: /^Not present/ }).click()
   await expect(panel.getByRole('listitem').filter({ hasText: 'Neon Harbour' })).toContainText(
     'Scored, not present',
   )
@@ -70,7 +80,7 @@ test('a profile shows stats and switches between watched and not watched', async
   await panel.getByRole('link', { name: 'Neon Harbour (2021)' }).click()
   await expect(page.getByRole('heading', { name: 'Neon Harbour' })).toBeVisible()
   await page.goBack()
-  await expect(page.getByRole('tab', { name: /Not watched/ })).toHaveAttribute(
+  await expect(page.getByRole('tab', { name: /^Not present/ })).toHaveAttribute(
     'aria-selected',
     'true',
   )
