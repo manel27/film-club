@@ -1,2 +1,2 @@
 # Only needed to read the overrides YAML file. Everything else is stdlib.
-PyYAML==6.0.3
+PyYAML==6.0.4
