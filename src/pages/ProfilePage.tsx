@@ -19,6 +19,8 @@ import { lisbonDate } from '../rotation/rotation'
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 const TABS = [
+  ['present', 'Present'],
+  ['not-present', 'Not present'],
   ['watched', 'Watched'],
   ['not-watched', 'Not watched'],
 ] as const
@@ -50,7 +52,7 @@ function Profile({ id }: { id: string }) {
   const [failed, setFailed] = useState(false)
   // Tab and view live in the URL, so Back from a film returns to them.
   const [params, setParams] = useSearchParams()
-  const tab: Tab = params.get('tab') === 'not-watched' ? 'not-watched' : 'watched'
+  const tab: Tab = TABS.find(([t]) => t === params.get('tab'))?.[0] ?? 'present'
   const view = params.get('view') === 'grid' ? 'grid' : 'list'
   const set = (key: string, value: string, fallback: string) => {
     const next = new URLSearchParams(params)
@@ -106,18 +108,20 @@ function Profile({ id }: { id: string }) {
     )
   }
 
-  const stats = profileStats(id, data.films, data.scores, data.commentFilmIds)
+  const today = lisbonDate()
+  const stats = profileStats(id, data.films, data.scores, data.commentFilmIds, today)
   const people = new Map(data.people.map((p) => [p.id, p]))
   // ~330 films: cheap enough to recompute on every render.
   const lists: Record<Tab, FilmItem[]> = profileTabs(
     id,
     sortFilms(data.films, 'newest'),
-    lisbonDate(),
+    data.scores,
+    today,
   )
   const shown = lists[tab]
-  // Only on "Not watched": scoring without attendance is allowed (plan 4.2).
+  // Only on "Not present": scoring without attendance is allowed (plan 4.2).
   const marker = (f: FilmItem) =>
-    tab === 'not-watched' && data.scores.has(f.id) ? 'Scored, not present' : undefined
+    tab === 'not-present' && data.scores.has(f.id) ? 'Scored, not present' : undefined
   const style = person.colour
     ? { backgroundColor: person.colour, color: textOn(person.colour) }
     : undefined
@@ -130,7 +134,7 @@ function Profile({ id }: { id: string }) {
     if (to === undefined) return
     e.preventDefault()
     const [next] = TABS[(to + TABS.length) % TABS.length]
-    set('tab', next, 'watched')
+    set('tab', next, 'present')
     document.getElementById(`tab-${next}`)?.focus()
   }
 
@@ -148,6 +152,8 @@ function Profile({ id }: { id: string }) {
       {canRename && <RenameForm id={id} name={person.name} people={data.people} reload={load} />}
 
       <dl className="film-facts profile-stats">
+        <dt>Films present</dt>
+        <dd>{stats.present}</dd>
         <dt>Films watched</dt>
         <dd>{stats.watched}</dd>
         <dt>Films chosen</dt>
@@ -175,7 +181,7 @@ function Profile({ id }: { id: string }) {
               aria-controls="profile-films"
               tabIndex={tab === t ? 0 : -1}
               className="tab"
-              onClick={() => set('tab', t, 'watched')}
+              onClick={() => set('tab', t, 'present')}
               onKeyDown={onTabKey}
             >
               {label} ({lists[t].length})

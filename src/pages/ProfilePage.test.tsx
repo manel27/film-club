@@ -25,7 +25,18 @@ const film = (f: Partial<FilmItem> & Pick<FilmItem, 'id' | 'title' | 'screenedOn
   ...f,
 })
 
-const data = (): ProfileData => ({
+// Each person's own scores, as fetchProfileData returns them.
+const SCORES: Record<string, [number, number][]> = {
+  [ME]: [
+    [1, 9],
+    [2, 7],
+    [3, 11],
+  ],
+  // Ada was at Glass River and Night Bus, and scored Old Reel without attending.
+  [ADA]: [[4, 6]],
+}
+
+const data = (id = ME): ProfileData => ({
   people: [
     { id: ME, name: 'Quinn', colour: '#4a86e8', isSystem: false, role: 'member' },
     { id: ADA, name: 'Ada', colour: '#ffd200', isSystem: false, role: 'moderator' },
@@ -39,7 +50,14 @@ const data = (): ProfileData => ({
       presentIds: [ME, ADA],
       avgScore: 8,
     }),
-    film({ id: 2, title: 'Night Bus', screenedOn: '2026-11-07', assignedId: ME, avgScore: 6 }),
+    film({
+      id: 2,
+      title: 'Night Bus',
+      screenedOn: '2026-11-07',
+      assignedId: ME,
+      presentIds: [ADA],
+      avgScore: 6,
+    }),
     // The easter egg and a future screening: in no tab (P3, P4).
     film({
       id: 3,
@@ -49,17 +67,14 @@ const data = (): ProfileData => ({
       isEasterEgg: true,
     }),
     film({ id: 4, title: 'Old Reel', screenedOn: '2024-03-02' }),
-    film({ id: 5, title: 'Tomorrow', screenedOn: '2099-01-01', assignedId: ME }),
+    // Marked present ahead of time: still in no tab and no stat until screened.
+    film({ id: 5, title: 'Tomorrow', screenedOn: '2099-01-01', assignedId: ME, presentIds: [ME] }),
   ],
-  scores: new Map([
-    [1, 9],
-    [2, 7],
-    [3, 11],
-  ]),
+  scores: new Map(SCORES[id] ?? []),
   commentFilmIds: [1, 3],
 })
 
-const fetchProfileData = vi.fn(async (id: string): Promise<ProfileData> => (void id, data()))
+const fetchProfileData = vi.fn(async (id: string): Promise<ProfileData> => data(id))
 const renameProfile = vi.fn(async (id: string, name: string) => void [id, name])
 vi.mock('../films/api', () => ({
   fetchProfileData: (id: string) => fetchProfileData(id),
@@ -109,7 +124,8 @@ describe('profile page', () => {
     expect(screen.getByText('Quinn', { selector: '.profile-chip' })).toHaveStyle({
       color: '#000000',
     })
-    expect(stat('Films watched')).toBe('1')
+    expect(stat('Films present')).toBe('1')
+    expect(stat('Films watched')).toBe('2') // Night Bus: scored, not present
     expect(stat('Films chosen')).toBe('2') // the future film counts
     expect(stat('Average of the films they chose')).toBe('6.00')
     expect(stat('Scores given')).toBe('2')
@@ -118,47 +134,97 @@ describe('profile page', () => {
     expect(screen.getByText('Attendance before 2023 may be incomplete.')).toBeInTheDocument()
   })
 
-  it('switches between watched and not watched, marks scored-but-absent films, and shows posters', async () => {
+  it('switches between the four tabs, marks scored-but-absent films on Not present, and shows posters', async () => {
     const { router } = renderPage(`/people/${ME}`)
-    const watched = await screen.findByRole('tab', { name: 'Watched (1)' })
-    expect(watched).toHaveAttribute('aria-selected', 'true')
-    const panel = screen.getByRole('tabpanel')
-    expect(
-      within(panel)
-        .getAllByRole('listitem')
-        .map((li) => li.textContent),
-    ).toEqual([expect.stringContaining('Glass River')])
-    expect(within(panel).queryByText('Scored, not present')).not.toBeInTheDocument()
+    const titles = () =>
+      within(screen.getByRole('tabpanel'))
+        .queryAllByRole('listitem')
+        .map((li) => li.querySelector('a[href^="/films/"]')?.textContent)
+    const tab = (name: string) => screen.getByRole('tab', { name: new RegExp(`^${name} \\(`) })
+    expect(await screen.findByRole('tab', { name: 'Present (1)' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
+    expect(titles()).toEqual(['Glass River'])
+    expect(screen.queryByText('Scored, not present')).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Not watched (2)' }))
-    expect(router.state.location.search).toBe('?tab=not-watched')
+    fireEvent.click(screen.getByRole('tab', { name: 'Not present (2)' }))
+    expect(router.state.location.search).toBe('?tab=not-present')
+    expect(titles()).toEqual(['Night Bus', 'Old Reel'])
     const rows = within(screen.getByRole('tabpanel')).getAllByRole('listitem')
-    expect(rows.map((r) => r.querySelector('a[href^="/films/"]')?.textContent)).toEqual([
-      'Night Bus',
-      'Old Reel',
-    ])
     expect(within(rows[0]).getByText('Scored, not present')).toBeInTheDocument()
-
     expect(within(rows[1]).queryByText('Scored, not present')).not.toBeInTheDocument()
     expect(screen.getByRole('tabpanel')).toHaveAttribute('tabindex', '0')
 
-    // Arrow keys move between the tabs (and wrap); Home and End jump.
-    const notWatched = screen.getByRole('tab', { name: 'Not watched (2)' })
-    fireEvent.keyDown(notWatched, { key: 'ArrowLeft' })
-    expect(screen.getByRole('tab', { name: 'Watched (1)' })).toHaveFocus()
-    fireEvent.keyDown(screen.getByRole('tab', { name: 'Watched (1)' }), { key: 'ArrowLeft' })
-    expect(notWatched).toHaveFocus()
-    expect(notWatched).toHaveAttribute('aria-selected', 'true')
-    fireEvent.keyDown(notWatched, { key: 'Home' })
-    expect(screen.getByRole('tab', { name: 'Watched (1)' })).toHaveFocus()
-    fireEvent.keyDown(screen.getByRole('tab', { name: 'Watched (1)' }), { key: 'End' })
-    expect(notWatched).toHaveFocus()
-    fireEvent.keyDown(notWatched, { key: 'ArrowRight' })
-    expect(screen.getByRole('tab', { name: 'Watched (1)' })).toHaveFocus()
+    // Watched = present or scored; the marker is only on Not present.
+    fireEvent.click(screen.getByRole('tab', { name: 'Watched (2)' }))
+    expect(router.state.location.search).toBe('?tab=watched')
+    expect(titles()).toEqual(['Glass River', 'Night Bus'])
+    expect(screen.queryByText('Scored, not present')).not.toBeInTheDocument()
 
+    fireEvent.click(screen.getByRole('tab', { name: 'Not watched (1)' }))
+    expect(router.state.location.search).toBe('?tab=not-watched')
+    expect(titles()).toEqual(['Old Reel'])
+
+    // Arrow keys move between the tabs (and wrap); Home and End jump.
+    fireEvent.keyDown(tab('Not watched'), { key: 'ArrowRight' })
+    expect(tab('Present')).toHaveFocus()
+    expect(tab('Present')).toHaveAttribute('aria-selected', 'true')
+    expect(router.state.location.search).toBe('') // the default isn't in the URL
+    fireEvent.keyDown(tab('Present'), { key: 'ArrowLeft' })
+    expect(tab('Not watched')).toHaveFocus()
+    fireEvent.keyDown(tab('Not watched'), { key: 'ArrowLeft' })
+    expect(tab('Watched')).toHaveFocus()
+    fireEvent.keyDown(tab('Watched'), { key: 'Home' })
+    expect(tab('Present')).toHaveFocus()
+    fireEvent.keyDown(tab('Present'), { key: 'ArrowRight' })
+    expect(tab('Not present')).toHaveFocus()
+    fireEvent.keyDown(tab('Not present'), { key: 'End' })
+    expect(tab('Not watched')).toHaveFocus()
+    expect(tab('Not watched')).toHaveAttribute('aria-selected', 'true')
+
+    fireEvent.click(tab('Present'))
     fireEvent.click(screen.getByRole('button', { name: 'Poster grid' }))
     expect(router.state.location.search).toBe('?view=grid')
     expect(screen.getByRole('img', { name: 'Glass River (2001)' })).toBeInTheDocument()
+  })
+
+  // Old ?tab=watched / not-watched links now mean the new Watched / Not watched.
+  it.each([
+    ['present', 'Present (1)', ['Glass River']],
+    ['not-present', 'Not present (2)', ['Night Bus', 'Old Reel']],
+    ['watched', 'Watched (2)', ['Glass River', 'Night Bus']],
+    ['not-watched', 'Not watched (1)', ['Old Reel']],
+  ])('opens ?tab=%s on a cold load', async (value, name, titles) => {
+    renderPage(`/people/${ME}?tab=${value}`)
+    expect(await screen.findByRole('tab', { name })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getAllByRole('tab', { selected: true })).toHaveLength(1)
+    expect(
+      within(screen.getByRole('tabpanel'))
+        .getAllByRole('listitem')
+        .map((li) => li.querySelector('a[href^="/films/"]')?.textContent),
+    ).toEqual(titles)
+  })
+
+  it("shows another person's own stats and tab counts", async () => {
+    renderPage(`/people/${ADA}`)
+    expect(await screen.findByRole('heading', { level: 1, name: 'Ada' })).toBeInTheDocument()
+    expect(fetchProfileData).toHaveBeenCalledWith(ADA)
+    expect(stat('Films present')).toBe('2')
+    expect(stat('Films watched')).toBe('3')
+    expect(stat('Scores given')).toBe('1')
+    for (const name of ['Present (2)', 'Not present (1)', 'Watched (3)', 'Not watched (0)']) {
+      expect(screen.getByRole('tab', { name })).toBeInTheDocument()
+    }
+  })
+
+  it('falls back to Present for an unknown tab in the URL', async () => {
+    renderPage(`/people/${ME}?tab=bogus`)
+    expect(await screen.findByRole('tab', { name: 'Present (1)' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
+    expect(screen.getAllByRole('tab', { selected: true })).toHaveLength(1)
   })
 
   it('renames yourself: trimmed, saved, header profile refreshed, notice focused', async () => {

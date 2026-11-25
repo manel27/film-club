@@ -2,6 +2,9 @@ import { errorMessage } from '../films/filmDetail'
 import type { FilmItem, Person } from '../films/films'
 
 export interface ProfileStats {
+  /** Films they were present at. */
+  present: number
+  /** Films they were present at or scored (scoring without attendance is allowed). */
   watched: number
   chosen: number
   scores: number
@@ -23,19 +26,25 @@ export function mean(xs: number[]): number | null {
   return (Math.sign(hundredths) * Math.round(Math.abs(hundredths))) / 100
 }
 
-/** A person's stats. The easter egg counts for nothing (plan 4.4). */
+/**
+ * A person's stats. The easter egg counts for nothing (plan 4.4). Present and
+ * watched are the tab counts, so they leave out films screened after `today`.
+ */
 export function profileStats(
   personId: string,
   films: FilmItem[],
   scores: Map<number, number>,
   commentFilmIds: number[],
+  today: string,
 ): ProfileStats {
   const egg = new Set(films.filter((f) => f.isEasterEgg).map((f) => f.id))
   // Every film assigned to them, future and Maratona included (decision P4).
   const chosen = films.filter((f) => !egg.has(f.id) && f.assignedId === personId)
   const given = [...scores].filter(([id]) => !egg.has(id)).map(([, s]) => s)
+  const tabs = profileTabs(personId, films, scores, today)
   return {
-    watched: films.filter((f) => !egg.has(f.id) && f.presentIds.includes(personId)).length,
+    present: tabs.present.length,
+    watched: tabs.watched.length,
     chosen: chosen.length,
     scores: given.length,
     avgGiven: mean(given),
@@ -45,15 +54,24 @@ export function profileStats(
 }
 
 /**
- * The profile tabs: films they were present at, and every other film. The
- * easter egg and films screened after `today` (YYYY-MM-DD) are in neither
- * (decisions P3, P4).
+ * The profile tabs: films they were present at or not, and films they watched
+ * (present or scored) or not. The easter egg and films screened after `today`
+ * (YYYY-MM-DD) are in none (decisions P3, P4).
  */
-export function profileTabs(personId: string, films: FilmItem[], today: string) {
+export function profileTabs(
+  personId: string,
+  films: FilmItem[],
+  scores: Map<number, number>,
+  today: string,
+) {
   const shown = films.filter((f) => !f.isEasterEgg && f.screenedOn <= today)
+  const present = (f: FilmItem) => f.presentIds.includes(personId)
+  const watched = (f: FilmItem) => present(f) || scores.has(f.id)
   return {
-    watched: shown.filter((f) => f.presentIds.includes(personId)),
-    'not-watched': shown.filter((f) => !f.presentIds.includes(personId)),
+    present: shown.filter(present),
+    'not-present': shown.filter((f) => !present(f)),
+    watched: shown.filter(watched),
+    'not-watched': shown.filter((f) => !watched(f)),
   }
 }
 
