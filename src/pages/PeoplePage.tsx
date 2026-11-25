@@ -50,8 +50,11 @@ export default function PeoplePage() {
         <ul className="chips people-list">
           {people.map((p) => (
             <li key={p.id}>
-              <Chip person={p} />
-              {p.role && p.role !== 'member' && <span className="badge">{ROLE_NAMES[p.role]}</span>}
+              <Chip person={p} describedBy={`role-${p.id}`} />
+              {/* Shown on hover/focus; aria-describedby reads it even while hidden. Touch: the profile shows the role. */}
+              <span id={`role-${p.id}`} role="tooltip" className="role-tip">
+                {ROLE_NAMES[p.role ?? 'member']}
+              </span>
             </li>
           ))}
         </ul>

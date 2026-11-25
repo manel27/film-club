@@ -3,13 +3,24 @@ import type { Person } from '../films/films'
 import { textOn } from '../lib/colour'
 
 /** A person's name on their own colour, with black or white text; links to their profile (not system profiles). */
-export default function Chip({ person }: { person: Person | undefined }) {
+export default function Chip({
+  person,
+  describedBy,
+}: {
+  person: Person | undefined
+  describedBy?: string
+}) {
   const style = person?.colour
     ? { backgroundColor: person.colour, color: textOn(person.colour) }
     : undefined
   if (person && !person.isSystem) {
     return (
-      <Link to={`/people/${person.id}`} className="chip" style={style}>
+      <Link
+        to={`/people/${person.id}`}
+        className="chip"
+        style={style}
+        aria-describedby={describedBy}
+      >
         {person.name}
       </Link>
     )

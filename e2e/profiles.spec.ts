@@ -134,3 +134,31 @@ test('a member renames themselves from their own profile', async ({ page }) => {
   await page.reload()
   await expect(page.getByRole('heading', { level: 1, name: RENAMED })).toBeVisible()
 })
+
+test('the people page shows each role on hover and keyboard focus, phone and desktop, every theme', async ({
+  page,
+}) => {
+  await page.goto('./#/login')
+  await page.getByLabel('Email').fill(E2E_MEMBER.email)
+  await page.getByLabel('Password').fill(E2E_PASSWORD)
+  await page.getByRole('button', { name: 'Log in' }).click()
+  await expect(page.getByRole('heading', { name: 'Films', exact: true })).toBeVisible()
+  await page.goto('./#/people')
+  const kwame = page.getByRole('main').getByRole('link', { name: 'Kwame' })
+  const orla = page.getByRole('main').getByRole('link', { name: 'Orla' })
+  await expect(kwame).toHaveAccessibleDescription('Member')
+  await expect(page.getByRole('tooltip')).toHaveCount(0) // all hidden until hover/focus
+  for (const width of [360, 1280]) {
+    await page.setViewportSize({ width, height: 740 })
+    for (const theme of ['letterboxd', 'superman', 'batman']) {
+      await page.evaluate((t) => (document.documentElement.dataset.theme = t), theme)
+      await orla.hover()
+      await expect(page.getByRole('tooltip', { name: 'Admin' })).toBeVisible()
+      await page.mouse.move(0, 0)
+      await kwame.focus()
+      await expect(page.getByRole('tooltip', { name: 'Member' })).toBeVisible()
+      await page.screenshot({ path: `${SCREENSHOTS}/people-role-${width}-${theme}.png` })
+      await kwame.blur()
+    }
+  }
+})

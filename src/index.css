@@ -1069,9 +1069,32 @@ a.chip:hover,
 }
 
 .people-list li {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 0.375rem;
+}
+
+.role-tip {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 10;
+  margin-top: 0.25rem;
+  padding: 0.125rem 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.people-list li:hover .role-tip,
+.people-list li:focus-within .role-tip {
+  display: block;
 }
 
 /* ---------------------------------------------------------------- admin */
