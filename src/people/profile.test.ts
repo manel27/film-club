@@ -54,7 +54,7 @@ describe('profileStats', () => {
   ])
 
   it('counts present, watched (present or scored), chosen, scores, comments and averages, without the easter egg', () => {
-    expect(profileStats('me', films, scores, [1, 1, 4, 99])).toEqual({
+    expect(profileStats('me', films, scores, [1, 1, 4, 99], '2026-01-03')).toEqual({
       present: 2,
       watched: 3, // 1 and 2 present, 4 scored without attendance
       chosen: 4,
@@ -65,8 +65,22 @@ describe('profileStats', () => {
     })
   })
 
+  it('counts present and watched only for films screened up to today, like the tabs', () => {
+    const today = film(6, { screenedOn: '2026-01-04', presentIds: ['me'] })
+    const scoredToday = film(7, { screenedOn: '2026-01-04' })
+    const future = film(8, { screenedOn: '2026-01-05', presentIds: ['me'] })
+    const s = new Map([
+      [7, 6],
+      [8, 9],
+    ])
+    expect(profileStats('me', [today, scoredToday, future], s, [], '2026-01-04')).toMatchObject({
+      present: 1, // today counts, the future film doesn't
+      watched: 2,
+    })
+  })
+
   it('gives null averages when there is nothing to average', () => {
-    expect(profileStats('nobody', films, new Map(), [])).toEqual({
+    expect(profileStats('nobody', films, new Map(), [], '2026-01-03')).toEqual({
       present: 0,
       watched: 0,
       chosen: 0,

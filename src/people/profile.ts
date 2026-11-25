@@ -26,23 +26,25 @@ export function mean(xs: number[]): number | null {
   return (Math.sign(hundredths) * Math.round(Math.abs(hundredths))) / 100
 }
 
-/** A person's stats. The easter egg counts for nothing (plan 4.4). */
+/**
+ * A person's stats. The easter egg counts for nothing (plan 4.4). Present and
+ * watched are the tab counts, so they leave out films screened after `today`.
+ */
 export function profileStats(
   personId: string,
   films: FilmItem[],
   scores: Map<number, number>,
   commentFilmIds: number[],
+  today: string,
 ): ProfileStats {
   const egg = new Set(films.filter((f) => f.isEasterEgg).map((f) => f.id))
   // Every film assigned to them, future and Maratona included (decision P4).
   const chosen = films.filter((f) => !egg.has(f.id) && f.assignedId === personId)
   const given = [...scores].filter(([id]) => !egg.has(id)).map(([, s]) => s)
+  const tabs = profileTabs(personId, films, scores, today)
   return {
-    // Like chosen, not limited to films already screened.
-    present: films.filter((f) => !egg.has(f.id) && f.presentIds.includes(personId)).length,
-    watched: films.filter(
-      (f) => !egg.has(f.id) && (f.presentIds.includes(personId) || scores.has(f.id)),
-    ).length,
+    present: tabs.present.length,
+    watched: tabs.watched.length,
     chosen: chosen.length,
     scores: given.length,
     avgGiven: mean(given),

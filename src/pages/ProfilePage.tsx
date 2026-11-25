@@ -108,14 +108,15 @@ function Profile({ id }: { id: string }) {
     )
   }
 
-  const stats = profileStats(id, data.films, data.scores, data.commentFilmIds)
+  const today = lisbonDate()
+  const stats = profileStats(id, data.films, data.scores, data.commentFilmIds, today)
   const people = new Map(data.people.map((p) => [p.id, p]))
   // ~330 films: cheap enough to recompute on every render.
   const lists: Record<Tab, FilmItem[]> = profileTabs(
     id,
     sortFilms(data.films, 'newest'),
     data.scores,
-    lisbonDate(),
+    today,
   )
   const shown = lists[tab]
   // Only on "Not present": scoring without attendance is allowed (plan 4.2).
