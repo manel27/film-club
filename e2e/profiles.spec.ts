@@ -23,8 +23,6 @@ async function restoreName() {
     .eq('display_name', RENAMED)
   if (error) throw error
 }
-test.beforeAll(restoreName)
-test.afterAll(restoreName)
 
 async function logIn(page: Page, email: string, password: string) {
   await page.goto('./#/login')
@@ -108,29 +106,80 @@ test("a member can't rename someone else or change their own role or colour", as
   expect(role.error?.code).toBe('42501')
 })
 
-test('a member renames themselves from their own profile', async ({ page }) => {
-  await logIn(page, E2E_MEMBER.email, E2E_PASSWORD)
-  const header = page.getByRole('banner')
-  await header.getByRole('link', { name: E2E_MEMBER.name }).click()
-  await expect(page.getByRole('heading', { level: 1, name: E2E_MEMBER.name })).toBeVisible()
+// Hooks scoped here: file-level ones also ran in parallel workers and put the name back mid-test.
+test.describe('rename', () => {
+  test.beforeAll(restoreName)
+  test.afterAll(restoreName)
 
-  await page.getByRole('button', { name: 'Edit name' }).click()
-  const input = page.getByLabel('Display name')
-  await expect(input).toBeFocused()
-  await input.fill('\u200b \u2060')
-  await page.getByRole('button', { name: 'Save name' }).click()
-  await expect(page.getByRole('alert')).toHaveText('Enter a name.')
-  await input.fill('k\u200bwame')
-  await page.getByRole('button', { name: 'Save name' }).click()
-  await expect(page.getByRole('alert')).toHaveText('Someone already has that name.')
+  test('a member renames themselves from their own profile', async ({ page }) => {
+    await logIn(page, E2E_MEMBER.email, E2E_PASSWORD)
+    const header = page.getByRole('banner')
+    await header.getByRole('link', { name: E2E_MEMBER.name }).click()
+    await expect(page.getByRole('heading', { level: 1, name: E2E_MEMBER.name })).toBeVisible()
 
-  await input.fill(`  ${RENAMED}  `)
-  await page.getByRole('button', { name: 'Save name' }).click()
-  await expect(page.getByRole('status')).toHaveText('Name saved.')
-  await expect(page.getByRole('heading', { level: 1, name: RENAMED })).toBeVisible()
-  await expect(header.getByRole('link', { name: RENAMED })).toBeVisible()
+    await page.getByRole('button', { name: 'Edit name' }).click()
+    const input = page.getByLabel('Display name')
+    await expect(input).toBeFocused()
+    await input.fill('\u200b \u2060')
+    await page.getByRole('button', { name: 'Save name' }).click()
+    await expect(page.getByRole('alert')).toHaveText('Enter a name.')
+    await input.fill('k\u200bwame')
+    await page.getByRole('button', { name: 'Save name' }).click()
+    await expect(page.getByRole('alert')).toHaveText('Someone already has that name.')
 
-  // It's in the database, not just on screen.
-  await page.reload()
-  await expect(page.getByRole('heading', { level: 1, name: RENAMED })).toBeVisible()
+    await input.fill(`  ${RENAMED}  `)
+    await page.getByRole('button', { name: 'Save name' }).click()
+    await expect(page.getByRole('status')).toHaveText('Name saved.')
+    await expect(page.getByRole('heading', { level: 1, name: RENAMED })).toBeVisible()
+    await expect(header.getByRole('link', { name: RENAMED })).toBeVisible()
+
+    // It's in the database, not just on screen.
+    await page.reload()
+    await expect(page.getByRole('heading', { level: 1, name: RENAMED })).toBeVisible()
+  })
+})
+
+test('the people page shows each role on hover and keyboard focus, phone and desktop, every theme', async ({
+  page,
+}) => {
+  // Not the E2E member: the rename test runs in parallel as them.
+  await logIn(page, SEED_VIEWER.email, SEED_VIEWER.password)
+  await page.goto('./#/people')
+  const kwame = page.getByRole('main').getByRole('link', { name: 'Kwame' })
+  const orla = page.getByRole('main').getByRole('link', { name: 'Orla' })
+  await expect(kwame).toHaveAccessibleDescription('Member')
+  await expect(page.getByRole('tooltip')).toHaveCount(0) // all hidden until hover/focus
+  for (const width of [360, 1280]) {
+    await page.setViewportSize({ width, height: 740 })
+    for (const theme of ['letterboxd', 'superman', 'batman']) {
+      await page.evaluate((t) => (document.documentElement.dataset.theme = t), theme)
+      await orla.hover()
+      await expect(page.getByRole('tooltip', { name: 'Admin' })).toBeVisible()
+      await page.mouse.move(0, 0)
+      await kwame.focus()
+      await expect(page.getByRole('tooltip', { name: 'Member' })).toBeVisible()
+      await page.screenshot({ path: `${SCREENSHOTS}/people-role-${width}-${theme}.png` })
+      await kwame.blur()
+    }
+  }
+
+  // WCAG 1.4.13 at phone width: dismissible, hoverable, and never in the way.
+  await page.setViewportSize({ width: 360, height: 740 })
+  const kwameTip = page.getByRole('tooltip', { name: 'Member' })
+  await kwame.focus()
+  await expect(kwameTip).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(kwameTip).toBeHidden()
+  await expect(kwame).toBeFocused()
+
+  await kwame.blur()
+  await kwame.hover()
+  await expect(kwameTip).toBeVisible()
+  await kwameTip.hover()
+  await expect(kwameTip).toBeVisible()
+
+  await page.mouse.move(0, 0)
+  await kwame.focus()
+  await page.getByRole('main').getByRole('link', { name: 'Viggo' }).click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Viggo' })).toBeVisible()
 })

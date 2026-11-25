@@ -9,6 +9,8 @@ export default function PeoplePage() {
   const [people, setPeople] = useState<Person[] | null>(null)
   const [failed, setFailed] = useState(false)
   const [attempt, setAttempt] = useState(0)
+  // Escape hides the role tips (WCAG 1.4.13) until the pointer enters a row or focus moves.
+  const [tipsOff, setTipsOff] = useState(false)
 
   useEffect(() => {
     let current = true
@@ -47,11 +49,18 @@ export default function PeoplePage() {
           Loading people…
         </p>
       ) : (
-        <ul className="chips people-list">
+        <ul
+          className={`chips people-list${tipsOff ? ' tips-off' : ''}`}
+          onKeyDown={(e) => e.key === 'Escape' && setTipsOff(true)}
+          onFocus={() => setTipsOff(false)}
+        >
           {people.map((p) => (
-            <li key={p.id}>
-              <Chip person={p} />
-              {p.role && p.role !== 'member' && <span className="badge">{ROLE_NAMES[p.role]}</span>}
+            <li key={p.id} onPointerOver={() => setTipsOff(false)}>
+              <Chip person={p} describedBy={`role-${p.id}`} />
+              {/* Shown on hover/focus; aria-describedby reads it even while hidden. Touch: the profile shows the role. */}
+              <span id={`role-${p.id}`} role="tooltip" className="role-tip">
+                {ROLE_NAMES[p.role ?? 'member']}
+              </span>
             </li>
           ))}
         </ul>

@@ -1069,9 +1069,44 @@ a.chip:hover,
 }
 
 .people-list li {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 0.375rem;
+}
+
+.role-tip {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 10;
+  /* No gap below the name: the pointer can move onto the tip without it closing (WCAG 1.4.13). */
+  padding: 0.125rem 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  /* A focus-shown tip must not swallow clicks on the row below. */
+  pointer-events: none;
+}
+
+.people-list li:focus-within .role-tip {
+  display: block;
+}
+
+@media (hover: hover) {
+  .people-list li:hover .role-tip {
+    display: block;
+    pointer-events: auto;
+  }
+}
+
+.people-list.tips-off li .role-tip {
+  display: none;
 }
 
 /* ---------------------------------------------------------------- admin */
