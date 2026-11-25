@@ -12,6 +12,10 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 3
+    ignore:
+      # typescript-eslint supports TypeScript < 6.1 only; drop when it supports 7.
+      - dependency-name: typescript
+        versions: ['>=7']
     groups:
       # A dependency joins the first group it matches.
       vitest:
