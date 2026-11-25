@@ -13,6 +13,7 @@ const people: Person[] = [
 ]
 vi.mock('../films/api', () => ({ fetchPeopleList: () => Promise.resolve(people) }))
 
+// jsdom has no CSS, so showing/hiding the tips (hover, focus, Escape) is covered in e2e/profiles.spec.ts.
 describe('PeoplePage', () => {
   it.each([
     ['Ada', 'Admin'],

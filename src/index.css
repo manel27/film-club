@@ -1081,7 +1081,7 @@ a.chip:hover,
   top: 100%;
   left: 0;
   z-index: 10;
-  margin-top: 0.25rem;
+  /* No gap below the name: the pointer can move onto the tip without it closing (WCAG 1.4.13). */
   padding: 0.125rem 0.5rem;
   font-size: 0.75rem;
   font-weight: 600;
@@ -1090,11 +1090,23 @@ a.chip:hover,
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--text);
+  /* A focus-shown tip must not swallow clicks on the row below. */
+  pointer-events: none;
 }
 
-.people-list li:hover .role-tip,
 .people-list li:focus-within .role-tip {
   display: block;
+}
+
+@media (hover: hover) {
+  .people-list li:hover .role-tip {
+    display: block;
+    pointer-events: auto;
+  }
+}
+
+.people-list.tips-off li .role-tip {
+  display: none;
 }
 
 /* ---------------------------------------------------------------- admin */
