@@ -37,10 +37,10 @@ test('a profile shows stats and switches between present, not present, watched a
 }) => {
   await logIn(page, SEED_VIEWER.email, SEED_VIEWER.password)
   await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'People' }).click()
-  await page.getByRole('link', { name: 'Orla' }).click()
+  await page.locator('.people-list').getByRole('link', { name: 'Orla' }).click()
 
   await expect(page.getByRole('heading', { level: 1, name: 'Orla' })).toBeVisible()
-  await expect(page.getByText('Admin', { exact: true })).toBeVisible()
+  await expect(page.locator('.badge', { hasText: 'Admin' })).toBeVisible()
   const stats = page.locator('.profile-stats')
   // The easter egg's 11 and choice count nowhere.
   await expect(stats).toContainText('Films present5')
@@ -155,8 +155,8 @@ test('the people page shows each role on hover and keyboard focus, phone and des
   // Not the E2E member: the rename test runs in parallel as them.
   await logIn(page, SEED_VIEWER.email, SEED_VIEWER.password)
   await page.goto('./#/people')
-  const kwame = page.getByRole('main').getByRole('link', { name: 'Kwame' })
-  const orla = page.getByRole('main').getByRole('link', { name: 'Orla' })
+  const kwame = page.locator('.people-list').getByRole('link', { name: 'Kwame' })
+  const orla = page.locator('.people-list').getByRole('link', { name: 'Orla' })
   await expect(kwame).toHaveAccessibleDescription('Member')
   await expect(page.getByRole('tooltip')).toHaveCount(0) // all hidden until hover/focus
   for (const width of [360, 1280]) {
@@ -190,6 +190,6 @@ test('the people page shows each role on hover and keyboard focus, phone and des
 
   await page.mouse.move(0, 0)
   await kwame.focus()
-  await page.getByRole('main').getByRole('link', { name: 'Viggo' }).click()
+  await page.locator('.people-list').getByRole('link', { name: 'Viggo' }).click()
   await expect(page.getByRole('heading', { level: 1, name: 'Viggo' })).toBeVisible()
 })

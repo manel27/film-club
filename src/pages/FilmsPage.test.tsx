@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { createMemoryRouter, RouterProvider } from 'react-router'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AuthProvider } from '../auth/AuthProvider'
 import type { FilmsData } from '../films/api'
 import type { FilmItem } from '../films/films'
@@ -22,9 +22,9 @@ const film = (f: Partial<FilmItem> & Pick<FilmItem, 'id' | 'title' | 'screenedOn
 
 const DATA: FilmsData = {
   people: [
-    { id: 'p-ada', name: 'Ada', colour: '#ff0000', isSystem: false },
-    { id: 'p-bo', name: 'Bo', colour: '#00ff00', isSystem: false },
-    { id: 'p-cinema', name: 'Cinema', colour: '#999999', isSystem: true },
+    { id: 'p-ada', name: 'Ada', colour: '#ff0000', isSystem: false, role: 'admin' },
+    { id: 'p-bo', name: 'Bo', colour: '#00ff00', isSystem: false, role: 'viewer' },
+    { id: 'p-cinema', name: 'Cinema', colour: '#999999', isSystem: true, role: 'viewer' },
   ],
   films: [
     film({
@@ -72,37 +72,105 @@ function renderPage(
 beforeEach(() => localStorage.clear())
 
 describe('films page', () => {
-  it('lists films by week with year, kind, average and present people', async () => {
+  it('lists films in one flat list: chooser, title, year, rating, present names, date and kind', async () => {
     renderPage()
-    const heading = await screen.findByRole('heading', { name: '2026/11/14' }, { timeout: 3000 })
-    const row = within(heading.closest('section')!).getByRole('listitem')
-    expect(row).toHaveTextContent('Glass River (2001)')
-    expect(within(row).getByText('Chosen by Ada')).toHaveClass('sr-only')
-    // The dot links to the profile for the mouse only: no Tab stop, hidden from screen readers.
-    const dotLink = row.querySelector('a.dot-link')
-    expect(dotLink).toHaveAttribute('href', '/people/p-ada')
-    expect(dotLink).toHaveAttribute('tabindex', '-1')
-    expect(dotLink).toHaveAttribute('aria-hidden', 'true')
-    expect(within(row).queryByRole('link', { name: /Chosen by/ })).not.toBeInTheDocument()
-    // A system chooser's dot is not a link.
-    const cinema = screen.getByRole('img', { name: 'Chosen by Cinema' })
-    expect(cinema.tagName).toBe('SPAN')
-    expect(cinema.closest('a')).toBeNull()
-    expect(row.querySelector('.film-avg')).toHaveTextContent('Average 7.50')
-    expect(screen.getAllByText('No average')).toHaveLength(2)
+    const title = await screen.findByRole('link', { name: 'Glass River' }, { timeout: 3000 })
+    const row = title.closest('li')!
+    expect(row.querySelector('.film-title')).toHaveTextContent(/· Glass River \(2001\)$/)
+    // The chooser is a name chip linking to their profile, described by their role.
+    const chooser = within(row.querySelector('.film-title')!).getByRole('link', { name: 'Ada' })
+    expect(chooser).toHaveAttribute('href', '/people/p-ada')
+    expect(chooser).toHaveAccessibleDescription('Admin')
+    expect(within(row).getByText('Chosen by')).toHaveClass('sr-only')
+    // The emoji is decorative; the rating is read as words.
+    const avg = row.querySelector('.film-avg')!
+    expect(within(avg as HTMLElement).getByText('7.50 👌')).toHaveAttribute('aria-hidden', 'true')
+    expect(avg).toHaveTextContent('average 7.50, good')
     const present = within(row).getByRole('group', { name: 'Present' })
     expect(
       within(present)
-        .getAllByRole('img')
-        .map((d) => d.getAttribute('aria-label')),
+        .getAllByRole('link')
+        .map((l) => l.textContent),
     ).toEqual(['Ada', 'Bo'])
-    expect(screen.getByText('Cinema', { selector: '.badge' })).toBeInTheDocument()
+    expect(within(present).getByRole('link', { name: 'Bo' })).toHaveAccessibleDescription('Viewer')
+    // A system chooser's chip is no link and has no role tip.
+    const nightBus = screen.getByRole('link', { name: 'Night Bus' }).closest('li')!
+    const cinema = within(nightBus).getByText('Cinema', { selector: '.chip' })
+    expect(cinema.tagName).toBe('SPAN')
+    expect(within(nightBus).queryByRole('tooltip', { hidden: true })).toBeNull()
+    expect(within(nightBus).getByText('Cinema', { selector: '.badge' })).toBeInTheDocument()
+    // No scores: a dash and no emoji.
+    expect(nightBus.querySelector('.film-avg')).toHaveTextContent(/^–No average$/)
     expect(screen.getByText('Democrático', { selector: '.badge' })).toBeInTheDocument()
-    expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual([
-      '2026/11/14',
-      '2026/11/07',
-      '2025/06/14',
-    ])
+    // No week headings: each row carries its date.
+    expect(screen.queryAllByRole('heading', { level: 2 })).toHaveLength(0)
+    expect(
+      screen.getAllByRole('listitem').map((r) => r.querySelector('.film-date')?.textContent),
+    ).toEqual(['2026/11/14', '2026/11/07', '2025/06/14'])
+  })
+
+  it('shows "Unknown" for a chooser or present person who is not in the list', async () => {
+    fetchFilmsData.mockResolvedValueOnce({
+      ...DATA,
+      films: [
+        film({
+          id: 9,
+          title: 'Lost',
+          screenedOn: '2026-01-01',
+          assignedId: 'gone',
+          presentIds: ['gone'],
+        }),
+      ],
+    })
+    renderPage()
+    const row = (await screen.findByRole('link', { name: 'Lost' })).closest('li')!
+    expect(within(row).getAllByText('Unknown', { selector: '.chip' })).toHaveLength(2)
+  })
+
+  it('gives the easter egg no emoji, whatever its average', async () => {
+    fetchFilmsData.mockResolvedValueOnce({
+      ...DATA,
+      films: [
+        film({ id: 9, title: 'Egg', screenedOn: '2025-01-01', avgScore: 9.9, isEasterEgg: true }),
+      ],
+    })
+    renderPage()
+    const row = (await screen.findByRole('link', { name: 'Egg' })).closest('li')!
+    expect(row.querySelector('.film-avg')).toHaveTextContent(/^9\.90average 9\.90$/)
+  })
+
+  it('Escape hides a hovered role tip with focus anywhere, until focus or the pointer moves', async () => {
+    renderPage()
+    const ada = (await screen.findAllByRole('link', { name: 'Ada' }))[0]
+    const list = ada.closest('ul')!
+    fireEvent.pointerOver(ada)
+    expect(document.activeElement).toBe(document.body)
+    fireEvent.keyDown(document.body, { key: 'Escape' })
+    expect(list).toHaveClass('tips-off')
+    fireEvent.pointerOver(ada)
+    expect(list).not.toHaveClass('tips-off')
+    fireEvent.keyDown(document.body, { key: 'Enter' })
+    expect(list).not.toHaveClass('tips-off')
+    fireEvent.keyDown(document.body, { key: 'Escape' })
+    fireEvent.focusIn(ada)
+    expect(list).not.toHaveClass('tips-off')
+  })
+
+  it('keeps one Tab stop per film: the name chips are mouse shortcuts', async () => {
+    renderPage('/?view=posters')
+    await screen.findByText('3 films')
+    for (const row of screen.getAllByRole('listitem')) {
+      const tabbable = [...row.querySelectorAll('a, button, [tabindex]')].filter(
+        (el) => el.getAttribute('tabindex') !== '-1',
+      )
+      expect(tabbable.map((el) => el.getAttribute('href'))).toEqual([
+        expect.stringMatching(/^\/films\/\d+$/),
+      ])
+    }
+    // Still links with their role for screen readers (browse mode) and the mouse.
+    const chip = within(screen.getAllByRole('listitem')[0]).getAllByRole('link', { name: 'Ada' })[0]
+    expect(chip).toHaveAttribute('href', '/people/p-ada')
+    expect(chip).toHaveAccessibleDescription('Admin')
   })
 
   it('keeps sort and filters in the URL and localStorage', async () => {
@@ -143,12 +211,14 @@ describe('films page', () => {
   it('restores the last choice when opened without one', async () => {
     localStorage.setItem('film-club-films', 'view=posters&year=2025')
     const router = renderPage()
-    expect(await screen.findByRole('img', { name: 'Shark Joke (2001)' })).toBeInTheDocument()
+    expect(await screen.findByText('1 film')).toBeInTheDocument()
     expect(router.state.location.search).toBe('?view=posters&year=2025')
-    expect(screen.getByRole('button', { name: 'Posters by week' })).toHaveAttribute(
+    // An old "posters" link or saved value opens the poster list.
+    expect(screen.getByRole('button', { name: 'Poster list' })).toHaveAttribute(
       'aria-pressed',
       'true',
     )
+    expect(document.querySelector('.film-row .film-thumb')).toBeInTheDocument()
   })
 
   it('shows a notice passed by the previous page (a deleted film), even after restoring the view', async () => {
@@ -183,7 +253,7 @@ describe('films page', () => {
     expect(router.state.location.search).toBe('')
   })
 
-  it('can show posters in one grid without week headings', async () => {
+  it('shows the poster grid, each poster linking to its film with date, chooser and rating', async () => {
     const router = renderPage('/?view=posters')
     await screen.findByText('3 films')
     const grid = screen.getByRole('button', { name: 'Poster grid' })
@@ -197,7 +267,38 @@ describe('films page', () => {
         .getAllByRole('img', { name: /\(2001\)$/ })
         .map((i) => i.getAttribute('aria-label') ?? i.getAttribute('alt')),
     ).toEqual(['Glass River (2001)', 'Night Bus (2001)', 'Shark Joke (2001)'])
+    // The details are part of the link, so screen readers hear them.
+    const glass = screen.getByRole('link', { name: /^Glass River \(2001\)/ })
+    expect(glass).toHaveAttribute('href', '/films/1')
+    expect(glass).toHaveAccessibleName(
+      'Glass River (2001), 2026/11/14, chosen by Ada, average 7.50, good',
+    )
+    expect(screen.getByRole('link', { name: /^Night Bus/ })).toHaveAccessibleName(
+      /^Night Bus \(2001\) ?, 2026\/11\/07, chosen by Cinema, No average$/, // the placeholder is a block: jsdom adds a space
+    )
     expect(localStorage.getItem('film-club-films')).toBe('view=grid')
+  })
+
+  it('keeps the poster list with any sort, a thumbnail on each row', async () => {
+    const router = renderPage('/?view=posters&sort=title')
+    await screen.findByText('3 films')
+    expect(screen.getByRole('button', { name: 'Poster list' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    expect(screen.getByRole('button', { name: 'Poster list' })).not.toHaveAttribute('aria-disabled')
+    expect(router.state.location.search).toBe('?view=posters&sort=title')
+    const rows = screen.getAllByRole('listitem')
+    expect(rows.map((r) => r.querySelector('.film-title a[href^="/films/"]')?.textContent)).toEqual(
+      ['Glass River', 'Night Bus', 'Shark Joke'],
+    )
+    // Decorative thumbnails (the title follows): the TMDB one, else a placeholder.
+    expect(rows[0].querySelector('img.film-thumb')).toHaveAttribute(
+      'src',
+      'https://image.tmdb.org/t/p/w92/glass.jpg',
+    )
+    expect(rows[0].querySelector('img.film-thumb')).toHaveAttribute('alt', '')
+    expect(rows[1].querySelector('.film-thumb')).toHaveAttribute('aria-hidden', 'true')
   })
 
   it('sorts by average as a flat list with screening dates', async () => {
@@ -209,43 +310,22 @@ describe('films page', () => {
     expect(
       screen.getAllByRole('listitem').map((r) => r.querySelector('.film-date')?.textContent),
     ).toEqual(['2026/11/14', '2026/11/07', '2025/06/14'])
-    // Film links only (the "chosen by" dots link to profiles).
+    // Film links only (the name chips link to profiles).
     const films = screen
       .getAllByRole('link')
       .filter((l) => l.getAttribute('href')?.startsWith('/films/'))
     expect(films.map((l) => l.textContent)).toEqual(['Glass River', 'Night Bus', 'Shark Joke'])
   })
 
-  it('shows posters by week as the grid, with the averages, when not sorted by date', async () => {
-    const router = renderPage('/?view=posters&sort=score-desc')
+  it("shows each poster's release year in the grid only when sorted by release year", async () => {
+    renderPage('/?view=grid&sort=year-desc')
     await screen.findByText('3 films')
-    const byWeek = screen.getByRole('button', { name: 'Posters by week' })
-    expect(byWeek).toHaveAttribute('aria-disabled', 'true')
-    expect(byWeek).toHaveAttribute('aria-pressed', 'false')
-    expect(byWeek).toHaveAttribute('title', 'Posters by week: only when sorted by screening date')
-    expect(screen.getByRole('button', { name: 'Poster grid' })).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    )
-    expect(screen.queryAllByRole('heading', { level: 2 })).toHaveLength(0)
-    expect(
-      screen
-        .getAllByRole('listitem')
-        .map((t) => [t.title, t.querySelector('.poster-note')?.textContent]),
-    ).toEqual([
-      ['Glass River (2001)', 'Average 7.50'],
-      ['Night Bus (2001)', 'Average –'],
-      ['Shark Joke (2001)', 'Average –'],
+    expect([...document.querySelectorAll('.poster-note')].map((n) => n.textContent)).toEqual([
+      '2001',
+      '2001',
+      '2001',
     ])
-
-    fireEvent.click(byWeek)
-    expect(router.state.location.search).toBe('?view=posters&sort=score-desc')
-
-    // Back to a date sort, the weeks return.
-    fireEvent.change(screen.getByLabelText('Sort'), { target: { value: 'newest' } })
-    expect(byWeek).not.toHaveAttribute('aria-disabled')
-    expect(byWeek).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.getAllByRole('heading', { level: 2 })).toHaveLength(3)
+    fireEvent.change(screen.getByLabelText('Sort'), { target: { value: 'score-desc' } })
     expect(document.querySelector('.poster-note')).toBeNull()
   })
 
@@ -258,7 +338,16 @@ describe('films page', () => {
   it('falls back to the default sort for an unknown value', async () => {
     renderPage('/?sort=bogus')
     expect(await screen.findByLabelText('Sort')).toHaveValue('newest')
-    expect(screen.getAllByRole('heading', { level: 2 })).toHaveLength(3)
+    expect(
+      screen.getAllByRole('listitem').map((r) => r.querySelector('.film-date')?.textContent),
+    ).toEqual(['2026/11/14', '2026/11/07', '2025/06/14'])
+  })
+
+  it('falls back to the list for an unknown view', async () => {
+    renderPage('/?view=mosaic')
+    await screen.findByText('3 films')
+    expect(screen.getByRole('button', { name: 'List' })).toHaveAttribute('aria-pressed', 'true')
+    expect(document.querySelector('.film-thumb, .poster')).toBeNull()
   })
 
   it('closes the present filter on a click outside or Escape', async () => {
@@ -279,7 +368,7 @@ describe('films page', () => {
   })
 
   it('shows TMDB posters lazily, and a text placeholder without one', async () => {
-    renderPage('/?view=posters')
+    renderPage('/?view=grid')
     const img = await screen.findByRole('img', { name: 'Glass River (2001)' })
     expect(img).toHaveAttribute('src', 'https://image.tmdb.org/t/p/w185/glass.jpg')
     expect(img).toHaveAttribute('loading', 'lazy')
@@ -308,5 +397,69 @@ describe('films page', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't load the films")
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
     expect(await screen.findByText('3 films')).toBeInTheDocument()
+  })
+})
+
+describe('next film card', () => {
+  // Only Date is faked, so the page's promises and timers still run.
+  const at = (iso: string) => vi.useFakeTimers({ toFake: ['Date'], now: new Date(iso) })
+  afterEach(() => vi.useRealTimers())
+  const withFilms = (...films: FilmItem[]) =>
+    fetchFilmsData.mockResolvedValueOnce({ ...DATA, films: [...DATA.films, ...films] })
+
+  it('shows the earliest film added for a coming screening, lowest day_order first, instead of "Next up"', async () => {
+    at('2026-11-26T10:00:00Z')
+    withFilms(
+      film({ id: 10, title: 'Later', screenedOn: '2026-12-12' }),
+      film({ id: 11, title: 'Second', screenedOn: '2026-12-05', dayOrder: 2 }),
+      film({
+        id: 12,
+        title: 'First',
+        screenedOn: '2026-12-05',
+        kind: 'maratona',
+        posterPath: '/first.jpg',
+        releaseYear: 1999,
+      }),
+    )
+    renderPage()
+    const card = await screen.findByRole('region', { name: 'Next film' })
+    expect(screen.queryByText('Next up card')).toBeNull()
+    // The whole card links to the film (CSS stretches the title link over it).
+    const link = within(card).getByRole('link', { name: 'First' })
+    expect(link).toHaveAttribute('href', '/films/12')
+    expect(link).toHaveAccessibleDescription('Sat 5 Dec 2026 Maratona')
+    expect(card).toHaveTextContent('First (1999)')
+    expect(card).toHaveTextContent('Sat 5 Dec 2026')
+    expect(within(card).getByText('Maratona', { selector: '.badge' })).toBeInTheDocument()
+    expect(card.querySelector('img')).toHaveAttribute(
+      'src',
+      'https://image.tmdb.org/t/p/w185/first.jpg',
+    )
+    expect(card.querySelector('img')).toHaveAttribute('alt', '')
+    const chooser = within(card).getByRole('link', { name: 'Ada' })
+    expect(chooser).toHaveAttribute('href', '/people/p-ada')
+    expect(chooser).toHaveAccessibleDescription('Admin')
+    expect(chooser).not.toHaveAttribute('tabindex') // a Tab stop here, so the tip shows on focus
+    expect(card).toHaveTextContent('Chosen by Ada')
+  })
+
+  it('says Today on the screening day in Lisbon, with a placeholder when there is no poster', async () => {
+    // 23:30 UTC on 13 June is already 14 June in Lisbon (UTC+1).
+    at('2026-06-13T23:30:00Z')
+    withFilms(film({ id: 10, title: 'Tonight', screenedOn: '2026-06-14', assignedId: 'p-cinema' }))
+    renderPage()
+    const card = await screen.findByRole('region', { name: 'Next film' })
+    expect(card).toHaveTextContent('Today')
+    expect(card.querySelector('.poster-placeholder')).toHaveAttribute('aria-hidden', 'true')
+    // A system chooser is shown but never linked.
+    expect(within(card).getByText('Cinema', { selector: '.chip' }).tagName).toBe('SPAN')
+  })
+
+  it('keeps the rotation card when only the easter egg or past films are ahead', async () => {
+    at('2026-11-26T10:00:00Z')
+    withFilms(film({ id: 10, title: 'Egg', screenedOn: '2026-12-05', isEasterEgg: true }))
+    renderPage()
+    expect(await screen.findByText('Next up card')).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Next film' })).toBeNull()
   })
 })

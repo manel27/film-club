@@ -1,9 +1,14 @@
+import { memo } from 'react'
 import { Link } from 'react-router'
-import { KIND_LABELS, weekHeading, type FilmItem, type Person } from '../films/films'
+import { KIND_LABELS, ratingBand, screeningDay, type FilmItem, type Person } from '../films/films'
+import { ymd } from '../rotation/rotation'
+import { RoleChip } from './Chip'
+import { tipsOff } from './tipsOff'
 
 // Shared by the films page and profiles: a film as a list row or a poster tile, and the view toggle.
 
 const POSTER_BASE = 'https://image.tmdb.org/t/p/w185'
+const THUMB_BASE = 'https://image.tmdb.org/t/p/w92'
 
 export type View = 'list' | 'posters' | 'grid'
 
@@ -11,11 +16,11 @@ export type View = 'list' | 'posters' | 'grid'
 const VIEWS: Record<View, [string, React.ReactNode]> = {
   list: ['List', <path d="M4 6h.01M9 6h11M4 12h.01M9 12h11M4 18h.01M9 18h11" />],
   posters: [
-    'Posters by week',
+    'Poster list',
     <>
-      <path d="M3 4h18" />
-      <rect x="3" y="9" width="7.5" height="12" rx="1.5" />
-      <rect x="13.5" y="9" width="7.5" height="12" rx="1.5" />
+      <rect x="3" y="3" width="5" height="7.5" rx="1" />
+      <rect x="3" y="13.5" width="5" height="7.5" rx="1" />
+      <path d="M12 6.5h9M12 17.5h9" />
     </>,
   ],
   grid: [
@@ -29,28 +34,21 @@ const VIEWS: Record<View, [string, React.ReactNode]> = {
   ],
 }
 
-/** Joined view buttons. `off(view)` gives the reason a view can't be picked now, if any. */
-export function ViewToggle(props: {
-  views: View[]
-  value: View
-  onChange: (view: View) => void
-  off?: (view: View) => string
-}) {
+/** Joined view buttons. */
+export function ViewToggle(props: { views: View[]; value: View; onChange: (view: View) => void }) {
   return (
     <div className="view-toggle" role="group" aria-label="View">
       {props.views.map((v) => {
         const [name, icon] = VIEWS[v]
-        const off = props.off?.(v)
         return (
           <button
             key={v}
             type="button"
             className="button button-secondary button-small"
             aria-pressed={props.value === v}
-            aria-disabled={off ? true : undefined}
             aria-label={name}
-            title={off ? `${name}: ${off}` : name}
-            onClick={() => !off && props.onChange(v)}
+            title={name}
+            onClick={() => props.onChange(v)}
           >
             <svg
               viewBox="0 0 24 24"
@@ -73,83 +71,127 @@ export function ViewToggle(props: {
 
 const withYear = (f: FilmItem) => (f.releaseYear ? `${f.title} (${f.releaseYear})` : f.title)
 
-/** A person's colour dot; without a label it is decorative. */
-export function Dot({ person, label }: { person: Person | undefined; label?: string }) {
+/** A person's colour dot (decorative: the name is shown next to it). */
+export function Dot({ person }: { person: Person | undefined }) {
   return (
     <span
       className="colour-dot"
-      {...(label ? { role: 'img', 'aria-label': label, title: label } : { 'aria-hidden': true })}
+      aria-hidden="true"
       style={person?.colour ? { backgroundColor: person.colour } : undefined}
     />
   )
 }
 
-/** `note` is shown after the kind badge (e.g. a profile's "scored, not present"). */
-export function FilmRow(props: {
-  film: FilmItem
-  people: Map<string, Person>
-  showDate?: boolean
-  note?: React.ReactNode
-}) {
-  const { film, people } = props
-  const assigned = people.get(film.assignedId)
-  const kind = KIND_LABELS[film.kind]
-  const chosenBy = `Chosen by ${assigned?.name ?? 'unknown'}`
+/** An average with its band's emoji ("7.35 👌"), read as "average 7.35, good". The easter egg gets no emoji. */
+export function Rating({ film }: { film: FilmItem }) {
+  const band = film.avgScore == null || film.isEasterEgg ? null : ratingBand(film.avgScore)
   return (
-    <li className="film-row">
-      {props.showDate && <span className="muted film-date">{weekHeading([film.screenedOn])}</span>}
-      <span className="film-title">
-        {assigned && !assigned.isSystem ? (
-          // A mouse shortcut only: one Tab stop per film would be ~330. Screen readers get the text.
-          <>
-            <Link
-              to={`/people/${assigned.id}`}
-              className="dot-link"
-              tabIndex={-1}
-              aria-hidden="true"
-              title={chosenBy}
-            >
-              <Dot person={assigned} />
-            </Link>
-            <span className="sr-only">{chosenBy}</span>
-          </>
-        ) : (
-          <Dot person={assigned} label={chosenBy} />
-        )}{' '}
-        <Link to={`/films/${film.id}`}>{film.title}</Link>
-        {film.releaseYear && <span className="muted"> ({film.releaseYear})</span>}
+    <span className="film-avg">
+      <span aria-hidden="true">
+        {film.avgScore?.toFixed(2) ?? '–'}
+        {band && ` ${band.emoji}`}
       </span>
-      {kind && <span className="badge">{kind}</span>}
-      {props.note}
-      {film.avgScore == null ? (
-        <span className="film-avg">
-          <span aria-hidden="true">–</span>
-          <span className="sr-only">No average</span>
-        </span>
-      ) : (
-        <span className="film-avg">
-          <span className="sr-only">Average </span>
-          {film.avgScore.toFixed(2)}
-        </span>
-      )}
-      {film.presentIds.length > 0 && (
-        <span className="present-dots" role="group" aria-label="Present">
-          {film.presentIds
-            .map((id) => people.get(id))
-            .sort((a, b) => (a?.name ?? '').localeCompare(b?.name ?? ''))
-            .map((p, i) => (
-              <Dot key={p?.id ?? i} person={p} label={p?.name ?? 'Unknown'} />
-            ))}
-        </span>
-      )}
-    </li>
+      <span className="sr-only">{ratingText(film)}</span>
+    </span>
   )
 }
 
-export function PosterTile({ film, note }: { film: FilmItem; note?: React.ReactNode }) {
-  const name = withYear(film)
+function ratingText(film: FilmItem): string {
+  if (film.avgScore == null) return 'No average'
+  const avg = `average ${film.avgScore.toFixed(2)}`
+  return film.isEasterEgg ? avg : `${avg}, ${ratingBand(film.avgScore).label}`
+}
+
+const byName = (a: Person | undefined, b: Person | undefined) =>
+  (a?.name ?? '').localeCompare(b?.name ?? '')
+
+/**
+ * A film as one row: "Chooser · Title (Year) | 7.35 👌 | present names", with the
+ * screening date and kind on a small line below. `poster` adds a thumbnail on the
+ * left; `note` is shown after the kind badge (e.g. a profile's "scored, not present").
+ * One Tab stop per film (its title): the name chips are mouse shortcuts. Memoised:
+ * pass a stable `people` map so a re-sort only moves rows (only the title Link re-renders).
+ */
+export const FilmRow = memo(function FilmRow(props: {
+  film: FilmItem
+  people: Map<string, Person>
+  /** useHref('/people'): see Chip. */
+  peopleHref: string
+  poster?: boolean
+  note?: React.ReactNode
+}) {
+  const { film, people } = props
+  const kind = KIND_LABELS[film.kind]
   return (
-    <li className="poster" title={name}>
+    <li className="film-row">
+      {props.poster &&
+        (film.posterPath ? (
+          <img
+            className="film-thumb"
+            src={`${THUMB_BASE}${film.posterPath}`}
+            alt=""
+            loading="lazy"
+            width={46}
+            height={69}
+          />
+        ) : (
+          <span className="film-thumb poster-placeholder" aria-hidden="true" />
+        ))}
+      <div className="film-row-body">
+        <div className="film-row-main">
+          <span className="film-title">
+            <span className="sr-only">Chosen by </span>
+            <RoleChip
+              person={people.get(film.assignedId)}
+              tabbable={false}
+              peopleHref={props.peopleHref}
+            />
+            <span aria-hidden="true"> · </span>
+            <Link to={`/films/${film.id}`}>{film.title}</Link>
+            {film.releaseYear && <span className="muted"> ({film.releaseYear})</span>}
+          </span>
+          <Rating film={film} />
+          {film.presentIds.length > 0 && (
+            <span className="present-names" role="group" aria-label="Present">
+              {film.presentIds
+                .map((id) => people.get(id))
+                .sort(byName)
+                .map((p, i) => (
+                  <RoleChip
+                    key={p?.id ?? i}
+                    person={p}
+                    tabbable={false}
+                    peopleHref={props.peopleHref}
+                  />
+                ))}
+            </span>
+          )}
+        </div>
+        <div className="muted film-meta">
+          <span className="film-date">{ymd(film.screenedOn)}</span>
+          {kind && <span className="badge">{kind}</span>}
+          {props.note}
+        </div>
+      </div>
+    </li>
+  )
+})
+
+/**
+ * A poster linking to the film. Its date, chooser and rating show as an overlay on
+ * hover or focus, or under the poster on touch screens (CSS). They are inside the
+ * link, so screen readers hear them as part of its name.
+ */
+export const PosterTile = memo(function PosterTile(props: {
+  film: FilmItem
+  people: Map<string, Person>
+  note?: React.ReactNode
+}) {
+  const { film, note } = props
+  const name = withYear(film)
+  const chooser = props.people.get(film.assignedId)?.name ?? 'Unknown'
+  return (
+    <li className="poster">
       <Link to={`/films/${film.id}`}>
         {film.posterPath ? (
           <img
@@ -165,8 +207,59 @@ export function PosterTile({ film, note }: { film: FilmItem; note?: React.ReactN
             {film.releaseYear && <span className="muted">{film.releaseYear}</span>}
           </div>
         )}
+        <span className="poster-details" aria-hidden="true">
+          <span className="film-date">{ymd(film.screenedOn)}</span>
+          <span>{chooser}</span>
+          <Rating film={film} />
+        </span>
+        <span className="sr-only">{`, ${ymd(film.screenedOn)}, chosen by ${chooser}, ${ratingText(film)}`}</span>
       </Link>
       {note != null && <span className="muted poster-note">{note}</span>}
     </li>
+  )
+})
+
+/** The film already added for the next screening; the whole card links to it. */
+export function NextFilmCard(props: {
+  film: FilmItem
+  people: Map<string, Person>
+  today: string
+}) {
+  const { film } = props
+  const kind = KIND_LABELS[film.kind]
+  return (
+    <section ref={tipsOff} className="card next-film" aria-labelledby="next-film-heading">
+      {film.posterPath ? (
+        <img
+          className="next-film-poster"
+          src={`${POSTER_BASE}${film.posterPath}`}
+          alt=""
+          width={185}
+          height={278}
+        />
+      ) : (
+        <span className="next-film-poster poster-placeholder" aria-hidden="true">
+          {film.title}
+        </span>
+      )}
+      <div className="next-film-body">
+        <h2 id="next-film-heading">Next film</h2>
+        <p className="next-film-title">
+          {/* Stretched over the whole card (CSS); the chooser's chip sits above it. */}
+          <Link to={`/films/${film.id}`} className="card-link" aria-describedby="next-film-when">
+            {film.title}
+          </Link>
+          {film.releaseYear && <span className="muted"> ({film.releaseYear})</span>}
+        </p>
+        <p id="next-film-when" className="muted film-meta">
+          <span>{screeningDay(film.screenedOn, props.today)}</span>
+          {/* Read as one description: "Sat 5 Dec 2026 Maratona". */}{' '}
+          {kind && <span className="badge">{kind}</span>}
+        </p>
+        <p>
+          Chosen by <RoleChip person={props.people.get(film.assignedId)} />
+        </p>
+      </div>
+    </section>
   )
 }

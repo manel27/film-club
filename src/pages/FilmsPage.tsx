@@ -1,15 +1,15 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { Link, useLocation, useSearchParams } from 'react-router'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { Link, useHref, useLocation, useSearchParams } from 'react-router'
 import { useAuth } from '../auth/authContext'
-import { Dot, FilmRow, PosterTile, ViewToggle } from '../components/FilmViews'
+import { tipsOff } from '../components/tipsOff'
+import { Dot, FilmRow, NextFilmCard, PosterTile, ViewToggle } from '../components/FilmViews'
 import NextUpCard from '../components/NextUp'
 import { fetchFilmsData, type FilmsData } from '../films/api'
 import {
   filterFilms,
-  groupByWeek,
-  isDateSort,
   KIND_LABELS,
   KINDS,
+  nextFilm,
   readParams,
   sortFilms,
   SORTS,
@@ -22,6 +22,7 @@ import {
   type Person,
   type Sort,
 } from '../films/films'
+import { lisbonDate } from '../rotation/rotation'
 
 const STORAGE_KEY = 'film-club-films'
 
@@ -42,9 +43,8 @@ function save(value: string) {
 }
 
 /**
- * The films page (#/): every film with filters, sorts and three views. Sorted by
- * screening date, the list and posters views group films by week; other sorts
- * show a flat list or the poster grid.
+ * The films page (#/): the next film (or the rotation's "Next up"), then every film
+ * with filters, sorts and three views (list, poster list, poster grid), one flat list.
  */
 export default function FilmsPage() {
   const { profile } = useAuth()
@@ -52,6 +52,9 @@ export default function FilmsPage() {
   const canScore = !!profile && profile.role !== 'viewer'
   const isStaff = profile?.role === 'admin' || profile?.role === 'moderator'
   const [data, setData] = useState<FilmsData | null>(null)
+  // Stable between renders, so the memoised rows only re-render when their film changes.
+  const people = useMemo(() => new Map(data?.people.map((p) => [p.id, p])), [data])
+  const peopleHref = useHref('/people')
   const [failed, setFailed] = useState(false)
   const [attempt, setAttempt] = useState(0)
   // E.g. "Deleted …" after deleting a film. Kept in state: restoring the saved view replaces the URL and its state.
@@ -143,23 +146,12 @@ export default function FilmsPage() {
   }
 
   // ~300 films: cheap enough to recompute on every render.
-  const people = new Map(data?.people.map((p) => [p.id, p]))
   const films = data ? sortFilms(filterFilms(data.films, filters, data.scored), sort) : []
   const count = films.length
-  // Weeks only make sense when sorted by screening date; otherwise lists are flat.
-  const byWeek = isDateSort(sort)
-  // Posters by week falls back to the grid when there are no weeks.
-  const shownView = view === 'posters' && !byWeek ? 'grid' : view
-  // In poster views, the value sorted on (other than title and date) is shown on each tile.
-  const note = (f: FilmItem) =>
-    sort.startsWith('score') ? (
-      <>
-        <span className="sr-only">Average </span>
-        {f.avgScore?.toFixed(2) ?? '–'}
-      </>
-    ) : sort.startsWith('year') ? (
-      (f.releaseYear ?? '–')
-    ) : undefined
+  const today = lisbonDate()
+  const upcoming = data && nextFilm(data.films, today)
+  // In the grid, a release-year sort shows each film's year (date, chooser and average are in its details).
+  const note = (f: FilmItem) => (sort.startsWith('year') ? (f.releaseYear ?? '–') : undefined)
   const { present, genre, assigned, kind, year, unscored } = filters
   const hasFilters = present.length > 0 || !!(genre || assigned || kind || year || unscored)
   const clearButton = (
@@ -179,9 +171,8 @@ export default function FilmsPage() {
         )}
         <ViewToggle
           views={['list', 'posters', 'grid']}
-          value={shownView}
+          value={view}
           onChange={(v) => change({ view: v })}
-          off={(v) => (v === 'posters' && !byWeek ? 'only when sorted by screening date' : '')}
         />
       </div>
       {notice && (
@@ -189,7 +180,12 @@ export default function FilmsPage() {
           {notice}
         </p>
       )}
-      {data && <NextUpCard people={data.people} />}
+      {data &&
+        (upcoming ? (
+          <NextFilmCard film={upcoming} people={people} today={today} />
+        ) : (
+          <NextUpCard people={data.people} />
+        ))}
 
       {!data || !options ? (
         <p role="status" className="muted">
@@ -266,40 +262,26 @@ export default function FilmsPage() {
               </div>
             ))}
 
-          {shownView === 'grid'
-            ? count > 0 && (
-                <ul className="poster-grid poster-grid-flat">
-                  {films.map((f) => (
-                    <PosterTile key={f.id} film={f} note={note(f)} />
-                  ))}
-                </ul>
-              )
-            : !byWeek
-              ? count > 0 && (
-                  <ul className="film-list">
-                    {films.map((f) => (
-                      <FilmRow key={f.id} film={f} people={people} showDate />
-                    ))}
-                  </ul>
-                )
-              : groupByWeek(films).map((g) => (
-                  <section key={g.weekStart} className="week">
-                    <h2>{g.heading}</h2>
-                    {view === 'list' ? (
-                      <ul className="film-list">
-                        {g.films.map((f) => (
-                          <FilmRow key={f.id} film={f} people={people} />
-                        ))}
-                      </ul>
-                    ) : (
-                      <ul className="poster-grid">
-                        {g.films.map((f) => (
-                          <PosterTile key={f.id} film={f} />
-                        ))}
-                      </ul>
-                    )}
-                  </section>
+          {count > 0 &&
+            (view === 'grid' ? (
+              <ul className="poster-grid poster-grid-flat">
+                {films.map((f) => (
+                  <PosterTile key={f.id} film={f} people={people} note={note(f)} />
                 ))}
+              </ul>
+            ) : (
+              <ul ref={tipsOff} className="film-list">
+                {films.map((f) => (
+                  <FilmRow
+                    key={f.id}
+                    film={f}
+                    people={people}
+                    peopleHref={peopleHref}
+                    poster={view === 'posters'}
+                  />
+                ))}
+              </ul>
+            ))}
         </>
       )}
     </main>

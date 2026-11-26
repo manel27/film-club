@@ -17,7 +17,7 @@ test('the main pages fit a 360px screen in every theme', async ({ page }) => {
   for (const path of PAGES) {
     if (path === 'profile') {
       await page.goto('./#/people')
-      await page.getByRole('main').getByRole('link', { name: 'Kwame' }).click()
+      await page.locator('.people-list').getByRole('link', { name: 'Kwame' }).click()
     } else {
       await page.goto(`./#${path}`)
     }
