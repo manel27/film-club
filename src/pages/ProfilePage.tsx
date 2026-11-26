@@ -9,6 +9,7 @@ import {
 } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
 import { useAuth } from '../auth/authContext'
+import { useTipsOff } from '../components/useTipsOff'
 import { FilmRow, PosterTile, ViewToggle } from '../components/FilmViews'
 import { fetchProfileData, renameProfile, type ProfileData } from '../films/api'
 import { sortFilms, type FilmItem, type Person } from '../films/films'
@@ -50,6 +51,7 @@ function Profile({ id }: { id: string }) {
   const { profile: me } = useAuth()
   const [data, setData] = useState<ProfileData | undefined>(undefined)
   const [failed, setFailed] = useState(false)
+  const tips = useTipsOff()
   // Tab and view live in the URL, so Back from a film returns to them.
   const [params, setParams] = useSearchParams()
   const tab: Tab = TABS.find(([t]) => t === params.get('tab'))?.[0] ?? 'present'
@@ -198,7 +200,7 @@ function Profile({ id }: { id: string }) {
         {shown.length === 0 ? (
           <p className="muted">No films here.</p>
         ) : view === 'list' ? (
-          <ul className="film-list">
+          <ul {...tips} className={`film-list ${tips.className}`}>
             {shown.map((f) => {
               const m = marker(f)
               return (
@@ -206,7 +208,6 @@ function Profile({ id }: { id: string }) {
                   key={f.id}
                   film={f}
                   people={people}
-                  showDate
                   note={m && <span className="badge">{m}</span>}
                 />
               )
@@ -215,7 +216,7 @@ function Profile({ id }: { id: string }) {
         ) : (
           <ul className="poster-grid poster-grid-flat">
             {shown.map((f) => (
-              <PosterTile key={f.id} film={f} note={marker(f)} />
+              <PosterTile key={f.id} film={f} people={people} note={marker(f)} />
             ))}
           </ul>
         )}

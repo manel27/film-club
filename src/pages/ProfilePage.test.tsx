@@ -119,7 +119,7 @@ describe('profile page', () => {
     renderPage(`/people/${ME}`)
     expect(await screen.findByRole('heading', { level: 1, name: 'Quinn' })).toBeInTheDocument()
     expect(fetchProfileData).toHaveBeenCalledWith(ME)
-    expect(screen.getByText('Member')).toBeInTheDocument()
+    expect(screen.getByText('Member', { selector: '.badge' })).toBeInTheDocument()
     // The heading chip uses black or white text on the person's colour.
     expect(screen.getByText('Quinn', { selector: '.profile-chip' })).toHaveStyle({
       color: '#000000',
@@ -267,7 +267,7 @@ describe('profile page', () => {
   it("offers no rename on someone else's profile, nor to a viewer on their own", async () => {
     renderPage(`/people/${ADA}`)
     expect(await screen.findByRole('heading', { level: 1, name: 'Ada' })).toBeInTheDocument()
-    expect(screen.getByText('Moderator')).toBeInTheDocument()
+    expect(screen.getByText('Moderator', { selector: '.badge' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Edit name' })).not.toBeInTheDocument()
   })
 

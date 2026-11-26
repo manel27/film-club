@@ -1,13 +1,13 @@
 import { afterAll, describe, expect, it, vi } from 'vitest'
 import {
   filterFilms,
-  groupByWeek,
+  nextFilm,
+  ratingBand,
   readParams,
+  screeningDay,
   sortFilms,
   toParams,
   validFilters,
-  weekHeading,
-  weekStart,
   type FilmItem,
   type Filters,
 } from './films'
@@ -40,55 +40,81 @@ const NO_FILTERS: Filters = {
   unscored: false,
 }
 
-describe('weekStart (Mon–Sun weeks)', () => {
-  it('maps every day of a week to its Monday', () => {
-    for (const day of ['09', '10', '11', '12', '13', '14', '15']) {
-      expect(weekStart(`2026-11-${day}`)).toBe('2026-11-09')
-    }
+describe('ratingBand', () => {
+  it.each([
+    [0, '🤮', 'awful'],
+    [2.99, '🤮', 'awful'],
+    [3, '👎', 'bad'],
+    [4.99, '👎', 'bad'],
+    [5, '😐', 'okay'],
+    [6.49, '😐', 'okay'],
+    [6.5, '👌', 'good'],
+    [7.99, '👌', 'good'],
+    [8, '👏', 'great'],
+    [9.49, '👏', 'great'],
+    [9.5, '🔥', 'outstanding'],
+    [10, '🔥', 'outstanding'],
+  ])('puts %s in %s (%s)', (avg, emoji, label) => {
+    expect(ratingBand(avg)).toEqual({ emoji, label })
   })
 
-  it('puts Sunday in the week before Monday', () => {
-    expect(weekStart('2026-11-15')).toBe('2026-11-09') // Sunday
-    expect(weekStart('2026-11-16')).toBe('2026-11-16') // Monday
+  it('follows the average as shown, rounded to 2 decimals', () => {
+    // Shown as 5.00 and 9.50, so okay and outstanding, not bad and great.
+    expect(ratingBand(4.996)).toEqual({ emoji: '😐', label: 'okay' })
+    expect(ratingBand(9.4951)).toEqual({ emoji: '🔥', label: 'outstanding' })
+    // Shown as 4.99.
+    expect(ratingBand(4.994)).toEqual({ emoji: '👎', label: 'bad' })
+  })
+})
+
+describe('screeningDay', () => {
+  it('shows a weekday, day, month and year', () => {
+    expect(screeningDay('2026-12-05', '2026-11-26')).toBe('Sat 5 Dec 2026')
+    expect(screeningDay('2027-01-01', '2026-11-26')).toBe('Fri 1 Jan 2027')
   })
 
-  it('is unaffected by the DST changes in Lisbon', () => {
-    // Clocks go forward on Sun 29 Mar 2026 and back on Sun 25 Oct 2026.
-    expect(weekStart('2026-03-29')).toBe('2026-03-23')
-    expect(weekStart('2026-03-30')).toBe('2026-03-30')
-    expect(weekStart('2026-10-25')).toBe('2026-10-19')
-    expect(weekStart('2026-10-26')).toBe('2026-10-26')
+  it('says Today for today', () => {
+    expect(screeningDay('2026-11-26', '2026-11-26')).toBe('Today')
   })
 
-  it('crosses month and year boundaries', () => {
-    expect(weekStart('2027-01-02')).toBe('2026-12-28')
-    expect(weekStart('2024-03-01')).toBe('2024-02-26') // leap year
-  })
+  it.each(['', 'soon', '2026-02-31', '2026-13-01', '2026-1-5'])(
+    'says "Date unknown" for %j, never "Invalid Date"',
+    (date) => {
+      expect(screeningDay(date, '2026-11-26')).toBe('Date unknown')
+    },
+  )
 
   describe('in a browser far from Lisbon', () => {
     afterAll(() => vi.unstubAllEnvs())
 
-    it('gives the same weeks and dates', () => {
+    it('gives the same day', () => {
       vi.stubEnv('TZ', 'Pacific/Kiritimati') // UTC+14
       expect(new Date(2026, 10, 15).getTimezoneOffset()).toBe(-840)
-      expect(weekStart('2026-11-15')).toBe('2026-11-09')
+      expect(screeningDay('2026-03-29', '')).toBe('Sun 29 Mar 2026') // DST starts
       vi.stubEnv('TZ', 'America/Adak') // UTC-10
       expect(new Date(2026, 10, 15).getTimezoneOffset()).toBe(600)
-      expect(weekStart('2026-11-16')).toBe('2026-11-16')
-      expect(weekHeading(['2026-11-14'])).toBe('2026/11/14')
+      expect(screeningDay('2026-10-25', '')).toBe('Sun 25 Oct 2026') // DST ends
     })
   })
 })
 
-describe('weekHeading', () => {
-  it('shows the screening date as YYYY/MM/DD', () => {
-    expect(weekHeading(['2026-11-14'])).toBe('2026/11/14')
-    expect(weekHeading(['2026-11-14', '2026-11-14'])).toBe('2026/11/14')
+describe('nextFilm', () => {
+  it('picks the earliest film on or after today, lowest day_order first', () => {
+    const films = [
+      film(1, '2026-11-25'),
+      film(2, '2026-12-05', { dayOrder: 2 }),
+      film(3, '2026-12-12'),
+      film(4, '2026-12-05', { dayOrder: 1 }),
+    ]
+    expect(nextFilm(films, '2026-11-26')?.id).toBe(4)
+    expect(nextFilm(films, '2026-12-05')?.id).toBe(4) // today counts
+    expect(nextFilm(films, '2026-12-06')?.id).toBe(3)
   })
 
-  it('lists every date of a week with several, in the order given', () => {
-    expect(weekHeading(['2026-11-15', '2026-11-13'])).toBe('2026/11/15 · 2026/11/13')
-    expect(weekHeading(['2026-12-31', '2027-01-02'])).toBe('2026/12/31 · 2027/01/02')
+  it('never picks the easter egg, and finds nothing when no film is ahead', () => {
+    const films = [film(1, '2026-11-01'), film(2, '2026-12-05', { isEasterEgg: true })]
+    expect(nextFilm(films, '2026-11-26')).toBeUndefined()
+    expect(nextFilm([], '2026-11-26')).toBeUndefined()
   })
 })
 
@@ -149,34 +175,6 @@ describe('sortFilms', () => {
   })
 })
 
-describe('groupByWeek', () => {
-  const films = [
-    film(1, '2026-11-14', { dayOrder: 2 }),
-    film(2, '2026-11-14', { dayOrder: 1 }),
-    film(3, '2026-11-16'),
-    film(4, '2026-11-09'),
-    film(5, '2026-11-01'),
-  ]
-
-  it('sorts newest first, keeping same-day films in day_order', () => {
-    const groups = groupByWeek(sortFilms(films, 'newest'))
-    expect(groups.map((g) => g.weekStart)).toEqual(['2026-11-16', '2026-11-09', '2026-10-26'])
-    expect(groups[1].films.map((f) => f.id)).toEqual([2, 1, 4])
-    expect(groups[1].heading).toBe('2026/11/14 · 2026/11/09')
-  })
-
-  it('sorts oldest first', () => {
-    const groups = groupByWeek(sortFilms(films, 'oldest'))
-    expect(groups.map((g) => g.weekStart)).toEqual(['2026-10-26', '2026-11-09', '2026-11-16'])
-    expect(groups[1].films.map((f) => f.id)).toEqual([4, 2, 1])
-    expect(groups[1].heading).toBe('2026/11/09 · 2026/11/14')
-  })
-
-  it('handles no films', () => {
-    expect(groupByWeek([])).toEqual([])
-  })
-})
-
 describe('filterFilms', () => {
   const films = [
     film(1, '2025-05-03', { presentIds: ['a', 'b'], genres: ['Drama'], kind: 'cinema' }),
@@ -215,6 +213,12 @@ describe('readParams', () => {
     expect(sort).toBe('newest')
     expect(filters).toEqual(NO_FILTERS)
     expect(readParams(new URLSearchParams('sort=toString')).sort).toBe('newest')
+  })
+
+  it('reads every view, old "posters" links included (now the poster list)', () => {
+    for (const view of ['list', 'posters', 'grid']) {
+      expect(readParams(new URLSearchParams(`view=${view}`)).view).toBe(view)
+    }
   })
 
   it('reads every sort', () => {

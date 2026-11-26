@@ -43,9 +43,6 @@ export const SORTS = {
 
 export type Sort = keyof typeof SORTS
 
-/** Only the screening-date sorts group films into weeks. */
-export const isDateSort = (sort: Sort) => sort === 'newest' || sort === 'oldest'
-
 export interface Filters {
   present: string[]
   presentMode: 'any' | 'all'
@@ -63,35 +60,54 @@ export const KIND_LABELS: Record<FilmKind, string | null> = {
   maratona: 'Maratona',
 }
 
-const DAY_MS = 86_400_000
+/**
+ * The rating band of an average, as shown (rounded to 2 decimals), lower bounds
+ * inclusive: 3.00 is bad, 4.99 still bad, 5.00 okay.
+ */
+const BANDS: [min: number, emoji: string, label: string][] = [
+  [9.5, '🔥', 'outstanding'],
+  [8, '👏', 'great'],
+  [6.5, '👌', 'good'],
+  [5, '😐', 'okay'],
+  [3, '👎', 'bad'],
+  [-Infinity, '🤮', 'awful'],
+]
 
-// screened_on is a calendar date with no time. Anchoring it at 12:00 UTC keeps
-// it on the same day in Europe/Lisbon (UTC+0/+1) whatever the browser's own
-// time zone or DST, and the Monday is found with whole-day arithmetic.
-function noonUtc(date: string): number {
-  const [y, m, d] = date.split('-').map(Number)
-  return Date.UTC(y, m - 1, d, 12)
+export function ratingBand(avg: number): { emoji: string; label: string } {
+  const shown = Number(avg.toFixed(2))
+  const [, emoji, label] = BANDS.find(([min]) => shown >= min) ?? BANDS[BANDS.length - 1]
+  return { emoji, label }
 }
 
-/** The Monday (YYYY-MM-DD) of the Mon–Sun week holding `date`. */
-export function weekStart(date: string): string {
-  const t = noonUtc(date)
-  const daysSinceMonday = (new Date(t).getUTCDay() + 6) % 7
-  return new Date(t - daysSinceMonday * DAY_MS).toISOString().slice(0, 10)
+const DATE_FORMAT = new Intl.DateTimeFormat('en-GB', {
+  weekday: 'short',
+  day: 'numeric',
+  month: 'short',
+  year: 'numeric',
+  timeZone: 'UTC',
+})
+
+/**
+ * A calendar date (YYYY-MM-DD) as "Sat 5 Dec 2026", or "Today" when it is `today`.
+ * Anchored at 12:00 UTC so no browser time zone can shift the day. Not a real date: "Date unknown".
+ */
+export function screeningDay(date: string, today: string): string {
+  if (date === today) return 'Today'
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date)
+  const t = m ? Date.UTC(+m[1], +m[2] - 1, +m[3], 12) : NaN
+  // Date.UTC rolls 2026-02-31 over to March: reject it.
+  if (!m || new Date(t).toISOString().slice(0, 10) !== date) return 'Date unknown'
+  return DATE_FORMAT.format(t).replace(',', '')
 }
 
 /**
- * The screening dates of a week as "2026/11/13 · 2026/11/14", in the order
- * given (the current sort order). Calendar dates, so no time zone applies.
+ * The film added for the next screening: the earliest on or after `today`
+ * (Lisbon), lowest day_order first. The easter egg never counts.
  */
-export function weekHeading(dates: string[]): string {
-  return [...new Set(dates)].map((d) => d.replaceAll('-', '/')).join(' · ')
-}
-
-export interface WeekGroup {
-  weekStart: string
-  heading: string
-  films: FilmItem[]
+export function nextFilm(films: FilmItem[], today: string): FilmItem | undefined {
+  return films
+    .filter((f) => !f.isEasterEgg && f.screenedOn >= today)
+    .sort((a, b) => a.screenedOn.localeCompare(b.screenedOn) || a.dayOrder - b.dayOrder)[0]
 }
 
 const collator = new Intl.Collator(undefined, { sensitivity: 'base', numeric: true })
@@ -127,19 +143,6 @@ export function sortFilms(films: FilmItem[], sort: Sort): FilmItem[] {
   return [...films].sort((a, b) => key[sort](a, b) || date(a, b) || title(a, b) || a.id - b.id)
 }
 
-/** Groups films, already sorted by screening date, into Mon–Sun weeks. */
-export function groupByWeek(sorted: FilmItem[]): WeekGroup[] {
-  const groups: WeekGroup[] = []
-  for (const film of sorted) {
-    const start = weekStart(film.screenedOn)
-    const last = groups[groups.length - 1]
-    if (last?.weekStart === start) last.films.push(film)
-    else groups.push({ weekStart: start, heading: '', films: [film] })
-  }
-  for (const g of groups) g.heading = weekHeading(g.films.map((f) => f.screenedOn))
-  return groups
-}
-
 /** `scored` = ids of films the logged-in profile has scored. */
 export function filterFilms(films: FilmItem[], f: Filters, scored: Set<number>): FilmItem[] {
   return films.filter((film) => {
@@ -159,10 +162,7 @@ export function filterFilms(films: FilmItem[], f: Filters, scored: Set<number>):
 export const KINDS = Object.keys(KIND_LABELS) as FilmKind[]
 
 export interface PageState {
-  /**
-   * posters = grouped by week (only with a screening-date sort, otherwise shown
-   * as the grid); grid = one continuous poster grid with no dates.
-   */
+  /** posters = the list with a poster thumbnail on each row; grid = posters only. */
   view: 'list' | 'posters' | 'grid'
   sort: Sort
   filters: Filters

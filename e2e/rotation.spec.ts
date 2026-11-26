@@ -30,8 +30,10 @@ async function logIn(page: Page, login: { email: string; password: string }) {
   await expect(page.getByRole('heading', { name: 'Films', exact: true })).toBeVisible()
 }
 
-test('a member sees Next up on the films page and passes for the coming week', async ({ page }) => {
+// On the rotation page: the films page shows the next film instead while one is added (seed: 2026-12-05).
+test('a member sees Next up and passes for the coming week', async ({ page }) => {
   await logIn(page, SEED_MEMBER)
+  await page.goto('./#/rotation')
   const card = page.getByRole('region', { name: 'Next up' })
   await expect(card).toContainText('Kwame (owed turn)')
   await expect(
