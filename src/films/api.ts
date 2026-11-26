@@ -22,7 +22,7 @@ async function fetchFilmsAndPeople(): Promise<Pick<FilmsData, 'films' | 'people'
     supabase
       .from('films')
       .select(
-        'id, title, release_year, poster_path, genres, screened_on, day_order, kind, assigned_id, is_easter_egg, attendance(profile_id)',
+        'id, title, release_year, poster_path, genres, screened_on, day_order, kind, assigned_id, democratico_reason, is_easter_egg, attendance(profile_id)',
       ),
     supabase.from('film_stats').select('film_id, avg_score'),
     fetchPeople(),
@@ -41,6 +41,7 @@ async function fetchFilmsAndPeople(): Promise<Pick<FilmsData, 'films' | 'people'
       screenedOn: f.screened_on,
       dayOrder: f.day_order,
       kind: f.kind,
+      democraticoReason: f.democratico_reason,
       assignedId: f.assigned_id,
       presentIds: f.attendance.map((a) => a.profile_id),
       avgScore: avg.get(f.id) ?? null,
@@ -78,7 +79,7 @@ function queryFilm(id: number) {
   return supabase
     .from('films')
     .select(
-      'id, tmdb_id, title, original_title, release_year, poster_path, directors, genres, runtime_min, overview, screened_on, kind, assigned_id, turn_holder_id, is_easter_egg, scores_locked, attendance(profile_id), scores(profile_id, score), comments(id, author_id, body, created_at, edited_at, is_legacy)',
+      'id, tmdb_id, title, original_title, release_year, poster_path, directors, genres, runtime_min, overview, screened_on, kind, assigned_id, turn_holder_id, democratico_reason, is_easter_egg, scores_locked, attendance(profile_id), scores(profile_id, score), comments(id, author_id, body, created_at, edited_at, is_legacy)',
     )
     .eq('id', id)
     .order('created_at', { referencedTable: 'comments' })

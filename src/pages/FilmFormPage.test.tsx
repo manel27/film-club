@@ -201,6 +201,7 @@ describe('add / edit film page', () => {
         kind: 'democratico',
         assigned_id: 'p-ada',
         turn_holder_id: null,
+        democratico_reason: 'Old reason',
       } as FilmRecord,
       avgScore: null,
       people: PEOPLE,
@@ -213,6 +214,10 @@ describe('add / edit film page', () => {
     expect(await screen.findByRole('heading', { name: 'Edit film' })).toBeInTheDocument()
     expect(await screen.findByText('Glass River')).toBeInTheDocument()
     expect(screen.getByLabelText('Screening date')).toHaveValue('2026-01-10')
+    expect(screen.getByLabelText(/Why was it chosen/)).toHaveValue('Old reason')
+    fireEvent.change(screen.getByLabelText(/Why was it chosen/), {
+      target: { value: ' New\u200b  reason ' },
+    })
     fireEvent.change(screen.getByLabelText('Screening date'), { target: { value: '2026-01-17' } })
     await waitFor(() => expect(api.findDuplicates).toHaveBeenCalled(), { timeout: 3000 })
     // Let the check's result land, then: no warning, Save still allowed.
@@ -228,7 +233,39 @@ describe('add / edit film page', () => {
         kind: 'democratico',
         assigned_id: 'p-ada',
         turn_holder_id: null,
+        democratico_reason: 'New reason',
       }),
+    )
+  })
+
+  it('shows the reason field only for a Democrático, keeps its text across kind changes, saves it only as one', async () => {
+    api.saveFilm.mockRejectedValueOnce({ status: 400, error: 'reason_too_long' })
+    renderPage('moderator')
+    fireEvent.click(await screen.findByRole('button', { name: 'Not on TMDB? Save without TMDB' }))
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Home Movie' } })
+    fireEvent.change(screen.getByLabelText('Release year'), { target: { value: '2005' } })
+    fireEvent.change(screen.getByLabelText('Chosen by'), { target: { value: 'p-ada' } })
+    expect(screen.queryByLabelText(/Why was it chosen/)).not.toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Kind'), { target: { value: 'democratico' } })
+    const reason = screen.getByLabelText(/Why was it chosen/)
+    expect(reason).toHaveAttribute('maxLength', '200')
+    fireEvent.change(reason, { target: { value: 'Nobody agreed' } })
+    fireEvent.change(screen.getByLabelText(/Whose turn/), { target: { value: 'p-manel' } })
+    // The server's refusal is shown near Save.
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Keep the reason to 200 characters or fewer.',
+    )
+    fireEvent.change(screen.getByLabelText('Kind'), { target: { value: 'normal' } })
+    expect(screen.queryByLabelText(/Why was it chosen/)).not.toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Kind'), { target: { value: 'democratico' } })
+    expect(screen.getByLabelText(/Why was it chosen/)).toHaveValue('Nobody agreed')
+    fireEvent.change(screen.getByLabelText('Kind'), { target: { value: 'normal' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() =>
+      expect(api.saveFilm).toHaveBeenLastCalledWith(
+        expect.objectContaining({ kind: 'normal', democratico_reason: null }),
+      ),
     )
   })
 })

@@ -429,6 +429,63 @@ Deno.test(
         assertEquals([film.kind, film.day_order], ['cinema', 2])
       })
 
+      await t.step("film-save: a Democrático's reason", async () => {
+        const vote = {
+          tmdb_id: null,
+          title: 'Voted In',
+          release_year: 2003,
+          ...screening,
+          kind: 'democratico',
+          turn_holder_id: P('a4'),
+        }
+        // Members and viewers are still refused, reason or not.
+        for (const [who, code] of [...outsiders, ['kwame', 403] as [string, number]]) {
+          assertEquals((await call(save, who, { ...vote, democratico_reason: 'x' })).status, code)
+        }
+        // Too long (code points, not UTF-16 units) or not a string: refused, nothing saved.
+        const long = await call(save, 'tamsin', { ...vote, democratico_reason: 'a'.repeat(201) })
+        assertEquals([long.status, long.body], [400, { error: 'reason_too_long' }])
+        assertEquals(
+          (await call(save, 'tamsin', { ...vote, democratico_reason: 42 })).status,
+          400,
+        )
+        const { count } = await admin.from('films').select('id', { count: 'exact' }).eq(
+          'title',
+          'Voted In',
+        )
+        assertEquals(count, 0)
+
+        // 200 emoji are 400 UTF-16 units but 200 characters: accepted, then normalised.
+        const emoji = await call(save, 'tamsin', {
+          ...vote,
+          democratico_reason: '\u{1F3AC}'.repeat(200),
+        })
+        assertEquals(emoji.status, 200)
+        const id = emoji.body.id
+        created.push(id)
+        assertEquals((await filmRow(id)).democratico_reason, '\u{1F3AC}'.repeat(200))
+
+        const edit = (body: Record<string, unknown>) =>
+          call(save, 'tamsin', { id, ...vote, ...body }).then((r) => assertEquals(r.status, 200))
+        await edit({ democratico_reason: ' ​Nobody\n\t agreed‍  on anything﻿ ' })
+        assertEquals((await filmRow(id)).democratico_reason, 'Nobody agreed on anything')
+        // Blank (whitespace or invisible only) or left out: no reason.
+        await edit({ democratico_reason: ' ​\n ' })
+        assertEquals((await filmRow(id)).democratico_reason, null)
+        await edit({ democratico_reason: 'Back' })
+        await edit({})
+        assertEquals((await filmRow(id)).democratico_reason, null)
+        // Another kind clears it, even when the client sends one (too long is ignored too).
+        await edit({ democratico_reason: 'Kept?' })
+        await edit({ kind: 'normal', democratico_reason: 'a'.repeat(300) })
+        const film = await filmRow(id)
+        assertEquals([film.kind, film.democratico_reason, film.turn_holder_id], [
+          'normal',
+          null,
+          null,
+        ])
+      })
+
       await t.step('CORS: only the site (and localhost on the local stack)', async () => {
         const preflight = (origin: string) =>
           search(

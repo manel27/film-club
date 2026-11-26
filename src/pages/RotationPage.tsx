@@ -3,7 +3,9 @@ import { Link } from 'react-router'
 import { useAuth } from '../auth/authContext'
 import Chip, { PersonName } from '../components/Chip'
 import { NextUp } from '../components/NextUp'
-import { KIND_LABELS, type Person } from '../films/films'
+import { KindBadge } from '../components/FilmViews'
+import { tipsOff } from '../components/tipsOff'
+import { type Person } from '../films/films'
 import { rotationWrites, type RotationData } from '../rotation/api'
 import { lisbonDate, mondayOf, ymd } from '../rotation/rotation'
 import { useRotation, type Rotation } from '../rotation/useRotation'
@@ -109,7 +111,7 @@ function PastChoosers({ data, byId }: Props) {
         <p className="muted">No screenings since {ymd(data.epoch!)}.</p>
       ) : (
         <Scroll label="Past choosers">
-          <table className="rotation-table">
+          <table ref={tipsOff} className="rotation-table">
             <thead>
               <tr>
                 <th scope="col">Date</th>
@@ -123,7 +125,7 @@ function PastChoosers({ data, byId }: Props) {
                   <td>{ymd(f.screenedOn)}</td>
                   <td>
                     <Link to={`/films/${f.id}`}>{f.title}</Link>{' '}
-                    {KIND_LABELS[f.kind] && <span className="badge">{KIND_LABELS[f.kind]}</span>}
+                    <KindBadge kind={f.kind} reason={f.democraticoReason} />
                   </td>
                   <td>
                     <Chip person={byId.get(f.assignedId)} />

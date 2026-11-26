@@ -50,6 +50,7 @@ function data(over: Partial<RotationData> = {}): RotationData {
         title: 'Vote Night',
         screenedOn: '2026-11-07',
         kind: 'democratico',
+        democraticoReason: 'Nobody agreed',
         assignedId: 'p-ada',
         turnHolderId: 'p-bo',
       },
@@ -208,6 +209,9 @@ describe('rotation page', () => {
     renderPage()
     await card()
     expect(screen.getByRole('link', { name: 'Vote Night' })).toHaveAttribute('href', '/films/7')
+    expect(screen.getByText('Democrático', { selector: '.badge' })).toHaveAccessibleDescription(
+      'Nobody agreed',
+    )
     expect(screen.getByText(/\(missed:/)).toHaveTextContent('(missed: Bo)')
     // Names in the tables link to profiles.
     expect(within(screen.getByText(/\(missed:/)).getByRole('link', { name: 'Bo' })).toHaveAttribute(

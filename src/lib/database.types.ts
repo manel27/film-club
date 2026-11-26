@@ -154,6 +154,7 @@ export type Database = {
           created_at: string
           created_by: string | null
           day_order: number
+          democratico_reason: string | null
           directors: string[]
           genres: string[]
           id: number
@@ -184,6 +185,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           day_order?: number
+          democratico_reason?: string | null
           directors?: string[]
           genres?: string[]
           id?: never
@@ -213,6 +215,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           day_order?: number
+          democratico_reason?: string | null
           directors?: string[]
           genres?: string[]
           id?: never

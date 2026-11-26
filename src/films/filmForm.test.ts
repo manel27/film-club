@@ -29,6 +29,7 @@ const base: FilmFormState = {
   kind: 'normal',
   assignedId: 'p-ada',
   turnHolderId: '',
+  reason: '',
 }
 
 describe('comingSaturday', () => {
@@ -106,6 +107,7 @@ describe('toSaveBody', () => {
         kind: 'normal',
         assigned_id: 'p-ada',
         turn_holder_id: null,
+        democratico_reason: null,
       },
     })
   })
@@ -122,6 +124,7 @@ describe('toSaveBody', () => {
         kind: 'normal',
         assigned_id: 'p-ada',
         turn_holder_id: null,
+        democratico_reason: null,
       },
     })
     expect(toSaveBody({ ...manual, title: ' ' })).toEqual({ error: 'Enter the title.' })
@@ -162,6 +165,27 @@ describe('toSaveBody', () => {
       body: { turn_holder_id: null },
     })
   })
+
+  it("normalises a Democrático's reason and sends it only for a Democrático", () => {
+    const demo = { ...base, kind: 'democratico' as const, turnHolderId: 'p-manel' }
+    expect(toSaveBody({ ...demo, reason: ' \u200bNobody\n\t agreed\ufeff ' })).toMatchObject({
+      body: { democratico_reason: 'Nobody agreed' },
+    })
+    for (const reason of ['', ' \n\t ', '\u200b\u200d']) {
+      expect(toSaveBody({ ...demo, reason })).toMatchObject({ body: { democratico_reason: null } })
+    }
+    // 200 emoji are 400 UTF-16 units: still 200 characters.
+    expect(toSaveBody({ ...demo, reason: '\u{1F3AC}'.repeat(200) })).toMatchObject({
+      body: { democratico_reason: '\u{1F3AC}'.repeat(200) },
+    })
+    expect(toSaveBody({ ...demo, reason: 'a'.repeat(201) })).toEqual({
+      error: 'Keep the reason to 200 characters or fewer.',
+    })
+    // Typed, then the kind changed: not sent (and not checked).
+    expect(toSaveBody({ ...base, reason: 'a'.repeat(300) })).toMatchObject({
+      body: { democratico_reason: null },
+    })
+  })
 })
 
 describe('functionErrorMessage', () => {
@@ -178,6 +202,12 @@ describe('functionErrorMessage', () => {
     expect(functionErrorMessage({ status: 429 })).toMatch(/Too many searches/)
     expect(functionErrorMessage({ status: 502 })).toMatch(/save without TMDB/)
     expect(functionErrorMessage({ status: 404, error: 'tmdb_not_found' })).toMatch(/TMDB/)
+    expect(functionErrorMessage({ status: 400, error: 'reason_too_long' })).toBe(
+      'Keep the reason to 200 characters or fewer.',
+    )
+    expect(functionErrorMessage({ status: 400, error: 'invalid' })).toBe(
+      "That value isn't allowed.",
+    )
     expect(functionErrorMessage({ status: 0 })).toBe("Couldn't reach the server. Try again.")
     expect(functionErrorMessage(new Error('raw details'))).toBe(
       "Couldn't reach the server. Try again.",

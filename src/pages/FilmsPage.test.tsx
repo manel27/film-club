@@ -101,7 +101,10 @@ describe('films page', () => {
     expect(within(nightBus).getByText('Cinema', { selector: '.badge' })).toBeInTheDocument()
     // No scores: a dash and no emoji.
     expect(nightBus.querySelector('.film-avg')).toHaveTextContent(/^–No average$/)
-    expect(screen.getByText('Democrático', { selector: '.badge' })).toBeInTheDocument()
+    // The Democrático's reason (none recorded) is read, but adds no Tab stop to the row.
+    const demo = screen.getByText('Democrático', { selector: '.badge' })
+    expect(demo).toHaveAccessibleDescription('Unknown reason')
+    expect(demo).not.toHaveAttribute('tabindex')
     // No week headings: each row carries its date.
     expect(screen.queryAllByRole('heading', { level: 2 })).toHaveLength(0)
     expect(

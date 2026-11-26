@@ -1247,6 +1247,27 @@ a.chip:hover,
   display: none;
 }
 
+/* A Democrático's reason (KindBadge): up to 200 characters, so it wraps. Narrow enough to
+   fit a 360px screen from where the badge sits. */
+.reason-tip {
+  width: max-content;
+  max-width: 12rem;
+  white-space: normal;
+  font-weight: 400;
+  overflow-wrap: anywhere;
+}
+
+/* The next-film badge sits right of the date: its tip opens to the left. */
+.next-film .reason-tip {
+  left: auto;
+  right: 0;
+}
+
+.film-reason {
+  margin: 0.25rem 0 0;
+  overflow-wrap: anywhere;
+}
+
 /* ---------------------------------------------------------------- admin */
 
 .colour-choice {

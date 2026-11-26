@@ -143,6 +143,31 @@ describe('film page', () => {
     expect(screen.getByText(/\(edited\)/)).toBeInTheDocument()
   })
 
+  it("shows why a Democrático was chosen, as text and as the badge's tip", async () => {
+    fetchFilm.mockResolvedValueOnce(detail({ democratico_reason: 'Nobody agreed' }))
+    renderPage()
+    expect(await screen.findByText('Why: Nobody agreed')).toBeInTheDocument()
+    const badge = screen.getByText('Democrático', { selector: '.badge' })
+    expect(badge).toHaveAttribute('tabindex', '0')
+    expect(badge).toHaveAccessibleDescription('Nobody agreed')
+    cleanup()
+
+    // Imported films have none.
+    fetchFilm.mockResolvedValueOnce(detail({ democratico_reason: null }))
+    renderPage()
+    expect(await screen.findByText('Unknown reason', { selector: 'p' })).toBeInTheDocument()
+    expect(screen.getByText('Democrático', { selector: '.badge' })).toHaveAccessibleDescription(
+      'Unknown reason',
+    )
+    cleanup()
+
+    // Other kinds: no reason line.
+    fetchFilm.mockResolvedValueOnce(detail({ kind: 'cinema', democratico_reason: null }))
+    renderPage()
+    expect(await screen.findByText('Cinema', { selector: '.badge' })).toBeInTheDocument()
+    expect(screen.queryByText(/Unknown reason|Why:/)).toBeNull()
+  })
+
   it('shows "not found" for an unknown film, with a way back', async () => {
     fetchFilm.mockResolvedValueOnce(null)
     const router = renderPage()

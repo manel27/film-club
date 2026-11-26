@@ -22,6 +22,7 @@ export interface FilmSaveBody {
   kind: FilmKind
   assigned_id: string
   turn_holder_id: string | null
+  democratico_reason: string | null
 }
 
 /** The form's fields. `picked` = the chosen TMDB film; `manual` = saving without TMDB. */
@@ -34,7 +35,22 @@ export interface FilmFormState {
   kind: FilmKind
   assignedId: string
   turnHolderId: string
+  /** Why a Democrático was chosen; kept while the kind changes, saved only for a Democrático. */
+  reason: string
 }
+
+/** The longest Democrático reason (film-save and the database check it too). */
+export const REASON_MAX = 200
+
+/**
+ * A reason as film-save stores it: invisible format characters removed,
+ * whitespace runs made one space, trimmed; nothing left is null.
+ */
+export const normaliseReason = (text: string): string | null =>
+  text
+    .replace(/\p{Cf}/gu, '')
+    .replace(/\s+/g, ' ')
+    .trim() || null
 
 /** Today in Europe/Lisbon if it's a Saturday, else the next Saturday (YYYY-MM-DD). */
 export function comingSaturday(now = new Date()): string {
@@ -135,6 +151,10 @@ export function toSaveBody(
   if (democratico && !s.turnHolderId && filmId === undefined) {
     return { error: 'Choose whose turn it was.' }
   }
+  const reason = democratico ? normaliseReason(s.reason) : null
+  if (reason && [...reason].length > REASON_MAX) {
+    return { error: `Keep the reason to ${REASON_MAX} characters or fewer.` }
+  }
   return {
     body: {
       ...(filmId === undefined ? {} : { id: filmId }),
@@ -143,6 +163,7 @@ export function toSaveBody(
       kind: s.kind,
       assigned_id: s.assignedId,
       turn_holder_id: democratico && s.turnHolderId ? s.turnHolderId : null,
+      democratico_reason: reason,
     },
   }
 }
@@ -167,6 +188,9 @@ export function functionErrorMessage(e: unknown): string {
     return "TMDB doesn't have that film. Search again."
   if (status === 404) return 'This film was removed elsewhere.'
   if (status === 502) return "TMDB isn't answering. Try again, or save without TMDB."
+  if (status === 400 && error === 'reason_too_long') {
+    return `Keep the reason to ${REASON_MAX} characters or fewer.`
+  }
   if (status === 400) return "That value isn't allowed."
   if (!status) return "Couldn't reach the server. Try again."
   return 'Something went wrong. Try again.'

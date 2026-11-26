@@ -10,6 +10,7 @@ import {
   comingSaturday,
   functionErrorMessage,
   parseYear,
+  REASON_MAX,
   screeningDateRange,
   toSaveBody,
   type FilmFormState,
@@ -56,6 +57,7 @@ function FilmForm({ id }: { id: string | undefined }) {
             kind: 'normal' as FilmKind,
             assignedId: '',
             turnHolderId: '',
+            reason: '',
           },
         }
       }
@@ -80,6 +82,7 @@ function FilmForm({ id }: { id: string | undefined }) {
           kind: f.kind,
           assignedId: f.assigned_id,
           turnHolderId: f.turn_holder_id ?? '',
+          reason: f.democratico_reason ?? '',
         },
       }
     }
@@ -346,6 +349,16 @@ function Fields({
               </option>
             ))}
           </select>
+        </label>
+      )}
+      {s.kind === 'democratico' && (
+        <label className="field">
+          Why was it chosen? (optional, up to {REASON_MAX} characters)
+          <input
+            value={s.reason}
+            maxLength={REASON_MAX}
+            onChange={(e) => set({ reason: e.target.value })}
+          />
         </label>
       )}
 

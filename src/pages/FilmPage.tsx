@@ -3,8 +3,10 @@ import { Link, useNavigate, useParams } from 'react-router'
 import { useAuth } from '../auth/authContext'
 import { fetchFilm, filmWrites, type FilmDetailData, type FilmRecord } from '../films/api'
 import { errorMessage, parseScore, permissions } from '../films/filmDetail'
-import { KIND_LABELS, type Person } from '../films/films'
+import { reasonText, type Person } from '../films/films'
 import Chip, { PersonName } from '../components/Chip'
+import { KindBadge } from '../components/FilmViews'
+import { tipsOff } from '../components/tipsOff'
 import { fetchEpoch } from '../rotation/api'
 import { lisbonDate } from '../rotation/rotation'
 
@@ -147,7 +149,6 @@ function Film({ id }: { id: string }) {
 
   const { film } = data
   const byId = new Map(data.people.map((p) => [p.id, p]))
-  const kind = KIND_LABELS[film.kind]
   const assigned = byId.get(film.assigned_id)
   const turnHolder = film.turn_holder_id ? byId.get(film.turn_holder_id) : undefined
   const perms = permissions(profile, film.scores_locked)
@@ -196,7 +197,14 @@ function Film({ id }: { id: string }) {
           {film.original_title && film.original_title !== film.title && (
             <p className="muted">{film.original_title}</p>
           )}
-          {kind && <span className="badge">{kind}</span>}
+          <span ref={tipsOff}>
+            <KindBadge kind={film.kind} reason={film.democratico_reason} tabbable />
+          </span>
+          {film.kind === 'democratico' && (
+            <p className="muted film-reason">
+              {film.democratico_reason ? `Why: ${film.democratico_reason}` : reasonText(null)}
+            </p>
+          )}
           <dl className="film-facts">
             <Fact label="Year" value={film.release_year} />
             <Fact label="Directed by" value={film.directors.join(', ')} />

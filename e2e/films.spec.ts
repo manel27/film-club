@@ -75,6 +75,25 @@ test('a member browses one flat list with names, ratings and present people', as
   await expect(egg.locator('.film-avg')).toHaveText('–No average')
   await expect(egg.getByText('Democrático')).toBeVisible()
 
+  // A Democrático's badge tells why it was chosen on hover; no Tab stop of its own in the list.
+  const vote = page.getByRole('listitem').filter({ hasText: 'The Long Vote' })
+  const voteBadge = vote.getByText('Democrático', { exact: true })
+  const voteTip = vote.getByRole('tooltip')
+  await expect(voteBadge).not.toHaveAttribute('tabindex')
+  await expect(voteBadge).toHaveAccessibleDescription(
+    'Three people had never seen a Lea Fontaine film',
+  )
+  await expect(voteTip).toBeHidden()
+  await voteBadge.hover()
+  await expect(voteTip).toHaveText('Three people had never seen a Lea Fontaine film')
+  await expect(voteTip).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(voteTip).toBeHidden()
+  await egg.getByText('Democrático', { exact: true }).hover()
+  await expect(egg.getByRole('tooltip')).toHaveText('Unknown reason')
+  await expect(egg.getByRole('tooltip')).toBeVisible()
+  await page.mouse.move(0, 0)
+
   for (const theme of THEMES) {
     await page.getByRole('banner').getByLabel('Theme').selectOption(theme)
     await page.screenshot({ path: `${SCREENSHOTS}/films-list-${theme}.png`, fullPage: true })

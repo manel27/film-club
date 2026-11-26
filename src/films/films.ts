@@ -12,6 +12,8 @@ export interface FilmItem {
   screenedOn: string // YYYY-MM-DD
   dayOrder: number
   kind: FilmKind
+  /** Why a Democrático was chosen; null or missing = not known. */
+  democraticoReason?: string | null
   assignedId: string
   presentIds: string[]
   /** Average without the easter egg's locked scores (from film_stats). */
@@ -59,6 +61,9 @@ export const KIND_LABELS: Record<FilmKind, string | null> = {
   cinema: 'Cinema',
   maratona: 'Maratona',
 }
+
+/** A Democrático's reason as shown; imported films have none. */
+export const reasonText = (reason: string | null | undefined) => reason?.trim() || 'Unknown reason'
 
 /**
  * The rating band of an average, as shown (rounded to 2 decimals), lower bounds
