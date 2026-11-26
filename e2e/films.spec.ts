@@ -201,9 +201,9 @@ test('films can be sorted by title, release year and average in a flat list', as
   ])
   await expect(page.locator('.film-date').first()).toHaveText('2026/01/24')
 
-  // The poster list works with any sort.
-  await page.getByRole('button', { name: 'Poster list' }).click()
-  await expect(page).toHaveURL(/#\/\?view=posters&sort=score-desc$/)
+  // Compact works with any sort too.
+  await page.getByRole('button', { name: 'Compact' }).click()
+  await expect(page).toHaveURL(/#\/\?view=list&sort=score-desc$/)
   await expect(filmTitles(page).first()).toHaveText('Paper Moons Over the River')
 
   await page.getByRole('button', { name: 'Poster grid' }).click()
