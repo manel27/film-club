@@ -1,8 +1,9 @@
+import { memo } from 'react'
 import { Link } from 'react-router'
 import { KIND_LABELS, ratingBand, screeningDay, type FilmItem, type Person } from '../films/films'
 import { ymd } from '../rotation/rotation'
 import { RoleChip } from './Chip'
-import { useTipsOff } from './useTipsOff'
+import { tipsOff } from './tipsOff'
 
 // Shared by the films page and profiles: a film as a list row or a poster tile, and the view toggle.
 
@@ -70,12 +71,12 @@ export function ViewToggle(props: { views: View[]; value: View; onChange: (view:
 
 const withYear = (f: FilmItem) => (f.releaseYear ? `${f.title} (${f.releaseYear})` : f.title)
 
-/** A person's colour dot; without a label it is decorative. */
-export function Dot({ person, label }: { person: Person | undefined; label?: string }) {
+/** A person's colour dot (decorative: the name is shown next to it). */
+export function Dot({ person }: { person: Person | undefined }) {
   return (
     <span
       className="colour-dot"
-      {...(label ? { role: 'img', 'aria-label': label, title: label } : { 'aria-hidden': true })}
+      aria-hidden="true"
       style={person?.colour ? { backgroundColor: person.colour } : undefined}
     />
   )
@@ -108,10 +109,14 @@ const byName = (a: Person | undefined, b: Person | undefined) =>
  * A film as one row: "Chooser · Title (Year) | 7.35 👌 | present names", with the
  * screening date and kind on a small line below. `poster` adds a thumbnail on the
  * left; `note` is shown after the kind badge (e.g. a profile's "scored, not present").
+ * One Tab stop per film (its title): the name chips are mouse shortcuts. Memoised:
+ * pass a stable `people` map so a re-sort only moves rows (only the title Link re-renders).
  */
-export function FilmRow(props: {
+export const FilmRow = memo(function FilmRow(props: {
   film: FilmItem
   people: Map<string, Person>
+  /** useHref('/people'): see Chip. */
+  peopleHref: string
   poster?: boolean
   note?: React.ReactNode
 }) {
@@ -136,7 +141,11 @@ export function FilmRow(props: {
         <div className="film-row-main">
           <span className="film-title">
             <span className="sr-only">Chosen by </span>
-            <RoleChip person={people.get(film.assignedId)} />
+            <RoleChip
+              person={people.get(film.assignedId)}
+              tabbable={false}
+              peopleHref={props.peopleHref}
+            />
             <span aria-hidden="true"> · </span>
             <Link to={`/films/${film.id}`}>{film.title}</Link>
             {film.releaseYear && <span className="muted"> ({film.releaseYear})</span>}
@@ -148,7 +157,12 @@ export function FilmRow(props: {
                 .map((id) => people.get(id))
                 .sort(byName)
                 .map((p, i) => (
-                  <RoleChip key={p?.id ?? i} person={p} />
+                  <RoleChip
+                    key={p?.id ?? i}
+                    person={p}
+                    tabbable={false}
+                    peopleHref={props.peopleHref}
+                  />
                 ))}
             </span>
           )}
@@ -161,14 +175,14 @@ export function FilmRow(props: {
       </div>
     </li>
   )
-}
+})
 
 /**
  * A poster linking to the film. Its date, chooser and rating show as an overlay on
  * hover or focus, or under the poster on touch screens (CSS). They are inside the
  * link, so screen readers hear them as part of its name.
  */
-export function PosterTile(props: {
+export const PosterTile = memo(function PosterTile(props: {
   film: FilmItem
   people: Map<string, Person>
   note?: React.ReactNode
@@ -177,7 +191,7 @@ export function PosterTile(props: {
   const name = withYear(film)
   const chooser = props.people.get(film.assignedId)?.name ?? 'Unknown'
   return (
-    <li className="poster" title={name}>
+    <li className="poster">
       <Link to={`/films/${film.id}`}>
         {film.posterPath ? (
           <img
@@ -203,7 +217,7 @@ export function PosterTile(props: {
       {note != null && <span className="muted poster-note">{note}</span>}
     </li>
   )
-}
+})
 
 /** The film already added for the next screening; the whole card links to it. */
 export function NextFilmCard(props: {
@@ -213,13 +227,8 @@ export function NextFilmCard(props: {
 }) {
   const { film } = props
   const kind = KIND_LABELS[film.kind]
-  const tips = useTipsOff()
   return (
-    <section
-      {...tips}
-      className={`card next-film ${tips.className}`}
-      aria-labelledby="next-film-heading"
-    >
+    <section ref={tipsOff} className="card next-film" aria-labelledby="next-film-heading">
       {film.posterPath ? (
         <img
           className="next-film-poster"
@@ -237,13 +246,14 @@ export function NextFilmCard(props: {
         <h2 id="next-film-heading">Next film</h2>
         <p className="next-film-title">
           {/* Stretched over the whole card (CSS); the chooser's chip sits above it. */}
-          <Link to={`/films/${film.id}`} className="card-link">
+          <Link to={`/films/${film.id}`} className="card-link" aria-describedby="next-film-when">
             {film.title}
           </Link>
           {film.releaseYear && <span className="muted"> ({film.releaseYear})</span>}
         </p>
-        <p className="muted film-meta">
+        <p id="next-film-when" className="muted film-meta">
           <span>{screeningDay(film.screenedOn, props.today)}</span>
+          {/* Read as one description: "Sat 5 Dec 2026 Maratona". */}{' '}
           {kind && <span className="badge">{kind}</span>}
         </p>
         <p>

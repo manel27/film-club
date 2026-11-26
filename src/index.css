@@ -498,6 +498,8 @@ a {
 .poster a {
   position: relative;
   display: block;
+  text-decoration: none;
+  color: inherit;
 }
 
 .poster-details {
@@ -563,6 +565,12 @@ a {
   aspect-ratio: 2 / 3;
   border: 1px solid var(--border);
   border-radius: 0.25rem;
+}
+
+/* Narrower than a grid poster: break between words, not inside them. */
+.next-film .poster-placeholder {
+  font-size: 0.6875rem;
+  overflow-wrap: break-word;
 }
 
 .next-film-title {
@@ -656,17 +664,11 @@ a {
   white-space: nowrap;
 }
 
-.film-title a,
-.poster a {
+.film-title a {
   color: inherit;
 }
 
 .film-title a:not(:hover) {
-  text-decoration: none;
-}
-
-.poster a {
-  display: block;
   text-decoration: none;
 }
 

@@ -66,7 +66,7 @@ const lisbon = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Lisbon' })
 /** The Europe/Lisbon calendar date (YYYY-MM-DD) of an instant. */
 export const lisbonDate = (at: Date | string = new Date()) => lisbon.format(new Date(at))
 
-/** The Monday of the Mon–Sun week holding `date` (same as films.ts weekStart). */
+/** The Monday of the Mon–Sun week holding `date`. */
 export function mondayOf(date: string): string {
   const [y, m, d] = date.split('-').map(Number)
   const t = Date.UTC(y, m - 1, d, 12)

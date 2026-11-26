@@ -139,17 +139,38 @@ describe('films page', () => {
     expect(row.querySelector('.film-avg')).toHaveTextContent(/^9\.90average 9\.90$/)
   })
 
-  it('Escape hides the role tips until focus or the pointer moves', async () => {
+  it('Escape hides a hovered role tip with focus anywhere, until focus or the pointer moves', async () => {
     renderPage()
     const ada = (await screen.findAllByRole('link', { name: 'Ada' }))[0]
     const list = ada.closest('ul')!
-    fireEvent.keyDown(ada, { key: 'Escape' })
+    fireEvent.pointerOver(ada)
+    expect(document.activeElement).toBe(document.body)
+    fireEvent.keyDown(document.body, { key: 'Escape' })
     expect(list).toHaveClass('tips-off')
-    fireEvent.focusIn(ada)
-    expect(list).not.toHaveClass('tips-off')
-    fireEvent.keyDown(ada, { key: 'Escape' })
     fireEvent.pointerOver(ada)
     expect(list).not.toHaveClass('tips-off')
+    fireEvent.keyDown(document.body, { key: 'Enter' })
+    expect(list).not.toHaveClass('tips-off')
+    fireEvent.keyDown(document.body, { key: 'Escape' })
+    fireEvent.focusIn(ada)
+    expect(list).not.toHaveClass('tips-off')
+  })
+
+  it('keeps one Tab stop per film: the name chips are mouse shortcuts', async () => {
+    renderPage('/?view=posters')
+    await screen.findByText('3 films')
+    for (const row of screen.getAllByRole('listitem')) {
+      const tabbable = [...row.querySelectorAll('a, button, [tabindex]')].filter(
+        (el) => el.getAttribute('tabindex') !== '-1',
+      )
+      expect(tabbable.map((el) => el.getAttribute('href'))).toEqual([
+        expect.stringMatching(/^\/films\/\d+$/),
+      ])
+    }
+    // Still links with their role for screen readers (browse mode) and the mouse.
+    const chip = within(screen.getAllByRole('listitem')[0]).getAllByRole('link', { name: 'Ada' })[0]
+    expect(chip).toHaveAttribute('href', '/people/p-ada')
+    expect(chip).toHaveAccessibleDescription('Admin')
   })
 
   it('keeps sort and filters in the URL and localStorage', async () => {
@@ -404,7 +425,9 @@ describe('next film card', () => {
     const card = await screen.findByRole('region', { name: 'Next film' })
     expect(screen.queryByText('Next up card')).toBeNull()
     // The whole card links to the film (CSS stretches the title link over it).
-    expect(within(card).getByRole('link', { name: 'First' })).toHaveAttribute('href', '/films/12')
+    const link = within(card).getByRole('link', { name: 'First' })
+    expect(link).toHaveAttribute('href', '/films/12')
+    expect(link).toHaveAccessibleDescription('Sat 5 Dec 2026 Maratona')
     expect(card).toHaveTextContent('First (1999)')
     expect(card).toHaveTextContent('Sat 5 Dec 2026')
     expect(within(card).getByText('Maratona', { selector: '.badge' })).toBeInTheDocument()
@@ -416,6 +439,7 @@ describe('next film card', () => {
     const chooser = within(card).getByRole('link', { name: 'Ada' })
     expect(chooser).toHaveAttribute('href', '/people/p-ada')
     expect(chooser).toHaveAccessibleDescription('Admin')
+    expect(chooser).not.toHaveAttribute('tabindex') // a Tab stop here, so the tip shows on focus
     expect(card).toHaveTextContent('Chosen by Ada')
   })
 

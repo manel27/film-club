@@ -71,6 +71,7 @@ describe('screeningDay', () => {
   it('shows a weekday, day, month and year', () => {
     expect(screeningDay('2026-12-05', '2026-11-26')).toBe('Sat 5 Dec 2026')
     expect(screeningDay('2027-01-01', '2026-11-26')).toBe('Fri 1 Jan 2027')
+    expect(screeningDay('2026-09-05', '2026-11-26')).toBe('Sat 5 Sep 2026') // not "Sept"
   })
 
   it('says Today for today', () => {

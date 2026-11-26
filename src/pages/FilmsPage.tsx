@@ -1,7 +1,7 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { Link, useLocation, useSearchParams } from 'react-router'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { Link, useHref, useLocation, useSearchParams } from 'react-router'
 import { useAuth } from '../auth/authContext'
-import { useTipsOff } from '../components/useTipsOff'
+import { tipsOff } from '../components/tipsOff'
 import { Dot, FilmRow, NextFilmCard, PosterTile, ViewToggle } from '../components/FilmViews'
 import NextUpCard from '../components/NextUp'
 import { fetchFilmsData, type FilmsData } from '../films/api'
@@ -52,9 +52,11 @@ export default function FilmsPage() {
   const canScore = !!profile && profile.role !== 'viewer'
   const isStaff = profile?.role === 'admin' || profile?.role === 'moderator'
   const [data, setData] = useState<FilmsData | null>(null)
+  // Stable between renders, so the memoised rows only re-render when their film changes.
+  const people = useMemo(() => new Map(data?.people.map((p) => [p.id, p])), [data])
+  const peopleHref = useHref('/people')
   const [failed, setFailed] = useState(false)
   const [attempt, setAttempt] = useState(0)
-  const tips = useTipsOff()
   // E.g. "Deleted …" after deleting a film. Kept in state: restoring the saved view replaces the URL and its state.
   const { state: navState } = useLocation()
   const [notice] = useState((navState as { notice?: string } | null)?.notice)
@@ -144,7 +146,6 @@ export default function FilmsPage() {
   }
 
   // ~300 films: cheap enough to recompute on every render.
-  const people = new Map(data?.people.map((p) => [p.id, p]))
   const films = data ? sortFilms(filterFilms(data.films, filters, data.scored), sort) : []
   const count = films.length
   const today = lisbonDate()
@@ -269,9 +270,15 @@ export default function FilmsPage() {
                 ))}
               </ul>
             ) : (
-              <ul {...tips} className={`film-list ${tips.className}`}>
+              <ul ref={tipsOff} className="film-list">
                 {films.map((f) => (
-                  <FilmRow key={f.id} film={f} people={people} poster={view === 'posters'} />
+                  <FilmRow
+                    key={f.id}
+                    film={f}
+                    people={people}
+                    peopleHref={peopleHref}
+                    poster={view === 'posters'}
+                  />
                 ))}
               </ul>
             ))}

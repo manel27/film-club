@@ -79,13 +79,9 @@ export function ratingBand(avg: number): { emoji: string; label: string } {
   return { emoji, label }
 }
 
-const DATE_FORMAT = new Intl.DateTimeFormat('en-GB', {
-  weekday: 'short',
-  day: 'numeric',
-  month: 'short',
-  year: 'numeric',
-  timeZone: 'UTC',
-})
+// Fixed names: Intl's en-GB says "Sept" and adds a comma.
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
 /**
  * A calendar date (YYYY-MM-DD) as "Sat 5 Dec 2026", or "Today" when it is `today`.
@@ -97,7 +93,8 @@ export function screeningDay(date: string, today: string): string {
   const t = m ? Date.UTC(+m[1], +m[2] - 1, +m[3], 12) : NaN
   // Date.UTC rolls 2026-02-31 over to March: reject it.
   if (!m || new Date(t).toISOString().slice(0, 10) !== date) return 'Date unknown'
-  return DATE_FORMAT.format(t).replace(',', '')
+  const d = new Date(t)
+  return `${WEEKDAYS[d.getUTCDay()]} ${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`
 }
 
 /**

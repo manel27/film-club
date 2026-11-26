@@ -48,18 +48,21 @@ test('a member browses one flat list with names, ratings and present people', as
   const present = orchard.getByRole('group', { name: 'Present' })
   await expect(present.locator('.chip')).toHaveText(['Kwame', 'Orla', 'Tamsin', 'Viggo'])
 
-  // The role shows on hover and on focus; Escape hides it.
+  // No Tab stop on the names (one per film); the role shows on hover.
+  await expect(kwame).toHaveAttribute('tabindex', '-1')
   const tip = orchard.locator('.film-title').getByRole('tooltip', { name: 'Member' })
   await expect(tip).toBeHidden()
   await kwame.hover()
   await expect(tip).toBeVisible()
   await page.mouse.move(0, 0)
   await expect(tip).toBeHidden()
-  await kwame.focus()
+  // Escape hides a hovered tip while focus is elsewhere (WCAG 1.4.13).
+  await kwame.hover()
   await expect(tip).toBeVisible()
+  expect(await page.evaluate(() => document.activeElement === document.body)).toBe(true)
   await page.keyboard.press('Escape')
   await expect(tip).toBeHidden()
-  await kwame.blur()
+  await page.mouse.move(0, 0)
 
   // A system chooser is a plain chip: no link, no tip.
   const paper = page.getByRole('listitem').filter({ hasText: 'Paper Moons' })
@@ -76,6 +79,12 @@ test('a member browses one flat list with names, ratings and present people', as
     await page.getByRole('banner').getByLabel('Theme').selectOption(theme)
     await page.screenshot({ path: `${SCREENSHOTS}/films-list-${theme}.png`, fullPage: true })
   }
+
+  // A name opens the person's profile (a plain link, not a router Link: see Chip).
+  await kwame.click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Kwame' })).toBeVisible()
+  await page.goBack()
+  await expect(page.getByText('8 films')).toBeVisible()
 })
 
 test('view and filters are kept in the URL and restored from localStorage', async ({ page }) => {
@@ -198,7 +207,7 @@ test('films can be sorted by title, release year and average in a flat list', as
   await page.getByRole('button', { name: 'Poster grid' }).click()
   await expect(page).toHaveURL(/#\/\?view=grid&sort=score-desc$/)
   const first = page.locator('.poster').first()
-  await expect(first).toHaveAttribute('title', 'Paper Moons Over the River (2018)')
+  await expect(first.getByRole('link')).toHaveAccessibleName(/^Paper Moons Over the River \(2018\)/)
   await expect(first.locator('.poster-details .film-avg')).toContainText('8.75 👏')
 })
 
@@ -211,6 +220,12 @@ test('the next film card shows the film added for the next screening', async ({ 
   await expect(card).toContainText('Chosen by Yusuf')
   await expect(page.getByRole('region', { name: 'Next up' })).toHaveCount(0)
   await expect(card.getByRole('link', { name: 'Yusuf' })).toHaveAccessibleDescription('Member')
+  await expect(card.getByRole('link', { name: "Tomorrow's Feature" })).toHaveAccessibleDescription(
+    'Sat 5 Dec 2026',
+  )
+  // Here the chip is a Tab stop, so its role also shows on focus.
+  await card.getByRole('link', { name: 'Yusuf' }).focus()
+  await expect(card.getByRole('tooltip', { name: 'Member' })).toBeVisible()
 
   // The chooser's chip opens their profile; anywhere else on the card opens the film.
   await card.getByRole('link', { name: 'Yusuf' }).click()
@@ -223,17 +238,27 @@ test('the next film card shows the film added for the next screening', async ({ 
   await expect(page.getByRole('heading', { level: 1, name: "Tomorrow's Feature" })).toBeVisible()
 })
 
-test('without a film added for the next screening, the rotation card stays', async ({ page }) => {
-  await page.clock.setFixedTime(BEFORE_NEXT_FILM)
-  // Leave out the films still to come, as if none had been added yet.
+test('without a film added for the next screening, Next up stays, and a member can pass', async ({
+  page,
+}) => {
+  // Real time (a pass is for the real coming week): leave out the films from today on, as if none had been added yet.
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Lisbon' }).format(new Date())
   await page.route(/\/rest\/v1\/films\?/, async (route) => {
     const response = await route.fetch()
     const films = (await response.json()) as { screened_on: string }[]
-    await route.fulfill({ response, json: films.filter((f) => f.screened_on < '2026-11-20') })
+    await route.fulfill({ response, json: films.filter((f) => f.screened_on < today) })
   })
   await logIn(page, E2E_MEMBER.email, E2E_PASSWORD)
-  await expect(page.getByRole('region', { name: 'Next up' })).toBeVisible()
+  const card = page.getByRole('region', { name: 'Next up' })
+  await expect(card).toBeVisible()
   await expect(page.getByRole('region', { name: 'Next film' })).toHaveCount(0)
+
+  await card.getByRole('button', { name: "I can't make it" }).click()
+  await expect(card).toContainText(`Can't make it: ${E2E_MEMBER.name}`)
+  await expect(card.getByRole('button', { name: 'I can make it after all' })).toBeFocused()
+  await card.getByRole('button', { name: 'I can make it after all' }).click()
+  await expect(card).not.toContainText("Can't make it")
+  await expect(card.getByRole('button', { name: "I can't make it" })).toBeFocused()
 })
 
 test('the present filter closes on a click outside or Escape', async ({ page }) => {
