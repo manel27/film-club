@@ -39,7 +39,10 @@ test('a member browses one flat list with names, ratings and present people', as
   const orchard = page.getByRole('listitem').filter({ hasText: 'The Quiet Orchard' })
   const kwame = orchard.locator('.film-title').getByRole('link', { name: 'Kwame' })
   await expect(kwame).toHaveAccessibleDescription('Member')
-  await expect(orchard.locator('.film-title')).toContainText('Kwame · The Quiet Orchard (2019)')
+  // textContent also holds the hidden "Chosen by" and role tip.
+  await expect(orchard.locator('.film-title')).toHaveText(
+    /Kwame(Member)? · The Quiet Orchard \(2019\)$/,
+  )
   await expect(orchard.locator('.film-avg')).toHaveText('7.69 👌average 7.69, good')
   await expect(orchard.locator('.film-date')).toHaveText('2026/01/10')
   const present = orchard.getByRole('group', { name: 'Present' })
@@ -114,7 +117,7 @@ test('the poster grid shows date, chooser and rating on hover or focus', async (
 
   const orchard = page.locator('.poster', { hasText: 'The Quiet Orchard' })
   const details = orchard.locator('.poster-details')
-  await expect(details).toHaveText('2026/01/10Kwame7.69 👌')
+  await expect(details).toHaveText(/^2026\/01\/10Kwame7\.69 👌/) // then the rating's hidden text
   await expect(details).toHaveCSS('opacity', '0')
   await orchard.hover()
   await expect(details).toHaveCSS('opacity', '1')
@@ -134,20 +137,23 @@ test('the poster grid shows date, chooser and rating on hover or focus', async (
   )
 })
 
-test('on a touch screen the grid shows the details under each poster', async ({ page }) => {
-  const cdp = await page.context().newCDPSession(page)
-  await cdp.send('Emulation.setEmulatedMedia', { features: [{ name: 'hover', value: 'none' }] })
-  await page.setViewportSize({ width: 360, height: 740 })
-  await logIn(page, E2E_MEMBER.email, E2E_PASSWORD)
-  await page.getByRole('button', { name: 'Poster grid' }).click()
-  const details = page
-    .locator('.poster', { hasText: 'The Quiet Orchard' })
-    .locator('.poster-details')
-  await expect(details).toBeVisible()
-  await expect(details).toHaveCSS('opacity', '1')
-  await expect(details).toHaveCSS('position', 'static')
-  expect(await overflow(page)).toBe(0)
-  await page.screenshot({ path: `${SCREENSHOTS}/films-grid-touch.png`, fullPage: true })
+test.describe('on a touch screen', () => {
+  // A phone: Chromium then matches (hover: none).
+  test.use({ viewport: { width: 360, height: 740 }, isMobile: true, hasTouch: true })
+
+  test('the grid shows the details under each poster', async ({ page }) => {
+    await logIn(page, E2E_MEMBER.email, E2E_PASSWORD)
+    expect(await page.evaluate(() => matchMedia('(hover: none)').matches)).toBe(true)
+    await page.getByRole('button', { name: 'Poster grid' }).click()
+    const details = page
+      .locator('.poster', { hasText: 'The Quiet Orchard' })
+      .locator('.poster-details')
+    await expect(details).toBeVisible()
+    await expect(details).toHaveCSS('opacity', '1')
+    await expect(details).toHaveCSS('position', 'static')
+    expect(await overflow(page)).toBe(0)
+    await page.screenshot({ path: `${SCREENSHOTS}/films-grid-touch.png`, fullPage: true })
+  })
 })
 
 test('films can be sorted by title, release year and average in a flat list', async ({ page }) => {
@@ -210,7 +216,10 @@ test('the next film card shows the film added for the next screening', async ({ 
   await card.getByRole('link', { name: 'Yusuf' }).click()
   await expect(page.getByRole('heading', { level: 1, name: 'Yusuf' })).toBeVisible()
   await page.goBack()
-  await card.getByText('Sat 5 Dec 2026').click()
+  // Its bottom-right corner: no text there, only the stretched film link.
+  const box = (await card.boundingBox())!
+  await card.click({ position: { x: box.width - 8, y: box.height - 8 } })
+  await expect(page).toHaveURL(/#\/films\/8$/)
   await expect(page.getByRole('heading', { level: 1, name: "Tomorrow's Feature" })).toBeVisible()
 })
 

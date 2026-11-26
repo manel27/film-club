@@ -233,7 +233,7 @@ export function NextFilmCard(props: {
           {film.title}
         </span>
       )}
-      <div>
+      <div className="next-film-body">
         <h2 id="next-film-heading">Next film</h2>
         <p className="next-film-title">
           {/* Stretched over the whole card (CSS); the chooser's chip sits above it. */}

@@ -40,7 +40,7 @@ test('a profile shows stats and switches between present, not present, watched a
   await page.getByRole('link', { name: 'Orla' }).click()
 
   await expect(page.getByRole('heading', { level: 1, name: 'Orla' })).toBeVisible()
-  await expect(page.getByText('Admin', { exact: true })).toBeVisible()
+  await expect(page.locator('.badge', { hasText: 'Admin' })).toBeVisible()
   const stats = page.locator('.profile-stats')
   // The easter egg's 11 and choice count nowhere.
   await expect(stats).toContainText('Films present5')
