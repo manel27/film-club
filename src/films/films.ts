@@ -180,7 +180,7 @@ export function readParams(params: URLSearchParams): PageState {
     unscored: params.get('unscored') === '1',
   }
   return {
-    view: view === 'posters' || view === 'grid' ? view : 'list',
+    view: view === 'list' || view === 'grid' ? view : 'posters',
     sort: Object.hasOwn(SORTS, sort) ? (sort as Sort) : 'newest',
     filters,
   }
@@ -189,7 +189,7 @@ export function readParams(params: URLSearchParams): PageState {
 /** The page state as search params, defaults left out (known keys only). */
 export function toParams({ view, sort, filters: f }: PageState): URLSearchParams {
   const p = new URLSearchParams()
-  if (view !== 'list') p.set('view', view)
+  if (view !== 'posters') p.set('view', view)
   if (sort !== 'newest') p.set('sort', sort)
   if (f.present.length > 0) p.set('present', f.present.join(','))
   if (f.presentMode === 'all') p.set('presentMode', 'all')

@@ -210,7 +210,7 @@ describe('filterFilms', () => {
 describe('readParams', () => {
   it('has defaults and ignores unknown values', () => {
     const { view, sort, filters } = readParams(new URLSearchParams('view=mosaic&sort=x&kind=bogus'))
-    expect(view).toBe('list')
+    expect(view).toBe('posters')
     expect(sort).toBe('newest')
     expect(filters).toEqual(NO_FILTERS)
     expect(readParams(new URLSearchParams('sort=toString')).sort).toBe('newest')
