@@ -103,19 +103,21 @@ test('view and filters are kept in the URL and restored from localStorage', asyn
   await tamsin.click()
   await expect(tamsin).not.toBeChecked()
 
-  await page.getByRole('button', { name: 'Poster list' }).click()
+  // Poster list is the default; Compact drops the thumbnails.
   await expect(page.locator('.film-row .film-thumb')).toHaveCount(2)
   await page.screenshot({ path: `${SCREENSHOTS}/films-poster-list.png`, fullPage: true })
+  await page.getByRole('button', { name: 'Compact' }).click()
+  await expect(page.locator('.film-row .film-thumb')).toHaveCount(0)
 
   // Opening the page without any choice in the URL brings the last one back.
   await page.goto('./#/')
-  await expect(page).toHaveURL(/#\/\?view=posters&sort=oldest&kind=maratona$/)
+  await expect(page).toHaveURL(/#\/\?view=list&sort=oldest&kind=maratona$/)
   await expect(page.getByText('2 films')).toBeVisible()
 
   await page.getByRole('button', { name: 'Clear filters' }).click()
   await expect(page.getByText('8 films')).toBeVisible()
   // Sort and view are not filters: they stay.
-  await expect(page).toHaveURL(/#\/\?view=posters&sort=oldest$/)
+  await expect(page).toHaveURL(/#\/\?view=list&sort=oldest$/)
 })
 
 test('the poster grid shows date, chooser and rating on hover or focus', async ({ page }) => {
@@ -294,7 +296,7 @@ test('the films page fits a 360px screen in every view and theme', async ({ page
   for (const theme of THEMES) {
     await page.getByRole('banner').getByLabel('Theme').selectOption(theme)
     for (const [view, file] of [
-      ['List', 'list'],
+      ['Compact', 'list'],
       ['Poster list', 'poster-list'],
       ['Poster grid', 'grid'],
     ]) {
@@ -315,7 +317,7 @@ test('the films page fits a 360px screen in every view and theme', async ({ page
     .screenshot({ path: `${SCREENSHOTS}/films-narrow-next-film.png` })
 
   // A present name's role tip, shown by focus near the right edge, doesn't widen the page.
-  await page.getByRole('button', { name: 'List', exact: true }).click()
+  await page.getByRole('button', { name: 'Compact', exact: true }).click()
   const orchard = page.getByRole('listitem').filter({ hasText: 'The Quiet Orchard' })
   await orchard.getByRole('group', { name: 'Present' }).getByRole('link').last().focus()
   await expect(orchard.getByRole('group', { name: 'Present' }).getByRole('tooltip')).toBeVisible()

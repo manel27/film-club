@@ -209,31 +209,30 @@ describe('films page', () => {
   })
 
   it('restores the last choice when opened without one', async () => {
-    localStorage.setItem('film-club-films', 'view=posters&year=2025')
+    localStorage.setItem('film-club-films', 'view=list&year=2025')
     const router = renderPage()
     expect(await screen.findByText('1 film')).toBeInTheDocument()
-    expect(router.state.location.search).toBe('?view=posters&year=2025')
-    // An old "posters" link or saved value opens the poster list.
-    expect(screen.getByRole('button', { name: 'Poster list' })).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    )
-    expect(document.querySelector('.film-row .film-thumb')).toBeInTheDocument()
+    expect(router.state.location.search).toBe('?view=list&year=2025')
+    expect(screen.getByRole('button', { name: 'Compact' })).toHaveAttribute('aria-pressed', 'true')
+    expect(document.querySelector('.film-row .film-thumb')).toBeNull()
   })
 
   it('shows a notice passed by the previous page (a deleted film), even after restoring the view', async () => {
-    localStorage.setItem('film-club-films', 'view=posters')
+    localStorage.setItem('film-club-films', 'view=list')
     const router = renderPage({ pathname: '/', state: { notice: 'Deleted "Old Film".' } })
-    await waitFor(() => expect(router.state.location.search).toBe('?view=posters'))
+    await waitFor(() => expect(router.state.location.search).toBe('?view=list'))
     expect(screen.getByText('Deleted "Old Film".')).toHaveAttribute('role', 'status')
     expect(screen.getByText('Deleted "Old Film".')).toHaveFocus()
   })
 
   it('does not bring the saved choice back when the visitor empties the URL', async () => {
-    const router = renderPage('/?view=posters')
-    fireEvent.click(await screen.findByRole('button', { name: 'List' }))
+    const router = renderPage('/?view=list')
+    fireEvent.click(await screen.findByRole('button', { name: 'Poster list' }))
     expect(router.state.location.search).toBe('')
-    expect(screen.getByRole('button', { name: 'List' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Poster list' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
     expect(localStorage.getItem('film-club-films')).toBe('')
   })
 
@@ -241,7 +240,7 @@ describe('films page', () => {
     localStorage.setItem('film-club-films', 'year=2025')
     const router = renderPage()
     await screen.findByText('1 film')
-    fireEvent.click(screen.getByRole('button', { name: 'List' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Poster list' }))
     await act(() => router.navigate('/'))
     await waitFor(() => expect(router.state.location.search).toBe('?year=2025'))
   })
@@ -280,14 +279,14 @@ describe('films page', () => {
   })
 
   it('keeps the poster list with any sort, a thumbnail on each row', async () => {
-    const router = renderPage('/?view=posters&sort=title')
+    const router = renderPage('/?sort=title')
     await screen.findByText('3 films')
     expect(screen.getByRole('button', { name: 'Poster list' })).toHaveAttribute(
       'aria-pressed',
       'true',
     )
     expect(screen.getByRole('button', { name: 'Poster list' })).not.toHaveAttribute('aria-disabled')
-    expect(router.state.location.search).toBe('?view=posters&sort=title')
+    expect(router.state.location.search).toBe('?sort=title')
     const rows = screen.getAllByRole('listitem')
     expect(rows.map((r) => r.querySelector('.film-title a[href^="/films/"]')?.textContent)).toEqual(
       ['Glass River', 'Night Bus', 'Shark Joke'],
@@ -343,12 +342,18 @@ describe('films page', () => {
     ).toEqual(['2026/11/14', '2026/11/07', '2025/06/14'])
   })
 
-  it('falls back to the list for an unknown view', async () => {
-    renderPage('/?view=mosaic')
-    await screen.findByText('3 films')
-    expect(screen.getByRole('button', { name: 'List' })).toHaveAttribute('aria-pressed', 'true')
-    expect(document.querySelector('.film-thumb, .poster')).toBeNull()
-  })
+  it.each(['/', '/?view=mosaic', '/?view=posters'])(
+    'opens the poster list for %s (default, unknown view, old link)',
+    async (url) => {
+      renderPage(url)
+      await screen.findByText('3 films')
+      expect(screen.getByRole('button', { name: 'Poster list' })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      )
+      expect(document.querySelector('.film-row .film-thumb')).toBeInTheDocument()
+    },
+  )
 
   it('closes the present filter on a click outside or Escape', async () => {
     renderPage()

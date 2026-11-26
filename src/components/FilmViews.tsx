@@ -14,7 +14,7 @@ export type View = 'list' | 'posters' | 'grid'
 
 // Inline icons (stroke = currentColor, so they follow the theme).
 const VIEWS: Record<View, [string, React.ReactNode]> = {
-  list: ['List', <path d="M4 6h.01M9 6h11M4 12h.01M9 12h11M4 18h.01M9 18h11" />],
+  list: ['Compact', <path d="M4 6h.01M9 6h11M4 12h.01M9 12h11M4 18h.01M9 18h11" />],
   posters: [
     'Poster list',
     <>
