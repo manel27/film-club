@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Locator, type Page } from '@playwright/test'
 import { E2E_MEMBER, E2E_PASSWORD, SEED_VIEWER } from './fixtures'
 
 // Uses the synthetic films in supabase/seed.sql.
@@ -74,6 +74,26 @@ test('a member browses one flat list with names, ratings and present people', as
   const egg = page.getByRole('listitem').filter({ hasText: 'Megashark Rising 2' })
   await expect(egg.locator('.film-avg')).toHaveText('–No average')
   await expect(egg.getByText('Democrático')).toBeVisible()
+
+  // A Democrático's badge tells why it was chosen on hover; no Tab stop of its own in the list.
+  const vote = page.getByRole('listitem').filter({ hasText: 'The Long Vote' })
+  const voteBadge = vote.getByText('Democrático', { exact: true })
+  const voteTip = vote.locator('.reason-tip')
+  await expect(voteBadge).not.toHaveAttribute('tabindex')
+  // Screen readers read it as text after the badge.
+  await expect(vote.locator('.film-meta .sr-only')).toHaveText(
+    ' (Why: Three people had never seen a Lea Fontaine film)',
+  )
+  await expect(voteTip).toBeHidden()
+  await voteBadge.hover()
+  await expect(voteTip).toHaveText('Three people had never seen a Lea Fontaine film')
+  await expect(voteTip).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(voteTip).toBeHidden()
+  await egg.getByText('Democrático', { exact: true }).hover()
+  await expect(egg.locator('.reason-tip')).toHaveText('Unknown reason')
+  await expect(egg.locator('.reason-tip')).toBeVisible()
+  await page.mouse.move(0, 0)
 
   for (const theme of THEMES) {
     await page.getByRole('banner').getByLabel('Theme').selectOption(theme)
@@ -326,5 +346,106 @@ test('the films page fits a 360px screen in every view and theme', async ({ page
   // The present panel opens inline.
   await page.getByText('Present', { exact: true }).click()
   await expect(page.getByRole('checkbox', { name: 'Tamsin' })).toBeVisible()
+  expect(await overflow(page)).toBe(0)
+})
+
+// 199 characters that wrap like real words: the longest a reason gets.
+const LONG_REASON = 'Because '.repeat(25).trim()
+
+/**
+ * Route fixture: the films queries answer with these films as Democráticos with
+ * LONG_REASON. Nothing is written, so other tests never see it.
+ */
+async function longReasons(page: Page, ids: number[]) {
+  await page.route(/\/rest\/v1\/films\?/, async (route) => {
+    const response = await route.fetch()
+    const rows = await response.json()
+    if (!Array.isArray(rows)) return route.fulfill({ response })
+    for (const f of rows) {
+      if (ids.includes(f.id))
+        Object.assign(f, { kind: 'democratico', democratico_reason: LONG_REASON })
+    }
+    await route.fulfill({ response, json: rows })
+  })
+}
+
+/** Hovers the Democrático badge in `scope`; its tip shows the reason within `bounds`. */
+async function tipWithin(
+  scope: Locator,
+  bounds: { x: number; y: number; width: number; height: number },
+) {
+  await scope.getByText('Democrático', { exact: true }).hover()
+  const tip = scope.locator('.reason-tip')
+  await expect(tip).toBeVisible()
+  await expect(tip).toHaveText(LONG_REASON)
+  const box = (await tip.boundingBox())!
+  expect(box.x).toBeGreaterThanOrEqual(bounds.x)
+  expect(box.y).toBeGreaterThanOrEqual(bounds.y)
+  expect(box.x + box.width).toBeLessThanOrEqual(bounds.x + bounds.width)
+  expect(box.y + box.height).toBeLessThanOrEqual(bounds.y + bounds.height)
+  // On top: nothing (a chip, the next row) covers any part of it (a 5 x 5 grid of points).
+  const covered = await tip.evaluate((el) => {
+    const r = el.getBoundingClientRect()
+    const steps = [0.05, 0.275, 0.5, 0.725, 0.95]
+    return steps.some((fx) =>
+      steps.some(
+        (fy) =>
+          !el.contains(document.elementFromPoint(r.left + fx * r.width, r.top + fy * r.height)),
+      ),
+    )
+  })
+  expect(covered, 'the tip is covered').toBe(false)
+}
+
+test('a 200-character reason tip stays on a 360px screen in lists and the next-film card', async ({
+  page,
+}) => {
+  // The Long Vote and the next film (Tomorrow's Feature) as Democráticos.
+  await longReasons(page, [6, 8])
+  await page.clock.setFixedTime(BEFORE_NEXT_FILM)
+  await page.setViewportSize({ width: 360, height: 740 })
+  await logIn(page, E2E_MEMBER.email, E2E_PASSWORD)
+  const card = page.getByRole('region', { name: 'Next film' })
+  await expect(card).toBeVisible()
+  // The width of a phone; any height (the page scrolls down).
+  const phone = { x: 0, y: -1e6, width: 360, height: 2e6 }
+  // Themes switched on the page only (the picker would save the choice).
+  for (const theme of THEMES) {
+    await page.evaluate((t) => (document.documentElement.dataset.theme = t), theme)
+    for (const view of ['Poster list', 'Compact']) {
+      await page.getByRole('button', { name: view, exact: true }).click()
+      const vote = page.getByRole('listitem').filter({ hasText: 'The Long Vote' })
+      await vote.scrollIntoViewIfNeeded()
+      await tipWithin(vote, phone)
+      expect(await overflow(page), `${view} in ${theme}`).toBe(0)
+      await page.mouse.move(0, 0)
+    }
+    await card.scrollIntoViewIfNeeded()
+    await tipWithin(card, phone)
+    expect(await overflow(page), `next film in ${theme}`).toBe(0)
+    await page.screenshot({ path: `${SCREENSHOTS}/films-narrow-reason-${theme}.png` })
+    await page.mouse.move(0, 0)
+  }
+})
+
+test("a reason tip on the rotation table's last row stays inside the table", async ({ page }) => {
+  // The Quiet Orchard, the oldest of the past choosers (the last row), as a Democrático.
+  await longReasons(page, [1])
+  await page.clock.setFixedTime(BEFORE_NEXT_FILM)
+  await page.setViewportSize({ width: 360, height: 740 })
+  await logIn(page, E2E_MEMBER.email, E2E_PASSWORD)
+  await page.goto('./#/rotation')
+  const past = page.locator('section', {
+    has: page.getByRole('heading', { name: 'Past choosers' }),
+  })
+  const scroller = past.locator('.table-scroll')
+  const last = scroller.locator('tbody tr').last()
+  await expect(last).toContainText('The Quiet Orchard')
+  const height = () => scroller.evaluate((el) => [el.scrollHeight, el.clientHeight])
+  const [before] = await height()
+  await last.scrollIntoViewIfNeeded()
+  await tipWithin(last, (await scroller.boundingBox())!)
+  // Nothing clipped or scrolled inside the table.
+  expect(await height()).toEqual([before, before])
   expect(await overflow(page)).toBe(0)
 })

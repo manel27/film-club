@@ -29,6 +29,7 @@ export interface RotationData {
     title: string
     screenedOn: string
     kind: FilmKind
+    democraticoReason?: string | null
     assignedId: string
     turnHolderId: string | null
   }[]
@@ -79,7 +80,7 @@ export async function fetchRotation(knownPeople?: Person[]): Promise<RotationDat
     rows(
       supabase
         .from('films')
-        .select('id, title, screened_on, kind, assigned_id, turn_holder_id')
+        .select('id, title, screened_on, kind, democratico_reason, assigned_id, turn_holder_id')
         .in('kind', ['normal', 'democratico'])
         .order('screened_on', { ascending: false })
         .order('day_order', { ascending: false }),
@@ -119,6 +120,7 @@ export async function fetchRotation(knownPeople?: Person[]): Promise<RotationDat
       title: f.title,
       screenedOn: f.screened_on,
       kind: f.kind,
+      democraticoReason: f.democratico_reason,
       assignedId: f.assigned_id,
       turnHolderId: f.turn_holder_id,
     })),

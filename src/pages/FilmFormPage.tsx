@@ -10,6 +10,9 @@ import {
   comingSaturday,
   functionErrorMessage,
   parseYear,
+  normaliseReason,
+  REASON_MAX,
+  reasonLength,
   screeningDateRange,
   toSaveBody,
   type FilmFormState,
@@ -56,6 +59,7 @@ function FilmForm({ id }: { id: string | undefined }) {
             kind: 'normal' as FilmKind,
             assignedId: '',
             turnHolderId: '',
+            reason: '',
           },
         }
       }
@@ -80,6 +84,7 @@ function FilmForm({ id }: { id: string | undefined }) {
           kind: f.kind,
           assignedId: f.assigned_id,
           turnHolderId: f.turn_holder_id ?? '',
+          reason: f.democratico_reason ?? '',
         },
       }
     }
@@ -347,6 +352,23 @@ function Fields({
             ))}
           </select>
         </label>
+      )}
+      {s.kind === 'democratico' && (
+        <div className="field">
+          <label className="field">
+            Why was it chosen? (optional)
+            {/* No maxLength: it counts UTF-16 units and cuts a paste before it is normalised. */}
+            <input
+              value={s.reason}
+              aria-describedby="reason-count"
+              onChange={(e) => set({ reason: e.target.value })}
+            />
+          </label>
+          {/* Counted as saved: normalised, in characters (code points). */}
+          <span id="reason-count" className="muted" aria-live="polite">
+            {reasonLength(normaliseReason(s.reason))}/{REASON_MAX}
+          </span>
+        </div>
       )}
 
       {/* A refused duplicate is already shown by the warning above: one alert, not two. */}

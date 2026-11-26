@@ -144,3 +144,64 @@ test('films link to their page, and the way back keeps the filters', async ({ pa
   await page.goto('./#/films/999999')
   await expect(page.getByRole('heading', { name: 'Film not found' })).toBeVisible()
 })
+
+test("a Democrático's film page says why it was chosen; the badge tip shows on focus", async ({
+  page,
+}) => {
+  await openFilm(page, SEED_VIEWER, 6)
+  const main = page.getByRole('main')
+  await expect(main.getByText('Why: Three people had never seen a Lea Fontaine film')).toBeVisible()
+  const badge = main.getByText('Democrático', { exact: true })
+  const tip = main.locator('.reason-tip')
+  await expect(tip).toBeHidden()
+  // Described by the "Why:" line (the tip is the same text, for sighted users).
+  await expect(badge).toHaveAccessibleDescription(
+    'Why: Three people had never seen a Lea Fontaine film',
+  )
+  await badge.focus()
+  await expect(tip).toBeVisible()
+  await expect(tip).toHaveText('Three people had never seen a Lea Fontaine film')
+  await page.keyboard.press('Escape')
+  await expect(tip).toBeHidden()
+
+  // No reason recorded (imported films).
+  await page.goto('./#/films/7')
+  await expect(main.locator('p.film-reason')).toHaveText('Unknown reason')
+  await expect(main.locator('p.film-reason')).toBeVisible()
+  await main.getByText('Democrático', { exact: true }).focus()
+  await expect(main.locator('.reason-tip')).toHaveText('Unknown reason')
+})
+
+test.describe('on a touch screen', () => {
+  test.use({ viewport: { width: 360, height: 740 }, isMobile: true, hasTouch: true })
+
+  test("tapping a Democrático's badge shows why, within the screen in every theme", async ({
+    page,
+  }) => {
+    await openFilm(page, SEED_VIEWER, 6)
+    expect(await page.evaluate(() => matchMedia('(hover: none)').matches)).toBe(true)
+    const main = page.getByRole('main')
+    const tip = main.locator('.reason-tip')
+    await expect(tip).toBeHidden()
+    await main.getByText('Democrático', { exact: true }).tap()
+    await expect(tip).toBeVisible()
+    // A tap elsewhere closes it.
+    await page.getByRole('heading', { level: 1 }).tap()
+    await expect(tip).toBeHidden()
+    await main.getByText('Democrático', { exact: true }).tap()
+    await expect(tip).toBeVisible()
+    // Themes switched on the page only (the picker would save the viewer's choice).
+    for (const theme of ['letterboxd', 'superman', 'batman']) {
+      await page.evaluate((t) => (document.documentElement.dataset.theme = t), theme)
+      await expect(tip).toBeVisible()
+      const box = (await tip.boundingBox())!
+      expect(box.x + box.width).toBeLessThanOrEqual(360)
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        ),
+      ).toBe(0)
+    }
+    await page.screenshot({ path: `${SCREENSHOTS}/film-reason-touch.png` })
+  })
+})

@@ -90,6 +90,10 @@ insert into public.films (
   (8, 900006, 'Tomorrow''s Feature', null, 2024, '{Animation}', '{"Mo Arden"}',
      '2026-12-05', 'normal', '00000000-0000-4000-8000-0000000000a4', null, 1, false);
 
+-- One Democrático with a reason, one (the easter egg) without: "Unknown reason".
+update public.films set democratico_reason = 'Three people had never seen a Lea Fontaine film'
+  where id = 6;
+
 select setval(pg_get_serial_sequence('public.films', 'id'), 100);
 
 -- ---------------------------------------------------------------------------

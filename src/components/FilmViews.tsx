@@ -1,6 +1,15 @@
-import { memo } from 'react'
+import { memo, useId } from 'react'
 import { Link } from 'react-router'
-import { KIND_LABELS, ratingBand, screeningDay, type FilmItem, type Person } from '../films/films'
+import {
+  KIND_LABELS,
+  ratingBand,
+  reasonText,
+  screeningDay,
+  whyText,
+  type FilmItem,
+  type FilmKind,
+  type Person,
+} from '../films/films'
 import { ymd } from '../rotation/rotation'
 import { RoleChip } from './Chip'
 import { tipsOff } from './tipsOff'
@@ -69,6 +78,49 @@ export function ViewToggle(props: { views: View[]; value: View; onChange: (view:
   )
 }
 
+/**
+ * A film's kind badge (nothing for a normal film). A Democrático's shows why it was chosen as
+ * a tip, the RoleChip way (same CSS; put it inside ref={tipsOff}): on hover, and when
+ * `tabbable`, on focus or tap.
+ * - Not tabbable (long lists keep one Tab stop per film): screen readers read the reason as
+ *   hidden text after the badge; the tip is visual only.
+ * - Tabbable: the badge is described by the tip, or by `describedBy` when the page already
+ *   shows the reason (then the tip is visual only, so it isn't read twice).
+ */
+export function KindBadge(props: {
+  kind: FilmKind
+  reason?: string | null
+  tabbable?: boolean
+  describedBy?: string
+}) {
+  const id = useId()
+  const label = KIND_LABELS[props.kind]
+  if (props.kind !== 'democratico') return label && <span className="badge">{label}</span>
+  const { tabbable, describedBy } = props
+  return (
+    <span className="role-chip">
+      <span
+        className="badge"
+        aria-describedby={tabbable ? (describedBy ?? id) : undefined}
+        tabIndex={tabbable ? 0 : undefined}
+        // iOS Safari doesn't focus on tap; focus is what shows the tip.
+        onClick={tabbable ? (e) => e.currentTarget.focus() : undefined}
+      >
+        {label}
+      </span>
+      {!tabbable && <span className="sr-only">{` (${whyText(props.reason)})`}</span>}
+      <span
+        id={id}
+        role="tooltip"
+        className="role-tip reason-tip"
+        aria-hidden={!tabbable || describedBy ? true : undefined}
+      >
+        {reasonText(props.reason)}
+      </span>
+    </span>
+  )
+}
+
 const withYear = (f: FilmItem) => (f.releaseYear ? `${f.title} (${f.releaseYear})` : f.title)
 
 /** A person's colour dot (decorative: the name is shown next to it). */
@@ -121,7 +173,6 @@ export const FilmRow = memo(function FilmRow(props: {
   note?: React.ReactNode
 }) {
   const { film, people } = props
-  const kind = KIND_LABELS[film.kind]
   return (
     <li className="film-row">
       {props.poster &&
@@ -169,7 +220,7 @@ export const FilmRow = memo(function FilmRow(props: {
         </div>
         <div className="muted film-meta">
           <span className="film-date">{ymd(film.screenedOn)}</span>
-          {kind && <span className="badge">{kind}</span>}
+          <KindBadge kind={film.kind} reason={film.democraticoReason} />
           {props.note}
         </div>
       </div>
@@ -226,7 +277,6 @@ export function NextFilmCard(props: {
   today: string
 }) {
   const { film } = props
-  const kind = KIND_LABELS[film.kind]
   return (
     <section ref={tipsOff} className="card next-film" aria-labelledby="next-film-heading">
       {film.posterPath ? (
@@ -254,7 +304,7 @@ export function NextFilmCard(props: {
         <p id="next-film-when" className="muted film-meta">
           <span>{screeningDay(film.screenedOn, props.today)}</span>
           {/* Read as one description: "Sat 5 Dec 2026 Maratona". */}{' '}
-          {kind && <span className="badge">{kind}</span>}
+          <KindBadge kind={film.kind} reason={film.democraticoReason} tabbable />
         </p>
         <p>
           Chosen by <RoleChip person={props.people.get(film.assignedId)} />

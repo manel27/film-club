@@ -1247,6 +1247,46 @@ a.chip:hover,
   display: none;
 }
 
+/* A Democrático's reason (KindBadge): up to 200 characters, so it wraps, and never wider
+   than the screen. */
+.reason-tip {
+  width: max-content;
+  max-width: min(12rem, calc(100vw - 2rem));
+  white-space: normal;
+  font-weight: 400;
+  overflow-wrap: anywhere;
+}
+
+/* Film rows and the next-film card: the tip hangs from the start of the date line, not
+   from the badge further right, so it can't run off a phone's right edge. */
+.film-meta {
+  position: relative;
+}
+
+.film-meta .role-chip {
+  position: static;
+  /* A flex item with a z-index (.next-film .role-chip) would trap the tip under later chips. */
+  z-index: auto;
+}
+
+/* Above the next-film card's stretched link, so it can be hovered and tapped. */
+.next-film .film-meta .badge {
+  position: relative;
+  z-index: 1;
+}
+
+/* Rotation tables scroll sideways, which clips anything below their box: the last rows'
+   tips open upwards. */
+.table-scroll tbody tr:nth-last-child(-n + 3) .reason-tip {
+  top: auto;
+  bottom: 100%;
+}
+
+.film-reason {
+  margin: 0.25rem 0 0;
+  overflow-wrap: anywhere;
+}
+
 /* ---------------------------------------------------------------- admin */
 
 .colour-choice {
