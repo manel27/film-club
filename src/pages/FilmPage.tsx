@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router'
 import { useAuth } from '../auth/authContext'
 import { fetchFilm, filmWrites, type FilmDetailData, type FilmRecord } from '../films/api'
 import { errorMessage, parseScore, permissions } from '../films/filmDetail'
-import { reasonText, type Person } from '../films/films'
+import { whyText, type Person } from '../films/films'
 import Chip, { PersonName } from '../components/Chip'
 import { KindBadge } from '../components/FilmViews'
 import { tipsOff } from '../components/tipsOff'
@@ -198,11 +198,16 @@ function Film({ id }: { id: string }) {
             <p className="muted">{film.original_title}</p>
           )}
           <span ref={tipsOff}>
-            <KindBadge kind={film.kind} reason={film.democratico_reason} tabbable />
+            <KindBadge
+              kind={film.kind}
+              reason={film.democratico_reason}
+              tabbable
+              describedBy="film-reason"
+            />
           </span>
           {film.kind === 'democratico' && (
-            <p className="muted film-reason">
-              {film.democratico_reason ? `Why: ${film.democratico_reason}` : reasonText(null)}
+            <p id="film-reason" className="muted film-reason">
+              {whyText(film.democratico_reason)}
             </p>
           )}
           <dl className="film-facts">

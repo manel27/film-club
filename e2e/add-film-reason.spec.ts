@@ -35,9 +35,14 @@ test("a Democrático's reason is saved, edited, and cleared when the kind change
   await expect(reason).toHaveCount(0)
   await page.getByLabel('Kind').selectOption('democratico')
   await page.getByLabel(/Whose turn/).selectOption({ label: 'Yusuf' })
-  await expect(reason).toHaveAttribute('maxlength', '200')
+  // No maxlength: 201 characters can be typed, and are refused with a clear message.
+  await expect(reason).not.toHaveAttribute('maxlength')
+  await reason.fill('a'.repeat(201))
+  await expect(page.getByText('201/200')).toBeVisible()
+  await page.getByRole('button', { name: 'Save' }).click()
+  await expect(page.getByRole('alert')).toHaveText('Keep the reason to 200 characters or fewer.')
   // Invisible characters and extra spaces go.
-  await reason.fill('  Hands ​  up, everyone ')
+  await reason.fill('  Hands \u200b  up,\u00a0everyone ')
   await page.getByRole('button', { name: 'Save' }).click()
   await expect(page.getByRole('heading', { name: VOTE_TITLE })).toBeVisible()
   await expect(page.getByText('Why: Hands up, everyone')).toBeVisible()
@@ -65,4 +70,12 @@ test("a Democrático's reason is saved, edited, and cleared when the kind change
     .eq('title', VOTE_TITLE)
     .single()
   expect(data).toEqual({ kind: 'normal', democratico_reason: null })
+
+  // 150 emoji (300 UTF-16 units) are 150 characters: saved whole.
+  await page.getByRole('link', { name: 'Edit' }).click()
+  await page.getByLabel('Kind').selectOption('democratico')
+  await reason.fill('\u{1F3AC}'.repeat(150))
+  await expect(page.getByText('150/200')).toBeVisible()
+  await page.getByRole('button', { name: 'Save' }).click()
+  await expect(page.getByText(`Why: ${'\u{1F3AC}'.repeat(150)}`)).toBeVisible()
 })

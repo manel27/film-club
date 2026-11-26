@@ -10,7 +10,9 @@ import {
   comingSaturday,
   functionErrorMessage,
   parseYear,
+  normaliseReason,
   REASON_MAX,
+  reasonLength,
   screeningDateRange,
   toSaveBody,
   type FilmFormState,
@@ -352,14 +354,21 @@ function Fields({
         </label>
       )}
       {s.kind === 'democratico' && (
-        <label className="field">
-          Why was it chosen? (optional, up to {REASON_MAX} characters)
-          <input
-            value={s.reason}
-            maxLength={REASON_MAX}
-            onChange={(e) => set({ reason: e.target.value })}
-          />
-        </label>
+        <div className="field">
+          <label className="field">
+            Why was it chosen? (optional)
+            {/* No maxLength: it counts UTF-16 units and cuts a paste before it is normalised. */}
+            <input
+              value={s.reason}
+              aria-describedby="reason-count"
+              onChange={(e) => set({ reason: e.target.value })}
+            />
+          </label>
+          {/* Counted as saved: normalised, in characters (code points). */}
+          <span id="reason-count" className="muted" aria-live="polite">
+            {reasonLength(normaliseReason(s.reason))}/{REASON_MAX}
+          </span>
+        </div>
       )}
 
       {/* A refused duplicate is already shown by the warning above: one alert, not two. */}

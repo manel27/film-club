@@ -1,7 +1,7 @@
 -- Phase 16b (migration 20261126120000): films.democratico_reason, why a
 -- Democrático was chosen. Film 6 is the seed's Democrático, film 2 a normal film.
 begin;
-select plan(14);
+select plan(21);
 
 select has_column('public', 'films', 'democratico_reason', 'films has democratico_reason');
 
@@ -14,8 +14,23 @@ select throws_ok($$update public.films set democratico_reason = repeat('a', 201)
   '23514', null, '201 characters are refused');
 select throws_ok($$update public.films set democratico_reason = E' \t\n ' where id = 6$$,
   '23514', null, 'a whitespace-only reason is refused');
-select throws_ok($$update public.films set democratico_reason = E'​‍﻿' where id = 6$$,
+select throws_ok($$update public.films set democratico_reason = E'\u200b\u200d\ufeff' where id = 6$$,
   '23514', null, 'a reason of invisible characters only is refused');
+select throws_ok($$update public.films set democratico_reason = E'\u202e' where id = 6$$,
+  '23514', null, 'a lone bidi override (U+202E) is refused');
+select throws_ok($$update public.films set democratico_reason = E'\u00a0\u00a0' where id = 6$$,
+  '23514', null, 'a reason of no-break spaces only is refused');
+select throws_ok($$update public.films set democratico_reason = E'\u200d\U000e0067' where id = 6$$,
+  '23514', null, 'joiners and tags alone are refused');
+select throws_ok($$update public.films set democratico_reason = ' x ' where id = 6$$,
+  '23514', null, 'an untrimmed reason is refused');
+select throws_ok($$update public.films set democratico_reason = E'x\u00a0' where id = 6$$,
+  '23514', null, 'a trailing no-break space is refused');
+select throws_ok($$update public.films set democratico_reason = E'a\u0007b' where id = 6$$,
+  '23514', null, 'a control character is refused');
+select lives_ok($$update public.films set democratico_reason =
+  E'\U0001F468\u200d\U0001F469\u200d\U0001F467 \U0001F3F4\U000E0067\U000E0062\U000E0073\U000E0063\U000E0074\U000E007F می\u200cخواهم'
+  where id = 6$$, 'emoji sequences, flags and ZWNJ words are accepted');
 select throws_ok($$update public.films set democratico_reason = 'Because' where id = 2$$,
   '23514', null, 'a non-Democrático with a reason is refused');
 select throws_ok($$update public.films set kind = 'normal', turn_holder_id = null where id = 6$$,

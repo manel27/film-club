@@ -103,7 +103,8 @@ describe('films page', () => {
     expect(nightBus.querySelector('.film-avg')).toHaveTextContent(/^–No average$/)
     // The Democrático's reason (none recorded) is read, but adds no Tab stop to the row.
     const demo = screen.getByText('Democrático', { selector: '.badge' })
-    expect(demo).toHaveAccessibleDescription('Unknown reason')
+    expect(demo.nextElementSibling).toHaveTextContent('(Unknown reason)')
+    expect(demo.nextElementSibling).toHaveClass('sr-only')
     expect(demo).not.toHaveAttribute('tabindex')
     // No week headings: each row carries its date.
     expect(screen.queryAllByRole('heading', { level: 2 })).toHaveLength(0)

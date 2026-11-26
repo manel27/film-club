@@ -6,7 +6,8 @@
 //    add, or on edit when the TMDB match changes).
 //  - tmdb_id null: saved without TMDB; title and release_year are required.
 //  - democratico_reason: why a Democrático was chosen (normalised, at most 200
-//    characters, else 400 reason_too_long). Saved as null for every other kind.
+//    characters, else 400 reason_too_long). Saved as null for every other kind;
+//    left out of a Democrático edit, the stored reason is kept.
 // The database refuses duplicates (films_no_duplicate); that becomes a 409
 // with the film it clashes with.
 import {
@@ -39,14 +40,21 @@ export function validScreeningDate(v: unknown, now = new Date()): v is string {
 const REASON_MAX = 200
 
 /**
- * A Democrático's reason as stored: invisible format characters (zero-width
- * spaces, joiners, bidi marks, BOM) removed, whitespace runs made one space,
- * trimmed; '' becomes null. Not a string (or null): undefined.
+ * A Democrático's reason as stored. Same steps as normaliseReason in
+ * src/films/filmForm.ts: change both together.
+ * Format characters go, except ZWNJ/ZWJ (U+200C/D: emoji sequences, Persian and
+ * Indic words) and tags (U+E0020-E007F: subdivision flags); runs of whitespace and
+ * control characters (U+0000 included, which Postgres can't store) become one space;
+ * trimmed. Nothing visible left: null. Not a string (or null): undefined.
  */
 function normaliseReason(v: unknown): string | null | undefined {
   if (v == null) return null
   if (typeof v !== 'string') return undefined
-  return v.replace(/\p{Cf}/gu, '').replace(/\s+/g, ' ').trim() || null
+  const r = v
+    .replace(/(?!\u200c|\u200d|[\u{e0020}-\u{e007f}])\p{Cf}/gu, '')
+    .replace(/[\s\p{Cc}]+/gu, ' ')
+    .trim()
+  return /[^\s\p{Cf}]/u.test(r) ? r : null
 }
 
 /** Cleared when a film is unlinked from TMDB, so no stale poster or synopsis remains. */
@@ -87,7 +95,9 @@ export async function handler(req: Request): Promise<Response> {
       return json(req, 400, { error: 'invalid' })
     }
     const turnHolder = b.kind === 'democratico' ? (b.turn_holder_id ?? null) : null
-    // Only a Democrático keeps a reason, whatever the client sent.
+    // Only a Democrático keeps a reason, whatever the client sent. A Democrático
+    // edit without the field keeps the stored one (left out of the update below).
+    const keepReason = b.kind === 'democratico' && b.democratico_reason === undefined
     const reason = b.kind === 'democratico' ? normaliseReason(b.democratico_reason) : null
     if (reason === undefined) return json(req, 400, { error: 'invalid' })
     // Code points, as the database's char_length counts them.
@@ -129,8 +139,8 @@ export async function handler(req: Request): Promise<Response> {
       kind: b.kind,
       assigned_id: b.assigned_id,
       turn_holder_id: turnHolder,
-      democratico_reason: reason,
     }
+    if (!keepReason) row.democratico_reason = reason
     if (tmdbId !== null) {
       if (current?.tmdb_id !== tmdbId) {
         const details = await tmdbFilm(tmdbId)

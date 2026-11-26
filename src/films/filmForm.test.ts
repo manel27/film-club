@@ -5,7 +5,9 @@ import {
   comingSaturday,
   defaultChooser,
   functionErrorMessage,
+  normaliseReason,
   parseYear,
+  reasonLength,
   screeningDateRange,
   toSaveBody,
   validScreeningDate,
@@ -171,9 +173,19 @@ describe('toSaveBody', () => {
     expect(toSaveBody({ ...demo, reason: ' \u200bNobody\n\t agreed\ufeff ' })).toMatchObject({
       body: { democratico_reason: 'Nobody agreed' },
     })
-    for (const reason of ['', ' \n\t ', '\u200b\u200d']) {
+    // Blank: whitespace, controls, invisible characters, joiners only.
+    for (const reason of ['', ' \n\t ', '\u200b\u200d', '\u0007\u0000', '\u200d\u200d']) {
       expect(toSaveBody({ ...demo, reason })).toMatchObject({ body: { democratico_reason: null } })
     }
+    // Joiners and tags inside emoji and words are kept; controls become spaces.
+    const family = '\u{1F468}\u200d\u{1F469}\u200d\u{1F467}'
+    const scotland = '\u{1F3F4}\u{E0067}\u{E0062}\u{E0073}\u{E0063}\u{E0074}\u{E007F}'
+    const persian = '\u0645\u06cc\u200c\u062e\u0648\u0627\u0647\u0645'
+    expect(normaliseReason(`${family}\u0007${scotland}\u0000${persian}\u202e`)).toBe(
+      `${family} ${scotland} ${persian}`,
+    )
+    expect(reasonLength(family)).toBe(5)
+    expect(reasonLength(null)).toBe(0)
     // 200 emoji are 400 UTF-16 units: still 200 characters.
     expect(toSaveBody({ ...demo, reason: '\u{1F3AC}'.repeat(200) })).toMatchObject({
       body: { democratico_reason: '\u{1F3AC}'.repeat(200) },

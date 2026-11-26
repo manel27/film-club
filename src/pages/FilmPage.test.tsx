@@ -149,7 +149,8 @@ describe('film page', () => {
     expect(await screen.findByText('Why: Nobody agreed')).toBeInTheDocument()
     const badge = screen.getByText('Democrático', { selector: '.badge' })
     expect(badge).toHaveAttribute('tabindex', '0')
-    expect(badge).toHaveAccessibleDescription('Nobody agreed')
+    // Described by the "Why:" line, not a second copy in the tip.
+    expect(badge).toHaveAccessibleDescription('Why: Nobody agreed')
     cleanup()
 
     // Imported films have none.

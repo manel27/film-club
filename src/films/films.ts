@@ -65,6 +65,10 @@ export const KIND_LABELS: Record<FilmKind, string | null> = {
 /** A Democrático's reason as shown; imported films have none. */
 export const reasonText = (reason: string | null | undefined) => reason?.trim() || 'Unknown reason'
 
+/** The same as a sentence: "Why: …", or "Unknown reason". */
+export const whyText = (reason: string | null | undefined) =>
+  reason?.trim() ? `Why: ${reason}` : reasonText(reason)
+
 /**
  * The rating band of an average, as shown (rounded to 2 decimals), lower bounds
  * inclusive: 3.00 is bad, 4.99 still bad, 5.00 okay.

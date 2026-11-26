@@ -5,6 +5,7 @@ import {
   ratingBand,
   reasonText,
   screeningDay,
+  whyText,
   type FilmItem,
   type FilmKind,
   type Person,
@@ -80,25 +81,40 @@ export function ViewToggle(props: { views: View[]; value: View; onChange: (view:
 /**
  * A film's kind badge (nothing for a normal film). A Democrático's shows why it was chosen as
  * a tip, the RoleChip way (same CSS; put it inside ref={tipsOff}): on hover, and when
- * `tabbable`, on focus or tap. Not tabbable: long lists keep one Tab stop per film, and screen
- * readers get the reason through aria-describedby.
+ * `tabbable`, on focus or tap.
+ * - Not tabbable (long lists keep one Tab stop per film): screen readers read the reason as
+ *   hidden text after the badge; the tip is visual only.
+ * - Tabbable: the badge is described by the tip, or by `describedBy` when the page already
+ *   shows the reason (then the tip is visual only, so it isn't read twice).
  */
-export function KindBadge(props: { kind: FilmKind; reason?: string | null; tabbable?: boolean }) {
+export function KindBadge(props: {
+  kind: FilmKind
+  reason?: string | null
+  tabbable?: boolean
+  describedBy?: string
+}) {
   const id = useId()
   const label = KIND_LABELS[props.kind]
   if (props.kind !== 'democratico') return label && <span className="badge">{label}</span>
+  const { tabbable, describedBy } = props
   return (
     <span className="role-chip">
       <span
         className="badge"
-        aria-describedby={id}
-        tabIndex={props.tabbable ? 0 : undefined}
+        aria-describedby={tabbable ? (describedBy ?? id) : undefined}
+        tabIndex={tabbable ? 0 : undefined}
         // iOS Safari doesn't focus on tap; focus is what shows the tip.
-        onClick={props.tabbable ? (e) => e.currentTarget.focus() : undefined}
+        onClick={tabbable ? (e) => e.currentTarget.focus() : undefined}
       >
         {label}
       </span>
-      <span id={id} role="tooltip" className="role-tip reason-tip">
+      {!tabbable && <span className="sr-only">{` (${whyText(props.reason)})`}</span>}
+      <span
+        id={id}
+        role="tooltip"
+        className="role-tip reason-tip"
+        aria-hidden={!tabbable || describedBy ? true : undefined}
+      >
         {reasonText(props.reason)}
       </span>
     </span>

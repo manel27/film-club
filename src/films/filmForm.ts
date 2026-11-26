@@ -43,14 +43,22 @@ export interface FilmFormState {
 export const REASON_MAX = 200
 
 /**
- * A reason as film-save stores it: invisible format characters removed,
- * whitespace runs made one space, trimmed; nothing left is null.
+ * A reason as film-save stores it. Same steps as normaliseReason in
+ * supabase/functions/film-save/handler.ts: change both together.
+ * Format characters go, except ZWNJ/ZWJ (U+200C/D: emoji sequences, Persian and
+ * Indic words) and tags (U+E0020-E007F: subdivision flags); runs of whitespace and
+ * control characters become one space; trimmed. Nothing visible left: null.
  */
-export const normaliseReason = (text: string): string | null =>
-  text
-    .replace(/\p{Cf}/gu, '')
-    .replace(/\s+/g, ' ')
-    .trim() || null
+export function normaliseReason(text: string): string | null {
+  const r = text
+    .replace(/(?!\u200c|\u200d|[\u{e0020}-\u{e007f}])\p{Cf}/gu, '')
+    .replace(/[\s\p{Cc}]+/gu, ' ')
+    .trim()
+  return /[^\s\p{Cf}]/u.test(r) ? r : null
+}
+
+/** Characters in a reason as film-save and the database count them (code points). */
+export const reasonLength = (reason: string | null) => (reason ? [...reason].length : 0)
 
 /** Today in Europe/Lisbon if it's a Saturday, else the next Saturday (YYYY-MM-DD). */
 export function comingSaturday(now = new Date()): string {
@@ -152,7 +160,7 @@ export function toSaveBody(
     return { error: 'Choose whose turn it was.' }
   }
   const reason = democratico ? normaliseReason(s.reason) : null
-  if (reason && [...reason].length > REASON_MAX) {
+  if (reasonLength(reason) > REASON_MAX) {
     return { error: `Keep the reason to ${REASON_MAX} characters or fewer.` }
   }
   return {

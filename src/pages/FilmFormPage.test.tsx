@@ -248,11 +248,26 @@ describe('add / edit film page', () => {
     expect(screen.queryByLabelText(/Why was it chosen/)).not.toBeInTheDocument()
     fireEvent.change(screen.getByLabelText('Kind'), { target: { value: 'democratico' } })
     const reason = screen.getByLabelText(/Why was it chosen/)
-    expect(reason).toHaveAttribute('maxLength', '200')
+    // A live count of characters as saved (normalised, code points); no maxlength cut-off.
+    expect(reason).not.toHaveAttribute('maxLength')
+    const count = screen.getByText('0/200')
+    expect(count).toHaveAttribute('aria-live', 'polite')
+    expect(reason).toHaveAccessibleDescription('0/200')
+    fireEvent.change(reason, { target: { value: '  \u{1F3AC}'.repeat(150) } })
+    expect(count).toHaveTextContent('299/200')
+    fireEvent.change(reason, { target: { value: 'a'.repeat(201) } })
+    fireEvent.change(screen.getByLabelText(/Whose turn/), { target: { value: 'p-manel' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Keep the reason to 200 characters or fewer.',
+    )
+    expect(api.saveFilm).not.toHaveBeenCalled()
     fireEvent.change(reason, { target: { value: 'Nobody agreed' } })
+    expect(count).toHaveTextContent('13/200')
     fireEvent.change(screen.getByLabelText(/Whose turn/), { target: { value: 'p-manel' } })
     // The server's refusal is shown near Save.
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(api.saveFilm).toHaveBeenCalledTimes(1))
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'Keep the reason to 200 characters or fewer.',
     )

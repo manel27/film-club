@@ -152,8 +152,12 @@ test("a Democrático's film page says why it was chosen; the badge tip shows on 
   const main = page.getByRole('main')
   await expect(main.getByText('Why: Three people had never seen a Lea Fontaine film')).toBeVisible()
   const badge = main.getByText('Democrático', { exact: true })
-  const tip = main.getByRole('tooltip')
+  const tip = main.locator('.reason-tip')
   await expect(tip).toBeHidden()
+  // Described by the "Why:" line (the tip is the same text, for sighted users).
+  await expect(badge).toHaveAccessibleDescription(
+    'Why: Three people had never seen a Lea Fontaine film',
+  )
   await badge.focus()
   await expect(tip).toBeVisible()
   await expect(tip).toHaveText('Three people had never seen a Lea Fontaine film')
@@ -165,7 +169,7 @@ test("a Democrático's film page says why it was chosen; the badge tip shows on 
   await expect(main.locator('p.film-reason')).toHaveText('Unknown reason')
   await expect(main.locator('p.film-reason')).toBeVisible()
   await main.getByText('Democrático', { exact: true }).focus()
-  await expect(main.getByRole('tooltip')).toHaveText('Unknown reason')
+  await expect(main.locator('.reason-tip')).toHaveText('Unknown reason')
 })
 
 test.describe('on a touch screen', () => {
@@ -177,7 +181,12 @@ test.describe('on a touch screen', () => {
     await openFilm(page, SEED_VIEWER, 6)
     expect(await page.evaluate(() => matchMedia('(hover: none)').matches)).toBe(true)
     const main = page.getByRole('main')
-    const tip = main.getByRole('tooltip')
+    const tip = main.locator('.reason-tip')
+    await expect(tip).toBeHidden()
+    await main.getByText('Democrático', { exact: true }).tap()
+    await expect(tip).toBeVisible()
+    // A tap elsewhere closes it.
+    await page.getByRole('heading', { level: 1 }).tap()
     await expect(tip).toBeHidden()
     await main.getByText('Democrático', { exact: true }).tap()
     await expect(tip).toBeVisible()

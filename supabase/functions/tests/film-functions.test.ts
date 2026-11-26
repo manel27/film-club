@@ -467,14 +467,28 @@ Deno.test(
 
         const edit = (body: Record<string, unknown>) =>
           call(save, 'tamsin', { id, ...vote, ...body }).then((r) => assertEquals(r.status, 200))
-        await edit({ democratico_reason: ' ​Nobody\n\t agreed‍  on anything﻿ ' })
+        await edit({
+          democratico_reason: ' \u200bNobody\n\t agreed\ufeff  on\u202e anything\u0007 ',
+        })
         assertEquals((await filmRow(id)).democratico_reason, 'Nobody agreed on anything')
-        // Blank (whitespace or invisible only) or left out: no reason.
-        await edit({ democratico_reason: ' ​\n ' })
-        assertEquals((await filmRow(id)).democratico_reason, null)
+        // Joiners and tags that make up emoji and words are kept; controls become spaces.
+        const family = '\u{1F468}\u200d\u{1F469}\u200d\u{1F467}'
+        const scotland = '\u{1F3F4}\u{E0067}\u{E0062}\u{E0073}\u{E0063}\u{E0074}\u{E007F}'
+        const persian = '\u0645\u06cc\u200c\u062e\u0648\u0627\u0647\u0645'
+        await edit({ democratico_reason: `${family} ${scotland} ${persian}\u0000end` })
+        assertEquals(
+          (await filmRow(id)).democratico_reason,
+          `${family} ${scotland} ${persian} end`,
+        )
+        // Blank (whitespace, controls or invisible only, joiners too): no reason.
+        for (const blank of [' \u200b\n ', '\u0007\u0000', '\u200d\u200d']) {
+          await edit({ democratico_reason: blank })
+          assertEquals((await filmRow(id)).democratico_reason, null, JSON.stringify(blank))
+        }
+        // Left out of an edit: the stored reason is kept.
         await edit({ democratico_reason: 'Back' })
         await edit({})
-        assertEquals((await filmRow(id)).democratico_reason, null)
+        assertEquals((await filmRow(id)).democratico_reason, 'Back')
         // Another kind clears it, even when the client sends one (too long is ignored too).
         await edit({ democratico_reason: 'Kept?' })
         await edit({ kind: 'normal', democratico_reason: 'a'.repeat(300) })

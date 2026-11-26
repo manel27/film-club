@@ -90,7 +90,7 @@ exception: they use the secret key through service-role-only RPCs
 | Function           | Who                           | What                                                                 |
 | ------------------ | ----------------------------- | -------------------------------------------------------------------- |
 | `tmdb-search`      | logged-in, not viewers        | TMDB search (60 a minute per person, `tmdb_search_hit()`); marks films already watched |
-| `film-save`        | moderators, admins            | adds or edits a film, from TMDB or without it (title + year)          |
+| `film-save`        | moderators, admins            | adds or edits a film, from TMDB or without it (title + year); a Democrático's optional reason (cleaned up, at most 200 characters, cleared for other kinds) |
 | `film-relink-tmdb` | moderators, admins            | links a film to a TMDB id (or refreshes it) and replaces its details  |
 | `invite-create`    | admins                        | a new invite link (14 days) for an unclaimed person; revokes their open one |
 | `admin-reset-link` | admins                        | a new password reset link (24 hours) for a person with a login        |
