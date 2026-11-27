@@ -13,6 +13,8 @@ import PeoplePage from './pages/PeoplePage'
 import ProfilePage from './pages/ProfilePage'
 import ResetPage from './pages/ResetPage'
 import RotationPage from './pages/RotationPage'
+import SuggestionPage from './pages/SuggestionPage'
+import SupportPage from './pages/SupportPage'
 
 // Everything except the login, invite and reset pages needs a session (RequireAuth).
 export const routes: RouteObject[] = [
@@ -33,6 +35,8 @@ export const routes: RouteObject[] = [
       { path: '/rotation', element: <RotationPage /> },
       { path: '/people', element: <PeoplePage /> },
       { path: '/people/:id', element: <ProfilePage /> },
+      { path: '/support', element: <SupportPage /> },
+      { path: '/support/:id', element: <SuggestionPage /> },
       { path: '/admin', element: <AdminPage /> },
       { path: '/about', element: <AboutPage /> },
       { path: '*', element: <NotFoundPage /> },

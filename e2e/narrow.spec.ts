@@ -1,9 +1,19 @@
 import { expect, test } from '@playwright/test'
 import { SEED_ADMIN } from './fixtures'
 
-// /films/1 is "The Quiet Orchard" in supabase/seed.sql (fixed id).
+// /films/1 is "The Quiet Orchard" and /support/1 Kwame's suggestion in supabase/seed.sql (fixed ids).
 // Every main page fits a 360px phone in every theme: no page-level sideways scroll.
-const PAGES = ['/', '/films/1', '/rotation', '/people', 'profile', '/admin', '/about']
+const PAGES = [
+  '/',
+  '/films/1',
+  '/rotation',
+  '/people',
+  'profile',
+  '/support',
+  '/support/1',
+  '/admin',
+  '/about',
+]
 const THEMES = ['letterboxd', 'superman', 'batman']
 
 test('the main pages fit a 360px screen in every theme', async ({ page }) => {

@@ -17,6 +17,7 @@ export const SEED_VIEWER = { email: 'petra@example.test', password: SEED_PASSWOR
 export const SEED_ADMIN = { email: 'orla@example.test', password: SEED_PASSWORD }
 export const SEED_MODERATOR = { email: 'tamsin@example.test', password: SEED_PASSWORD }
 export const SEED_MEMBER = { email: 'kwame@example.test', password: SEED_PASSWORD }
+export const SEED_MEMBER2 = { email: 'yusuf@example.test', password: SEED_PASSWORD }
 
 /** Client with the local stack's secret key (test setup only, never in the browser). */
 export function adminClient(): SupabaseClient {

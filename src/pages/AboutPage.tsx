@@ -16,13 +16,17 @@ const PERMISSIONS: [string, boolean[]][] = [
   ['Post comments, and edit or delete your own', MEMBERS],
   ['Record your own pass (for the coming week or later)', MEMBERS],
   ['Change your display name', MEMBERS],
+  ['Write suggestions on the Support page, and reply to your own', EVERYONE],
+  ['Delete your own suggestion, until someone else replies', EVERYONE],
   ['Add and edit films', STAFF],
   ["Mark other people's attendance", STAFF],
   ["Enter, edit and delete other people's scores", STAFF],
   ["Record other people's passes and who chooses next", STAFF],
   ['Adjust the rotation: starting points, corrections, clearing an owed turn', STAFF],
+  ["See and reply to everyone's suggestions", STAFF],
   ['Delete films', ADMIN],
   ["Edit and delete anyone's comments", ADMIN],
+  ['Delete any suggestion', ADMIN],
   ['Add people, and make invite and password-reset links', ADMIN],
   ['Revoke invite and reset links', ADMIN],
   ['Set the rotation start date', ADMIN],
@@ -49,7 +53,8 @@ export default function AboutPage() {
       <p>
         Everyone has one of four roles. Members take part: they come, score and comment. Moderators
         also look after the films and the rotation for everyone. The admin also looks after people,
-        logins and the club's data. Viewers can look and pick a theme, nothing else.
+        logins and the club's data. Viewers can look, pick a theme and write suggestions, nothing
+        else.
       </p>
       <div className="table-scroll" role="region" aria-label="Roles" tabIndex={0}>
         <table className="rotation-table roles-table">
@@ -82,8 +87,9 @@ export default function AboutPage() {
       <ul>
         <li>
           Viewers can look at everything but can't change anything except their theme, which is
-          saved only in their browser.
+          saved only in their browser. They can write suggestions and reply to their own.
         </li>
+        <li>A suggestion is seen only by its author, the moderators and the admin.</li>
         <li>Nobody can change their own role.</li>
         <li>Jurassic Shark 2's scores are locked, and the film can't be deleted, for everyone.</li>
       </ul>

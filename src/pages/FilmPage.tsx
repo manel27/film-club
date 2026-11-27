@@ -9,6 +9,7 @@ import { KindBadge } from '../components/FilmViews'
 import { tipsOff } from '../components/tipsOff'
 import { fetchEpoch } from '../rotation/api'
 import { lisbonDate } from '../rotation/rotation'
+import { parseId } from '../lib/ids'
 
 type Section = 'attendance' | 'scores' | 'comments' | 'delete'
 /** Runs one write at a time, then reloads the film. Resolves true on success. */
@@ -40,8 +41,7 @@ export default function FilmPage() {
 }
 
 function Film({ id }: { id: string }) {
-  const n = Number(id)
-  const filmId = /^\d+$/.test(id) && Number.isSafeInteger(n) && n > 0 ? n : null
+  const filmId = parseId(id)
   const { profile } = useAuth()
   // undefined = loading, null = no such film
   const [data, setData] = useState<FilmDetailData | null | undefined>(undefined)

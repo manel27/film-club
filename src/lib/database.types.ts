@@ -660,6 +660,93 @@ export type Database = {
           },
         ]
       }
+      suggestion_replies: {
+        Row: {
+          author_id: string
+          body: string
+          created_at: string
+          id: number
+          suggestion_id: number
+        }
+        ComputedFields: never
+        Insert: {
+          author_id?: string
+          body: string
+          created_at?: string
+          id?: never
+          suggestion_id: number
+        }
+        Update: {
+          author_id?: string
+          body?: string
+          created_at?: string
+          id?: never
+          suggestion_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'suggestion_replies_author_id_fkey'
+            columns: ['author_id']
+            isOneToOne: false
+            referencedRelation: 'profile_directory'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'suggestion_replies_author_id_fkey'
+            columns: ['author_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'suggestion_replies_suggestion_id_fkey'
+            columns: ['suggestion_id']
+            isOneToOne: false
+            referencedRelation: 'suggestions'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      suggestions: {
+        Row: {
+          author_id: string
+          body: string
+          created_at: string
+          id: number
+          title: string
+        }
+        ComputedFields: never
+        Insert: {
+          author_id?: string
+          body: string
+          created_at?: string
+          id?: never
+          title: string
+        }
+        Update: {
+          author_id?: string
+          body?: string
+          created_at?: string
+          id?: never
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'suggestions_author_id_fkey'
+            columns: ['author_id']
+            isOneToOne: false
+            referencedRelation: 'profile_directory'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'suggestions_author_id_fkey'
+            columns: ['author_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+        ]
+      }
       user_settings: {
         Row: {
           films_view: string | null

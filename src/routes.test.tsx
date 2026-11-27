@@ -18,6 +18,10 @@ vi.mock('./films/api', () => ({
 }))
 // The admin page's data comes from Supabase too (tested in pages/InvitePages.test.tsx).
 vi.mock('./invites/api', () => ({ fetchLastExport: vi.fn(async () => null) }))
+vi.mock('./support/api', () => ({
+  fetchSuggestions: async () => ({ suggestions: [], people: [] }),
+  fetchSuggestion: async () => null,
+}))
 vi.mock('./rotation/api', () => ({
   fetchRotation: async () => ({
     ...{ epoch: null, weekStart: null, standings: [], passes: [], decisions: [] },
@@ -237,6 +241,27 @@ describe('app shell', () => {
       'page',
     )
     expect(await screen.findByText(/starts at go-live/)).toBeInTheDocument()
+  })
+
+  it.each([
+    ['viewer', ['Films', 'Rotation', 'People', 'Support', 'About']],
+    ['admin', ['Films', 'Rotation', 'People', 'Support', 'Admin', 'About']],
+  ] as const)('links Support after People for a %s, opening #/support', async (role, links) => {
+    const { router } = renderApp('/', signedIn(fakeProfile({ role })))
+    const nav = await screen.findByRole('navigation', { name: 'Main' })
+    expect(
+      within(nav)
+        .getAllByRole('link')
+        .map((a) => a.textContent),
+    ).toEqual(links)
+    fireEvent.click(within(nav).getByRole('link', { name: 'Support' }))
+    expect(await screen.findByRole('heading', { name: 'Support', level: 1 })).toBeInTheDocument()
+    expect(router.state.location.pathname).toBe('/support')
+  })
+
+  it('opens a suggestion at #/support/:id', async () => {
+    renderApp('/support/5', signedIn())
+    expect(await screen.findByRole('heading', { name: 'Suggestion not found' })).toBeInTheDocument()
   })
 
   it('copes with a profile that has no colour yet', async () => {

@@ -31,6 +31,8 @@ const TABLES = [
   'rotation_next',
   'app_settings',
   'user_settings',
+  'suggestions',
+  'suggestion_replies',
 ]
 
 async function cleanUp() {
