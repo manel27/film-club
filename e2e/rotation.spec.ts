@@ -30,7 +30,7 @@ async function logIn(page: Page, login: { email: string; password: string }) {
   await expect(page.getByRole('heading', { name: 'Films', exact: true })).toBeVisible()
 }
 
-// On the rotation page: the films page shows the next film instead while one is added (seed: 2026-12-05).
+// On the rotation page: the films page shows the next film instead while one is added (seed: 2099-12-05).
 test('a member sees Next up and passes for the coming week', async ({ page }) => {
   await logIn(page, SEED_MEMBER)
   await page.goto('./#/rotation')

@@ -1,6 +1,6 @@
 -- Phase 17a: stats_data() for the Stats page. Seed: films 1-6 are screened,
--- 7 is the easter egg (2025), 8 is screened on 2026-12-05 (future while that
--- date is ahead; the test pins it to tomorrow so it doesn't depend on the clock).
+-- 7 is the easter egg (2025), 8 is screened on 2099-12-05; the test pins it to
+-- tomorrow, the nearest future day, so the boundary doesn't depend on the clock.
 begin;
 select plan(14);
 

@@ -19,6 +19,21 @@ export const SEED_MODERATOR = { email: 'tamsin@example.test', password: SEED_PAS
 export const SEED_MEMBER = { email: 'kwame@example.test', password: SEED_PASSWORD }
 export const SEED_MEMBER2 = { email: 'yusuf@example.test', password: SEED_PASSWORD }
 
+/**
+ * A Saturday (YYYY-MM-DD) about a year from today in Lisbon, plus `weeks`: always
+ * in the future, and inside the two years ahead that the film form and film-save
+ * accept. Films added through the app use it; rows inserted directly use 2099.
+ */
+export function saturdayNextYear(weeks = 0): string {
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Lisbon' }).format(new Date())
+  const noon = Date.parse(`${today}T12:00:00Z`)
+  const toSaturday = (6 - new Date(noon).getUTCDay() + 7) % 7
+  return new Date(noon + (toSaturday + 7 * (52 + weeks)) * 86_400_000).toISOString().slice(0, 10)
+}
+
+/** A date as the app shows it in tables and facts: 2027/12/18. */
+export const slashed = (date: string) => date.replaceAll('-', '/')
+
 /** Client with the local stack's secret key (test setup only, never in the browser). */
 export function adminClient(): SupabaseClient {
   const { apiUrl, secretKey } = localSupabase()

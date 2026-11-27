@@ -31,6 +31,8 @@ export const MIN = {
 }
 const TOP = 10
 const PAIRS = 5
+/** Rows in the director table. */
+export const DIRECTOR_ROWS = 20
 
 const isId = (v: unknown): v is number => Number.isSafeInteger(v) && (v as number) > 0
 const isText = (v: unknown): v is string => typeof v === 'string' && v.trim() !== ''
@@ -189,18 +191,29 @@ const byName = (a: Person, b: Person) => a.name.localeCompare(b.name) || a.id.lo
 
 const nums = (xs: (number | null)[]) => xs.filter((x): x is number => x != null)
 
-function groups(films: FilmStat[], keys: (f: StatsFilm) => string[], min = 1): Group[] {
+/**
+ * Films per label with their mean average; films with no label go under Unknown
+ * (null), always last. Labels with fewer than `min` films are left out, Unknown
+ * too. Sorted by count, then average, unless `order` gives the labels' natural
+ * order (bands, decades).
+ */
+function groups(
+  films: FilmStat[],
+  keys: (f: StatsFilm) => string[],
+  { min = 1, order }: { min?: number; order?: (label: string) => number } = {},
+): Group[] {
   const map = new Map<string | null, FilmStat[]>()
   for (const s of films) {
     const ks = keys(s.film)
     for (const k of ks.length ? ks : [null]) map.set(k, [...(map.get(k) ?? []), s])
   }
   return [...map]
-    .filter(([label, g]) => label == null || g.length >= min)
+    .filter(([, g]) => g.length >= min)
     .map(([label, g]) => ({ label, count: g.length, avg: mean(nums(g.map((s) => s.avg))) }))
     .sort(
       (a, b) =>
         +(a.label == null) - +(b.label == null) ||
+        (order && a.label != null && b.label != null ? order(a.label) - order(b.label) : 0) ||
         b.count - a.count ||
         (b.avg ?? -1) - (a.avg ?? -1) ||
         (a.label ?? '').localeCompare(b.label ?? ''),
@@ -283,7 +296,7 @@ export function computeStats(data: StatsData, people: Person[], year: string): S
     attendance: ranked
       .map((person) => {
         const count = attendance.filter((a) => a.profileId === person.id).length
-        return { person, count, pct: Math.round((count / films.length) * 100) }
+        return { person, count, pct: Math.round((count * 100) / films.length) }
       })
       .filter((r) => r.count > 0)
       .sort((a, b) => b.count - a.count || byName(a.person, b.person)),
@@ -307,12 +320,20 @@ export function computeStats(data: StatsData, people: Person[], year: string): S
     alike: [...pairs].sort((x, y) => x.diff - y.diff || pairOrder(x, y)).slice(0, PAIRS),
     unalike: [...pairs].sort((x, y) => y.diff - x.diff || pairOrder(x, y)).slice(0, PAIRS),
     genres: groups(filmStats, (f) => f.genres),
-    directors: groups(filmStats, (f) => f.directors, MIN.directorFilms),
-    decades: groups(filmStats, (f) =>
-      f.releaseYear == null ? [] : [`${Math.floor(f.releaseYear / 10) * 10}s`],
+    directors: groups(filmStats, (f) => f.directors, { min: MIN.directorFilms }).slice(
+      0,
+      DIRECTOR_ROWS,
     ),
-    runtimes: groups(filmStats, (f) =>
-      f.runtimeMin == null ? [] : [RUNTIME_BANDS.find(([max]) => f.runtimeMin! <= max)![1]],
+    decades: groups(
+      filmStats,
+      (f) => (f.releaseYear == null ? [] : [`${Math.floor(f.releaseYear / 10) * 10}s`]),
+      { order: parseInt },
+    ),
+    runtimes: groups(
+      filmStats,
+      (f) =>
+        f.runtimeMin == null ? [] : [RUNTIME_BANDS.find(([max]) => f.runtimeMin! <= max)![1]],
+      { order: (label) => RUNTIME_BANDS.findIndex(([, l]) => l === label) },
     ),
   }
 }

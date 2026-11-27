@@ -378,6 +378,18 @@ describe('computeStats', () => {
       ])
     })
 
+    it('rounds the share half up: 23 of 40 screenings is 58%', () => {
+      const ids = Array.from({ length: 40 }, (_, i) => i + 1)
+      const d = data(
+        ids.map((id) => ({ id, date: '2026-01-01' })),
+        [],
+        ids.slice(0, 23).map((id) => [id, 'ana']),
+      )
+      expect(stats(d).attendance.map((r) => [r.person.name, r.count, r.pct])).toEqual([
+        ['Ana', 23, 58],
+      ])
+    })
+
     it('ranks choosers with at least 3 chosen films that have scores', () => {
       const films: Row[] = [
         { id: 1, date: '2026-01-01', by: 'ana' },
@@ -438,6 +450,50 @@ describe('computeStats', () => {
       expect(s.unalike.map(show)[0]).toEqual(['Ana', 'Cal', 4.1, 5])
     })
 
+    it('breaks a tie between scorers by name', () => {
+      const ids = Array.from({ length: 10 }, (_, i) => i + 1)
+      const d = data(
+        ids.map((id) => ({ id, date: '2026-01-01' })),
+        [
+          ...ids.map((id) => [id, 'ben', 7]),
+          ...ids.map((id) => [id, 'ana', id % 2 ? 6 : 8]),
+          ...ids.map((id) => [id, 'cal', 8]),
+        ],
+      )
+      expect(stats(d).scorers.map((r) => [r.person.name, r.avg])).toEqual([
+        ['Cal', 8],
+        ['Ana', 7],
+        ['Ben', 7],
+      ])
+    })
+
+    it('keeps the top 5 pairs each way, ties by name', () => {
+      const EVE = person('eve', 'Eve')
+      const ids = [1, 2, 3, 4, 5]
+      const by: Record<string, number> = { ana: 5, ben: 5, cal: 5, dee: 9, eve: 9 }
+      const d = data(
+        ids.map((id) => ({ id, date: '2026-01-01' })),
+        ids.flatMap((id) => Object.entries(by).map(([p, x]) => [id, p, x])),
+      )
+      const s = stats(d, '', [...PEOPLE, EVE])
+      const show = (ps: typeof s.alike) => ps.map((p) => `${p.a.name}–${p.b.name} ${p.diff}`)
+      // 10 pairs: four agree exactly, six differ by 4.
+      expect(show(s.alike)).toEqual([
+        'Ana–Ben 0',
+        'Ana–Cal 0',
+        'Ben–Cal 0',
+        'Dee–Eve 0',
+        'Ana–Dee 4',
+      ])
+      expect(show(s.unalike)).toEqual([
+        'Ana–Dee 4',
+        'Ana–Eve 4',
+        'Ben–Dee 4',
+        'Ben–Eve 4',
+        'Cal–Dee 4',
+      ])
+    })
+
     it('ranks a person with no colour like anyone else', () => {
       const d = data([{ id: 1, date: '2026-01-10' }], [], [[1, 'ben']])
       expect(stats(d).attendance[0].person).toBe(BEN)
@@ -496,30 +552,70 @@ describe('computeStats', () => {
       ])
     })
 
-    it('lists directors with at least 2 films', () => {
-      // Same count: the higher average first.
+    it('lists directors with at least 2 films, Unknown too', () => {
+      // Same count: the higher average first. Only one film has no director: no Unknown row.
       expect(show(s.directors)).toEqual([
         ['Dir B', 2, 9],
         ['Dir A', 2, 7],
-        [null, 1, null],
+      ])
+      const two = stats(
+        data([
+          { id: 1, date: '2026-01-01', directors: [] },
+          { id: 2, date: '2026-01-02', directors: [] },
+          { id: 3, date: '2026-01-03', directors: ['Dir A'] },
+          { id: 4, date: '2026-01-04', directors: ['Dir A'] },
+        ]),
+      )
+      expect(show(two.directors)).toEqual([
+        ['Dir A', 2, null],
+        [null, 2, null],
       ])
     })
 
-    it('groups by release decade', () => {
+    it('keeps the 20 directors with the most films', () => {
+      const films = Array.from({ length: 21 }, (_, i) => i).flatMap((n) =>
+        // Director 0 has 3 films, the others 2 each.
+        Array.from({ length: n === 0 ? 3 : 2 }, (_, k) => ({
+          id: n * 10 + k + 1,
+          date: '2026-01-01',
+          directors: [`Dir ${String(n).padStart(2, '0')}`],
+        })),
+      )
+      const list = stats(data(films)).directors
+      expect(list).toHaveLength(20)
+      expect(list[0]).toMatchObject({ label: 'Dir 00', count: 3 })
+      // Same count and no average: by name, so Dir 20 is the one cut.
+      expect(list.at(-1)!.label).toBe('Dir 19')
+    })
+
+    it('lists decades oldest first, Unknown last', () => {
       expect(show(s.decades)).toEqual([
-        ['2000s', 2, 9],
         ['1990s', 2, 7],
+        ['2000s', 2, 9],
         [null, 1, null],
       ])
     })
 
-    it('groups by runtime band at the edges', () => {
+    it('lists runtime bands in their natural order, Unknown last', () => {
       expect(show(s.runtimes)).toEqual([
-        ['150+ min', 1, 9],
-        ['90–119 min', 1, 8],
         ['< 90 min', 1, 6],
+        ['90–119 min', 1, 8],
         ['120–149 min', 1, null],
+        ['150+ min', 1, 9],
         [null, 1, null],
+      ])
+    })
+
+    it('puts 119 minutes in 90–119 and 120 in 120–149', () => {
+      const edges = stats(
+        data([
+          { id: 1, date: '2026-01-01', runtime: 119 },
+          { id: 2, date: '2026-01-02', runtime: 120 },
+        ]),
+      )
+      expect(show(edges.runtimes)).toEqual([
+        ['90–119 min', 1, null],
+        ['120–149 min', 1, null],
       ])
     })
   })

@@ -10,6 +10,7 @@ import { lisbonDate } from '../rotation/rotation'
 import { fetchStatsData } from '../stats/api'
 import {
   computeStats,
+  DIRECTOR_ROWS,
   MIN,
   parseStatsData,
   readYear,
@@ -145,7 +146,7 @@ export default function StatsPage() {
     const period = year || 'all time'
     body = (
       <>
-        <label className="field stats-year">
+        <label className="field support-filter">
           Period
           <select
             value={year}
@@ -293,7 +294,7 @@ export default function StatsPage() {
               />
               <Table
                 caption="By director"
-                note={`Directors with at least ${MIN.directorFilms} films`}
+                note={`Directors with at least ${MIN.directorFilms} films: the ${DIRECTOR_ROWS} with the most`}
                 head={['Director', 'Films', 'Average']}
                 rows={groupRows(stats.directors)}
               />

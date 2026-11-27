@@ -57,6 +57,15 @@ const fact = (label: string) =>
 
 const table = (name: string) => screen.getByRole('table', { name })
 
+/** The data cells (not the row header) of the row with the link `name`, one text each. */
+const cells = (tableName: string, name: string) => {
+  // By the name's link: the header's own text includes the role tip ("AdaAdmin").
+  const link = within(table(tableName)).getByRole('link', { name })
+  return within(link.closest('tr')!)
+    .getAllByRole('cell')
+    .map((c) => c.textContent)
+}
+
 beforeEach(() => {
   fetchStatsData.mockImplementation(async () => RAW)
 })
@@ -84,7 +93,7 @@ describe('StatsPage', () => {
     expect(screen.queryByText(/Far Future/)).toBeNull()
     expect(screen.queryByText(/Broken/)).toBeNull()
     // Far Future's attendance isn't counted either: Bo was present once, not twice.
-    expect(within(table('Attendance')).getByRole('row', { name: /Bo/ })).toHaveTextContent('150%')
+    expect(cells('Attendance', 'Bo')).toEqual(['1', '50%'])
   })
 
   it('shows an error with role="alert", and Try again loads the stats', async () => {
@@ -165,7 +174,7 @@ describe('StatsPage', () => {
     expect(within(attendance).getByRole('link', { name: 'Ada' })).toBeInTheDocument()
     expect(within(attendance).queryByText('Cinema')).toBeNull()
     // Ada was at both screenings, Bo at one.
-    expect(within(attendance).getByRole('row', { name: /Ada/ })).toHaveTextContent('2100%')
+    expect(cells('Attendance', 'Ada')).toEqual(['2', '100%'])
   })
 
   it('says when a ranking has nobody in it', async () => {
