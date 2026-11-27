@@ -169,25 +169,36 @@ export const FilmRow = memo(function FilmRow(props: {
   people: Map<string, Person>
   /** useHref('/people'): see Chip. */
   peopleHref: string
+  /** useHref('/films'): the thumbnail is a plain <a> for the same reason. */
+  filmsHref?: string
   poster?: boolean
   note?: React.ReactNode
 }) {
   const { film, people } = props
   return (
     <li className="film-row">
-      {props.poster &&
-        (film.posterPath ? (
-          <img
-            className="film-thumb"
-            src={`${THUMB_BASE}${film.posterPath}`}
-            alt=""
-            loading="lazy"
-            width={46}
-            height={69}
-          />
-        ) : (
-          <span className="film-thumb poster-placeholder" aria-hidden="true" />
-        ))}
+      {props.poster && (
+        // Mouse/touch shortcut to the film; the title link is the one Tab stop and accessible name.
+        <a
+          className="film-thumb-link"
+          href={`${props.filmsHref ?? '#/films'}/${film.id}`}
+          tabIndex={-1}
+          aria-hidden="true"
+        >
+          {film.posterPath ? (
+            <img
+              className="film-thumb"
+              src={`${THUMB_BASE}${film.posterPath}`}
+              alt=""
+              loading="lazy"
+              width={46}
+              height={69}
+            />
+          ) : (
+            <span className="film-thumb poster-placeholder" aria-hidden="true" />
+          )}
+        </a>
+      )}
       <div className="film-row-body">
         <div className="film-row-main">
           <span className="film-title">

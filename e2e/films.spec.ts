@@ -449,3 +449,12 @@ test("a reason tip on the rotation table's last row stays inside the table", asy
   expect(await height()).toEqual([before, before])
   expect(await overflow(page)).toBe(0)
 })
+
+test('pressing a poster in the poster list opens its film', async ({ page }) => {
+  await logIn(page, E2E_MEMBER.email, E2E_PASSWORD)
+  const row = page.locator('.film-row').first()
+  const title = await row.locator('.film-title a[href*="/films/"]').textContent()
+  await row.locator('.film-thumb-link').click()
+  await expect(page).toHaveURL(/#\/films\/\d+$/)
+  await expect(page.getByRole('heading', { level: 1, name: title! })).toBeVisible()
+})
