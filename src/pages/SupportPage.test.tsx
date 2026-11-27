@@ -115,9 +115,11 @@ describe('Support page', () => {
 
   it('shows a loading state, then a load failure with a way to try again', async () => {
     let fail!: (e: unknown) => void
-    api.fetchSuggestions.mockReturnValueOnce(new Promise((_, reject) => (fail = reject)))
+    // Created on the page's call, so the rejection always has the page's handler attached.
+    api.fetchSuggestions.mockImplementationOnce(() => new Promise((_, reject) => (fail = reject)))
     await renderPage()
     expect(screen.getByText('Loading suggestions…')).toBeInTheDocument()
+    await waitFor(() => expect(api.fetchSuggestions).toHaveBeenCalledTimes(1))
     await act(async () => fail(new TypeError('fetch failed')))
     expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't load the suggestions")
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
