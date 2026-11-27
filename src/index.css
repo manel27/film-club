@@ -1452,3 +1452,7 @@ a.chip:hover,
   flex-wrap: wrap;
   gap: 0.25rem;
 }
+
+.stats-chart {
+  margin: 1rem 0 0.5rem;
+}
