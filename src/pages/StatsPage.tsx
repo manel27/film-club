@@ -1,4 +1,12 @@
-import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import {
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type ReactNode,
+} from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { RoleChip } from '../components/Chip'
 import { Rating } from '../components/FilmViews'
@@ -33,13 +41,26 @@ const FilmLink = ({ s }: { s: FilmStat }) => (
   </Link>
 )
 
-/** A ranking or breakdown: a captioned table (first cell a row header) and the rule it follows. */
+/** Rows a table card shows until "Show all". */
+const TOP = 5
+
+/**
+ * A ranking or breakdown as a card: its caption as the visible heading, the rule it
+ * follows under that, then the table (first cell a row header). The <caption> stays
+ * for table navigation but is sr-only, so the name isn't shown twice. Over TOP rows:
+ * the first TOP and a Show all / Show fewer toggle (state reset by the panel's key).
+ */
 function Table(props: { caption: string; note?: string; head: string[]; rows: ReactNode[][] }) {
+  const id = useId()
+  const [all, setAll] = useState(false)
+  const n = props.rows.length
   return (
-    <div className="stats-block">
+    <div className="stats-card">
+      <h2 className="stats-card-title">{props.caption}</h2>
+      {props.note && <p className="muted stats-note">{props.note}</p>}
       <Scroll label={props.caption}>
-        <table className="rotation-table">
-          <caption>{props.caption}</caption>
+        <table id={id} className="rotation-table">
+          <caption className="sr-only">{props.caption}</caption>
           <thead>
             <tr>
               {props.head.map((h) => (
@@ -50,14 +71,14 @@ function Table(props: { caption: string; note?: string; head: string[]; rows: Re
             </tr>
           </thead>
           <tbody>
-            {props.rows.length === 0 ? (
+            {n === 0 ? (
               <tr>
                 <td colSpan={props.head.length} className="muted">
                   None in this period.
                 </td>
               </tr>
             ) : (
-              props.rows.map(([first, ...rest], i) => (
+              (all ? props.rows : props.rows.slice(0, TOP)).map(([first, ...rest], i) => (
                 <tr key={i}>
                   <th scope="row">{first}</th>
                   {rest.map((cell, j) => (
@@ -69,10 +90,31 @@ function Table(props: { caption: string; note?: string; head: string[]; rows: Re
           </tbody>
         </table>
       </Scroll>
-      {props.note && <p className="muted stats-note">{props.note}</p>}
+      {n > TOP && (
+        <button
+          type="button"
+          className="button button-secondary button-small stats-more"
+          aria-expanded={all}
+          aria-controls={id}
+          aria-label={
+            all ? `Show fewer rows: ${props.caption}` : `Show all ${n} rows: ${props.caption}`
+          }
+          onClick={() => setAll(!all)}
+        >
+          {all ? 'Show fewer' : `Show all (${n})`}
+        </button>
+      )}
     </div>
   )
 }
+
+/** One big-number tile of the overview: a term and its value, inside the <dl>. */
+const Tile = ({ label, children }: { label: string; children: ReactNode }) => (
+  <div className="stats-tile">
+    <dt>{label}</dt>
+    <dd>{children}</dd>
+  </div>
+)
 
 const groupRows = (groups: Group[]) =>
   groups.map((g) => [g.label ?? 'Unknown', g.count, <Avg key="avg" value={g.avg} />])
@@ -86,10 +128,19 @@ const pairRows = (pairs: Pair[]) =>
     p.shared,
   ])
 
+const TABS = [
+  ['overview', 'Overview'],
+  ['films', 'Films'],
+  ['people', 'People'],
+  ['breakdowns', 'Breakdowns'],
+] as const
+type Tab = (typeof TABS)[number][0]
+
 /**
  * Stats (#/stats, PLAN 10.2): club numbers for all time or one year. One load
  * (stats_data() and the people); the year filter (?year=) works on it in the
- * browser, so changing it sends no request that could arrive late.
+ * browser, so changing it sends no request that could arrive late. A dashboard
+ * of four tabs (?tab=, Overview by default); the year applies to all of them.
  */
 export default function StatsPage() {
   const [loaded, setLoaded] = useState<{ data: StatsData; people: Person[] } | null>(null)
@@ -111,10 +162,25 @@ export default function StatsPage() {
 
   const years = useMemo(() => (loaded ? statsYears(loaded.data) : []), [loaded])
   const year = readYear(params.get('year'), years)
+  const tab: Tab = TABS.find(([t]) => t === params.get('tab'))?.[0] ?? 'overview'
+  // Written from the validated values, so a bad tab or year in the URL is dropped.
+  const go = (t: Tab, y: string) =>
+    setParams({ ...(t !== 'overview' && { tab: t }), ...(y && { year: y }) }, { replace: true })
   const stats = useMemo(
     () => loaded && computeStats(loaded.data, loaded.people, year),
     [loaded, year],
   )
+
+  // ARIA tabs keyboard: arrows move (and wrap), Home and End jump to the first and last tab.
+  // From the pressed tab (i), not `tab`: a second key before the re-render would use a stale one.
+  const onTabKey = (e: KeyboardEvent, i: number) => {
+    const to = { ArrowLeft: i - 1, ArrowRight: i + 1, Home: 0, End: TABS.length - 1 }[e.key]
+    if (to === undefined) return
+    e.preventDefault()
+    const [next] = TABS[(to + TABS.length) % TABS.length]
+    go(next, year)
+    document.getElementById(`stats-tab-${next}`)?.focus()
+  }
 
   let body: ReactNode
   if (failed) {
@@ -150,12 +216,7 @@ export default function StatsPage() {
       <>
         <label className="field support-filter">
           Period
-          <select
-            value={year}
-            onChange={(e) =>
-              setParams(e.target.value ? { year: e.target.value } : {}, { replace: true })
-            }
-          >
+          <select value={year} onChange={(e) => go(tab, e.target.value)}>
             <option value="">All time</option>
             {years.map((y) => (
               <option key={y} value={y}>
@@ -171,164 +232,194 @@ export default function StatsPage() {
           <p className="muted">{year ? `No screenings in ${year}.` : 'No screenings yet.'}</p>
         ) : (
           <>
-            <section className="film-section" aria-labelledby="stats-overview">
-              <h2 id="stats-overview">Club overview</h2>
-              <dl className="film-facts">
-                <dt>Films screened</dt>
-                <dd>{o.films}</dd>
-                <dt>Scores given</dt>
-                <dd>{o.scores}</dd>
-                <dt>Club average</dt>
-                <dd>
-                  <Avg value={o.clubAvg} />
-                </dd>
-                <dt>Average attendance</dt>
-                <dd>{o.avgAttendance?.toFixed(2) ?? '–'}</dd>
-                {o.kinds.map((k) => (
-                  <Fragment key={k.kind}>
-                    <dt>{k.label}</dt>
-                    <dd>{k.count}</dd>
-                  </Fragment>
-                ))}
-                <dt>First screening</dt>
-                <dd>{o.first && screeningDay(o.first, today)}</dd>
-                <dt>Last screening</dt>
-                <dd>{o.last && screeningDay(o.last, today)}</dd>
-              </dl>
-              <p className="muted">
-                Averages leave out films with no scores; attendance is per screening.
-              </p>
-            </section>
-
-            <section className="film-section" aria-labelledby="stats-over-time">
-              <h2 id="stats-over-time">Over time</h2>
-              <OverTimeChart periods={stats.overTime} />
-              <Table
-                caption={year ? `By month in ${year}` : 'By year'}
-                note="Average leaves out films with no scores; attendance is per screening"
-                head={[year ? 'Month' : 'Year', 'Films', 'Average', 'Attendance']}
-                rows={stats.overTime.map((p) => [
-                  p.label,
-                  p.films,
-                  <Avg key="a" value={p.avg} />,
-                  p.attendance.toFixed(2),
-                ])}
-              />
-            </section>
-
-            <section className="film-section" aria-labelledby="stats-films">
-              <h2 id="stats-films">Films</h2>
-              <Table
-                caption="Highest average"
-                note={`Films with at least ${MIN.filmScores} scores`}
-                head={['Film', 'Average', 'Scores']}
-                rows={stats.top.map((s) => [
-                  <FilmLink key="f" s={s} />,
-                  <Avg key="a" value={s.avg} />,
-                  s.scores,
-                ])}
-              />
-              <Table
-                caption="Lowest average"
-                note={`Films with at least ${MIN.filmScores} scores`}
-                head={['Film', 'Average', 'Scores']}
-                rows={stats.bottom.map((s) => [
-                  <FilmLink key="f" s={s} />,
-                  <Avg key="a" value={s.avg} />,
-                  s.scores,
-                ])}
-              />
-              <Table
-                caption="Most divisive"
-                note={`Films with at least ${MIN.filmScores} scores, by the spread (standard deviation) of their scores`}
-                head={['Film', 'Spread', 'Scores']}
-                rows={stats.divisive.map((s) => [
-                  <FilmLink key="f" s={s} />,
-                  s.sd!.toFixed(2),
-                  s.scores,
-                ])}
-              />
-              <Table
-                caption="Most attended"
-                note="Films with at least 1 person present"
-                head={['Film', 'Present']}
-                rows={stats.attended.map((s) => [<FilmLink key="f" s={s} />, s.present])}
-              />
-            </section>
-
-            <section ref={tipsOff} className="film-section" aria-labelledby="stats-people">
-              <h2 id="stats-people">People</h2>
-              <Table
-                caption="Attendance"
-                note={`Share of the ${o.films} ${o.films === 1 ? 'screening' : 'screenings'}${year ? ` in ${year}` : ''}`}
-                head={['Person', 'Present', 'Share']}
-                rows={stats.attendance.map((r) => [
-                  <RoleChip key="p" person={r.person} />,
-                  r.count,
-                  `${r.pct}%`,
-                ])}
-              />
-              <Table
-                caption="Best chooser"
-                note={`People who chose at least ${MIN.chosenFilms} films with scores: the mean of those films' averages`}
-                head={['Person', 'Average', 'Films']}
-                rows={stats.choosers.map((r) => [
-                  <RoleChip key="p" person={r.person} />,
-                  <Avg key="a" value={r.avg} />,
-                  r.films,
-                ])}
-              />
-              <Table
-                caption="Kindest to harshest scorer"
-                note={`People with at least ${MIN.scoresGiven} scores: the mean score they gave`}
-                head={['Person', 'Mean score', 'Scores']}
-                rows={stats.scorers.map((r) => [
-                  <RoleChip key="p" person={r.person} />,
-                  <Avg key="a" value={r.avg} />,
-                  r.scores,
-                ])}
-              />
-              <Table
-                caption="Most alike"
-                note={`Pairs who both scored at least ${MIN.sharedFilms} films: the mean difference between their scores`}
-                head={['Pair', 'Difference', 'Shared films']}
-                rows={pairRows(stats.alike)}
-              />
-              <Table
-                caption="Least alike"
-                note={`Pairs who both scored at least ${MIN.sharedFilms} films`}
-                head={['Pair', 'Difference', 'Shared films']}
-                rows={pairRows(stats.unalike)}
-              />
-            </section>
-
-            <section className="film-section" aria-labelledby="stats-breakdowns">
-              <h2 id="stats-breakdowns">Breakdowns</h2>
-              <CountChart horizontal groups={chartGenres(stats.genres)} />
-              <Table
-                caption="By genre"
-                note="A film counts once in each of its genres"
-                head={['Genre', 'Films', 'Average']}
-                rows={groupRows(stats.genres)}
-              />
-              <Table
-                caption="By director"
-                note={`Directors with at least ${MIN.directorFilms} films: the ${DIRECTOR_ROWS} with the most`}
-                head={['Director', 'Films', 'Average']}
-                rows={groupRows(stats.directors)}
-              />
-              <CountChart groups={stats.decades} />
-              <Table
-                caption="By release decade"
-                head={['Decade', 'Films', 'Average']}
-                rows={groupRows(stats.decades)}
-              />
-              <Table
-                caption="By runtime"
-                head={['Runtime', 'Films', 'Average']}
-                rows={groupRows(stats.runtimes)}
-              />
-            </section>
+            <div role="tablist" aria-label="Stats" className="tabs stats-tabs">
+              {TABS.map(([t, label], i) => (
+                <button
+                  key={t}
+                  id={`stats-tab-${t}`}
+                  type="button"
+                  role="tab"
+                  aria-selected={tab === t}
+                  aria-controls="stats-panel"
+                  tabIndex={tab === t ? 0 : -1}
+                  className="tab"
+                  onClick={() => go(t, year)}
+                  onKeyDown={(e) => onTabKey(e, i)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {/* Keyed on tab and year: Show all resets, and no card inherits another's state. */}
+            <div
+              key={`${tab}-${year}`}
+              ref={tipsOff}
+              id="stats-panel"
+              role="tabpanel"
+              aria-labelledby={`stats-tab-${tab}`}
+              tabIndex={0}
+            >
+              {tab === 'overview' && (
+                <>
+                  <dl className="stats-tiles">
+                    <Tile label="Films screened">{o.films}</Tile>
+                    <Tile label="Scores given">{o.scores}</Tile>
+                    <Tile label="Club average">
+                      <Avg value={o.clubAvg} />
+                    </Tile>
+                    <Tile label="Average attendance">{o.avgAttendance?.toFixed(2) ?? '–'}</Tile>
+                    {o.kinds.map((k) => (
+                      <Tile key={k.kind} label={k.label}>
+                        {k.count}
+                      </Tile>
+                    ))}
+                    <Tile label="First screening">{o.first && screeningDay(o.first, today)}</Tile>
+                    <Tile label="Last screening">{o.last && screeningDay(o.last, today)}</Tile>
+                  </dl>
+                  <p className="muted">
+                    Averages leave out films with no scores; attendance is per screening.
+                  </p>
+                  <div className="stats-grid">
+                    <div className="stats-card">
+                      <OverTimeChart periods={stats.overTime} />
+                    </div>
+                    <Table
+                      caption={year ? `By month in ${year}` : 'By year'}
+                      note="Average leaves out films with no scores; attendance is per screening"
+                      head={[year ? 'Month' : 'Year', 'Films', 'Average', 'Attendance']}
+                      rows={stats.overTime.map((p) => [
+                        p.label,
+                        p.films,
+                        <Avg key="a" value={p.avg} />,
+                        p.attendance.toFixed(2),
+                      ])}
+                    />
+                  </div>
+                </>
+              )}
+              {tab === 'films' && (
+                <div className="stats-grid">
+                  <Table
+                    caption="Highest average"
+                    note={`Films with at least ${MIN.filmScores} scores`}
+                    head={['Film', 'Average', 'Scores']}
+                    rows={stats.top.map((s) => [
+                      <FilmLink key="f" s={s} />,
+                      <Avg key="a" value={s.avg} />,
+                      s.scores,
+                    ])}
+                  />
+                  <Table
+                    caption="Lowest average"
+                    note={`Films with at least ${MIN.filmScores} scores`}
+                    head={['Film', 'Average', 'Scores']}
+                    rows={stats.bottom.map((s) => [
+                      <FilmLink key="f" s={s} />,
+                      <Avg key="a" value={s.avg} />,
+                      s.scores,
+                    ])}
+                  />
+                  <Table
+                    caption="Most divisive"
+                    note={`Films with at least ${MIN.filmScores} scores, by the spread (standard deviation) of their scores`}
+                    head={['Film', 'Spread', 'Scores']}
+                    rows={stats.divisive.map((s) => [
+                      <FilmLink key="f" s={s} />,
+                      s.sd!.toFixed(2),
+                      s.scores,
+                    ])}
+                  />
+                  <Table
+                    caption="Most attended"
+                    note="Films with at least 1 person present"
+                    head={['Film', 'Present']}
+                    rows={stats.attended.map((s) => [<FilmLink key="f" s={s} />, s.present])}
+                  />
+                </div>
+              )}
+              {tab === 'people' && (
+                <div className="stats-grid">
+                  <Table
+                    caption="Attendance"
+                    note={`Share of the ${o.films} ${o.films === 1 ? 'screening' : 'screenings'}${year ? ` in ${year}` : ''}`}
+                    head={['Person', 'Present', 'Share']}
+                    rows={stats.attendance.map((r) => [
+                      <RoleChip key="p" person={r.person} />,
+                      r.count,
+                      `${r.pct}%`,
+                    ])}
+                  />
+                  <Table
+                    caption="Best chooser"
+                    note={`People who chose at least ${MIN.chosenFilms} films with scores: the mean of those films' averages`}
+                    head={['Person', 'Average', 'Films']}
+                    rows={stats.choosers.map((r) => [
+                      <RoleChip key="p" person={r.person} />,
+                      <Avg key="a" value={r.avg} />,
+                      r.films,
+                    ])}
+                  />
+                  <Table
+                    caption="Kindest to harshest scorer"
+                    note={`People with at least ${MIN.scoresGiven} scores: the mean score they gave`}
+                    head={['Person', 'Mean score', 'Scores']}
+                    rows={stats.scorers.map((r) => [
+                      <RoleChip key="p" person={r.person} />,
+                      <Avg key="a" value={r.avg} />,
+                      r.scores,
+                    ])}
+                  />
+                  <Table
+                    caption="Most alike"
+                    note={`Pairs who both scored at least ${MIN.sharedFilms} films: the mean difference between their scores`}
+                    head={['Pair', 'Difference', 'Shared films']}
+                    rows={pairRows(stats.alike)}
+                  />
+                  <Table
+                    caption="Least alike"
+                    note={`Pairs who both scored at least ${MIN.sharedFilms} films`}
+                    head={['Pair', 'Difference', 'Shared films']}
+                    rows={pairRows(stats.unalike)}
+                  />
+                </div>
+              )}
+              {tab === 'breakdowns' && (
+                <div className="stats-grid">
+                  <div className="stats-card">
+                    <CountChart
+                      horizontal
+                      title="Films by genre"
+                      groups={chartGenres(stats.genres)}
+                    />
+                  </div>
+                  <Table
+                    caption="By genre"
+                    note="A film counts once in each of its genres"
+                    head={['Genre', 'Films', 'Average']}
+                    rows={groupRows(stats.genres)}
+                  />
+                  <div className="stats-card">
+                    <CountChart title="Films by decade" groups={stats.decades} />
+                  </div>
+                  <Table
+                    caption="By release decade"
+                    head={['Decade', 'Films', 'Average']}
+                    rows={groupRows(stats.decades)}
+                  />
+                  <Table
+                    caption="By director"
+                    note={`Directors with at least ${MIN.directorFilms} films: the ${DIRECTOR_ROWS} with the most`}
+                    head={['Director', 'Films', 'Average']}
+                    rows={groupRows(stats.directors)}
+                  />
+                  <Table
+                    caption="By runtime"
+                    head={['Runtime', 'Films', 'Average']}
+                    rows={groupRows(stats.runtimes)}
+                  />
+                </div>
+              )}
+            </div>
           </>
         )}
       </>

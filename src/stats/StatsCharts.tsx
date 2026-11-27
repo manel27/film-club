@@ -130,7 +130,8 @@ const LABEL_MAX = 14
 const shortLabel = (l: string) => (l.length > LABEL_MAX ? `${l.slice(0, LABEL_MAX - 1)}…` : l)
 
 /** Film count per group as bars: horizontal (genres) or vertical (decades). */
-export function CountChart({ groups, horizontal }: { groups: Group[]; horizontal?: boolean }) {
+export function CountChart(props: { groups: Group[]; horizontal?: boolean; title?: string }) {
+  const { groups, horizontal, title } = props
   const data = groups.map((g) => ({ label: g.label ?? 'Unknown', films: g.count }))
   const bar = (
     <Bar
@@ -144,7 +145,7 @@ export function CountChart({ groups, horizontal }: { groups: Group[]; horizontal
   const tooltip = <Tooltip {...TOOLTIP} />
   if (horizontal) {
     return (
-      <Chart height={data.length * 28 + 40}>
+      <Chart title={title} height={data.length * 28 + 40}>
         <BarChart
           data={data}
           layout="vertical"
@@ -170,7 +171,7 @@ export function CountChart({ groups, horizontal }: { groups: Group[]; horizontal
     )
   }
   return (
-    <Chart height={220}>
+    <Chart title={title} height={220}>
       <BarChart
         data={data}
         accessibilityLayer={false}

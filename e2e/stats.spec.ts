@@ -1,13 +1,14 @@
 import { expect, test, type Page } from '@playwright/test'
 import { adminClient, SEED_MEMBER, SEED_VIEWER, watchCsp } from './fixtures'
 
-// Adds a screening in 2019, a year no seed film or other spec uses, and removes
-// it after: this file runs in the writes project (playwright.config.ts). Exact
+// Adds screenings in 2019, a year no seed film or other spec uses, and removes
+// them after: this file runs in the writes project (playwright.config.ts). Exact
 // numbers are checked only for 2019, which this file owns; for All time and
 // 2026 the expected counts come from the database itself, so other specs'
 // films (and the seed's next film once its date passes) can't break them.
-// Wren is an unclaimed seed member nobody else counts for; the film is before
-// the rotation epoch, so it changes no standings.
+// Wren is an unclaimed seed member nobody else counts for; the films are before
+// the rotation epoch, so they change no standings. One film has a score and
+// Wren present; five more, one a month April–August, give By month 6 rows (Show all).
 const SCREENSHOTS = 'test-results/screenshots'
 const TITLE = 'E2E Stats Archive Night'
 const OWN_YEAR = '2019'
@@ -18,7 +19,7 @@ const WREN = '00000000-0000-4000-8000-0000000000b2'
 test.describe.configure({ mode: 'serial' })
 
 async function removeFilm() {
-  const { error } = await adminClient().from('films').delete().eq('title', TITLE)
+  const { error } = await adminClient().from('films').delete().like('title', `${TITLE}%`)
   if (error) throw error
 }
 
@@ -36,6 +37,15 @@ test.beforeAll(async () => {
     .select('id')
     .single()
   if (error) throw error
+  const more = await db.from('films').insert(
+    [4, 5, 6, 7, 8].map((month) => ({
+      title: `${TITLE} ${month}`,
+      release_year: 1988,
+      screened_on: `${OWN_YEAR}-0${month}-10`,
+      assigned_id: WREN,
+    })),
+  )
+  if (more.error) throw more.error
   for (const { error } of await Promise.all([
     db.from('scores').insert({ film_id: data.id, profile_id: WREN, score: 4 }),
     db.from('attendance').insert({ film_id: data.id, profile_id: WREN }),
@@ -122,17 +132,27 @@ test('a member sees the club stats, filters them by year and opens a film', asyn
   expect(byYear.map((r) => r[0])).toEqual([...all.years].reverse())
   expect(byYear.find((r) => r[0] === OWN_YEAR)).toEqual([
     OWN_YEAR,
-    '1',
+    '6',
     expect.stringContaining('4.00 👎'),
-    '1.00',
+    '0.17',
   ])
-  // Four charts (films and average over time, genres, decades), each an SVG, hidden from screen readers (the tables carry the numbers).
+  // Charts, each an SVG, hidden from screen readers (the tables carry the numbers):
+  // films and average over time on Overview, genres and decades on Breakdowns.
   const charts = page.locator('.stats-chart')
-  await expect(charts).toHaveCount(4)
-  for (const chart of await charts.all()) {
-    await expect(chart).toHaveAttribute('aria-hidden', 'true')
-    await expect(chart.locator('.recharts-wrapper > svg')).toBeVisible()
+  const checkCharts = async () => {
+    await expect(charts).toHaveCount(2)
+    for (const chart of await charts.all()) {
+      await expect(chart).toHaveAttribute('aria-hidden', 'true')
+      await expect(chart.locator('.recharts-wrapper > svg')).toBeVisible()
+    }
   }
+  await checkCharts()
+  await page.getByRole('tab', { name: 'Breakdowns' }).click()
+  await expect(page).toHaveURL(/#\/stats\?tab=breakdowns$/)
+  await expect(page.getByRole('tabpanel', { name: 'Breakdowns' })).toBeVisible()
+  await checkCharts()
+  await page.getByRole('tab', { name: 'Overview' }).click()
+  await expect(page).toHaveURL(/#\/stats$/)
 
   await period.selectOption('2026')
   await expect(page).toHaveURL(/#\/stats\?year=2026$/)
@@ -143,24 +163,82 @@ test('a member sees the club stats, filters them by year and opens a film', asyn
   // The year this file owns: exact numbers.
   await period.selectOption(OWN_YEAR)
   await expect(page).toHaveURL(new RegExp(`#/stats\\?year=${OWN_YEAR}$`))
-  await expect(fact(page, 'Films screened')).toHaveText('1')
+  await expect(fact(page, 'Films screened')).toHaveText('6')
   await expect(fact(page, 'Scores given')).toHaveText('1')
   await expect(fact(page, 'Club average')).toContainText('4.00 👎')
-  await expect(fact(page, 'Average attendance')).toHaveText('1.00')
-  await expect(fact(page, 'Normal')).toHaveText('1')
+  await expect(fact(page, 'Average attendance')).toHaveText('0.17')
+  await expect(fact(page, 'Normal')).toHaveText('6')
   await expect(fact(page, 'First screening')).toHaveText('Sat 16 Mar 2019')
-  expect(await tableRows(page, `By month in ${OWN_YEAR}`)).toEqual([
+  await expect(fact(page, 'Last screening')).toHaveText('Sat 10 Aug 2019')
+  // Six months: the first 5, then Show all; focus stays on the button.
+  const byMonth = `By month in ${OWN_YEAR}`
+  const month = (name: string, films: string) => [name, films, '–No average', '0.00']
+  expect(await tableRows(page, byMonth)).toEqual([
     ['March', '1', expect.stringContaining('4.00 👎'), '1.00'],
+    month('April', '1'),
+    month('May', '1'),
+    month('June', '1'),
+    month('July', '1'),
   ])
+  const showAll = page.getByRole('button', { name: `Show all 6 rows: ${byMonth}` })
+  await expect(showAll).toHaveText('Show all (6)')
+  await expect(showAll).toHaveAttribute('aria-expanded', 'false')
+  await showAll.click()
+  const showFewer = page.getByRole('button', { name: `Show fewer rows: ${byMonth}` })
+  await expect(showFewer).toHaveText('Show fewer')
+  await expect(showFewer).toHaveAttribute('aria-expanded', 'true')
+  await expect(showFewer).toBeFocused()
+  expect((await tableRows(page, byMonth)).map((r) => r[0])).toEqual([
+    'March',
+    'April',
+    'May',
+    'June',
+    'July',
+    'August',
+  ])
+  // A year change starts it collapsed again.
+  await period.selectOption('')
+  await period.selectOption(OWN_YEAR)
+  await expect(showAll).toHaveAttribute('aria-expanded', 'false')
+  expect(await tableRows(page, byMonth)).toHaveLength(5)
+
+  // Tabs: the tab joins the year in the URL; the year stays when the tab changes and back.
+  await page.getByRole('tab', { name: 'People' }).click()
+  await expect(page).toHaveURL(new RegExp(`#/stats\\?tab=people&year=${OWN_YEAR}$`))
+  await expect(page.getByRole('table', { name: 'Attendance' })).toBeVisible()
+  await expect(page.getByRole('table', { name: byMonth })).toHaveCount(0)
+  await period.selectOption('2026')
+  await expect(page).toHaveURL(/#\/stats\?tab=people&year=2026$/)
+  await expect(page.getByRole('tab', { name: 'People' })).toHaveAttribute('aria-selected', 'true')
+  // Keyboard: arrows move and wrap, Home and End; focus follows the selected tab.
+  await page.getByRole('tab', { name: 'People' }).focus()
+  await page.keyboard.press('ArrowRight')
+  await expect(page.getByRole('tab', { name: 'Breakdowns' })).toBeFocused()
+  await expect(page).toHaveURL(/#\/stats\?tab=breakdowns&year=2026$/)
+  await page.keyboard.press('ArrowRight')
+  await expect(page.getByRole('tab', { name: 'Overview' })).toBeFocused()
+  await expect(page).toHaveURL(/#\/stats\?year=2026$/)
+  await page.keyboard.press('End')
+  await expect(page.getByRole('tab', { name: 'Breakdowns' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  )
+  await page.keyboard.press('Home')
+  await page.keyboard.press('ArrowLeft')
+  await expect(page.getByRole('tab', { name: 'Breakdowns' })).toBeFocused()
+  // Tab moves from the selected tab into its panel, not to the other tabs.
+  await page.keyboard.press('Tab')
+  await expect(page.getByRole('tabpanel', { name: 'Breakdowns' })).toBeFocused()
   expect(await violations()).toEqual([])
 
-  // A bad year in the URL falls back to All time.
-  await page.goto('./#/stats?year=20x6')
+  // A bad year or tab in the URL falls back to All time and Overview.
+  await page.goto('./#/stats?tab=peop1e&year=20x6')
   await expect(page.getByLabel('Period')).toHaveValue('')
+  await expect(page.getByRole('tab', { name: 'Overview' })).toHaveAttribute('aria-selected', 'true')
   await expect(fact(page, 'Films screened')).toHaveText(all.films)
 
   await page.screenshot({ path: `${SCREENSHOTS}/stats.png`, fullPage: true })
-  await page.goto(`./#/stats?year=${OWN_YEAR}`)
+  await page.goto(`./#/stats?tab=films&year=${OWN_YEAR}`)
   await page
     .getByRole('table', { name: 'Most attended' })
     .getByRole('link', { name: `${TITLE} (1988)` })
@@ -168,28 +246,40 @@ test('a member sees the club stats, filters them by year and opens a film', asyn
   await expect(page.getByRole('heading', { level: 1, name: TITLE })).toBeVisible()
 })
 
-test('a viewer can open the stats; at 360px the charts fit and only the tables scroll sideways', async ({
+test('a viewer can open the stats; at 360px, in every tab and theme, the cards fit and only the tables scroll sideways', async ({
   page,
 }) => {
   await page.setViewportSize({ width: 360, height: 740 })
   await logIn(page, SEED_VIEWER)
   await page.goto('./#/stats')
   await expect(fact(page, 'Films screened')).toHaveText((await screened()).films)
-  await expect(page.locator('.stats-chart .recharts-wrapper > svg')).toHaveCount(4)
-  for (const theme of ['letterboxd', 'superman', 'batman']) {
-    await page.evaluate((t) => (document.documentElement.dataset.theme = t), theme)
-    const overflow = await page.evaluate(
-      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
-    )
-    expect(overflow, theme).toBe(0)
-    // Each chart fits the column (ResponsiveContainer), never wider than the screen.
-    for (const box of await page
-      .locator('.stats-chart .recharts-wrapper > svg')
-      .evaluateAll((svgs) => svgs.map((svg) => svg.getBoundingClientRect().right))) {
-      expect(box, theme).toBeLessThanOrEqual(360)
+  for (const [tab, charts] of [
+    ['Overview', 2],
+    ['Films', 0],
+    ['People', 0],
+    ['Breakdowns', 2],
+  ] as const) {
+    await page.getByRole('tab', { name: tab }).click()
+    await expect(page.getByRole('tabpanel', { name: tab })).toBeVisible()
+    await expect(page.locator('.stats-chart .recharts-wrapper > svg')).toHaveCount(charts)
+    for (const theme of ['letterboxd', 'superman', 'batman']) {
+      await page.evaluate((t) => (document.documentElement.dataset.theme = t), theme)
+      const overflow = await page.evaluate(
+        () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      )
+      expect(overflow, `${tab}, ${theme}`).toBe(0)
+      // Each card and chart fits the column, never wider than the screen.
+      for (const right of await page
+        .locator('.stats-card, .stats-tile, .stats-chart .recharts-wrapper > svg')
+        .evaluateAll((els) => els.map((el) => el.getBoundingClientRect().right))) {
+        expect(right, `${tab}, ${theme}`).toBeLessThanOrEqual(360)
+      }
     }
+    await page.screenshot({
+      path: `${SCREENSHOTS}/stats-360-${tab.toLowerCase()}.png`,
+      fullPage: true,
+    })
   }
-  await page.screenshot({ path: `${SCREENSHOTS}/stats-360.png`, fullPage: true })
 })
 
 test('if the Stats chunk is missing (an old tab after a release), the page offers a reload', async ({
