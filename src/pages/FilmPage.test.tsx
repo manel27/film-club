@@ -151,6 +151,16 @@ describe('film page', () => {
     expect(badge).toHaveAttribute('tabindex', '0')
     // Described by the "Why:" line, not a second copy in the tip.
     expect(badge).toHaveAccessibleDescription('Why: Nobody agreed')
+    // A tap focuses it (focus shows the tip), inside the page's tipsOff; a tap elsewhere closes it.
+    fireEvent.pointerDown(badge, { pointerType: 'touch' })
+    fireEvent.click(badge, { detail: 1 })
+    expect(badge).toHaveFocus()
+    expect(badge.closest('.role-chip')!.querySelector('.reason-tip')).toHaveTextContent(
+      'Nobody agreed',
+    )
+    expect(badge.closest('.tips-off')).toBeNull()
+    fireEvent.pointerDown(screen.getByRole('heading', { level: 1 }), { pointerType: 'touch' })
+    expect(badge).not.toHaveFocus()
     cleanup()
 
     // Imported films have none.

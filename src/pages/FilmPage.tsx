@@ -4,7 +4,7 @@ import { useAuth } from '../auth/authContext'
 import { fetchFilm, filmWrites, type FilmDetailData, type FilmRecord } from '../films/api'
 import { errorMessage, parseScore, permissions } from '../films/filmDetail'
 import { whyText, type Person } from '../films/films'
-import Chip, { PersonName } from '../components/Chip'
+import { PersonName, RoleChip } from '../components/Chip'
 import { KindBadge } from '../components/FilmViews'
 import { tipsOff } from '../components/tipsOff'
 import { fetchEpoch } from '../rotation/api'
@@ -161,7 +161,7 @@ function Film({ id }: { id: string }) {
   const props: SectionProps = { byId, perms, me: profile?.id, run, busy, errorFor }
 
   return (
-    <main className="page film-page">
+    <main className="page film-page" ref={tipsOff}>
       <BackLink />
       {film.is_easter_egg && <LostTheGame />}
       <div className="film-header">
@@ -197,14 +197,12 @@ function Film({ id }: { id: string }) {
           {film.original_title && film.original_title !== film.title && (
             <p className="muted">{film.original_title}</p>
           )}
-          <span ref={tipsOff}>
-            <KindBadge
-              kind={film.kind}
-              reason={film.democratico_reason}
-              tabbable
-              describedBy="film-reason"
-            />
-          </span>
+          <KindBadge
+            kind={film.kind}
+            reason={film.democratico_reason}
+            tabbable
+            describedBy="film-reason"
+          />
           {film.kind === 'democratico' && (
             <p id="film-reason" className="muted film-reason">
               {whyText(film.democratico_reason)}
@@ -216,8 +214,11 @@ function Film({ id }: { id: string }) {
             <Fact label="Genres" value={film.genres.join(', ')} />
             <Fact label="Runtime" value={film.runtime_min && `${film.runtime_min} min`} />
             <Fact label="Shown on" value={film.screened_on.replaceAll('-', '/')} />
-            <Fact label="Chosen by" value={assigned && <Chip person={assigned} />} />
-            <Fact label="Missed their turn" value={turnHolder && <Chip person={turnHolder} />} />
+            <Fact label="Chosen by" value={assigned && <RoleChip person={assigned} />} />
+            <Fact
+              label="Missed their turn"
+              value={turnHolder && <RoleChip person={turnHolder} />}
+            />
           </dl>
           {film.overview && <p className="film-overview">{film.overview}</p>}
         </div>
@@ -370,7 +371,7 @@ function Attendance({
             .sort(byName)
             .map((p, i) => (
               <li key={p?.id ?? i}>
-                <Chip person={p} />
+                <RoleChip person={p} />
               </li>
             ))}
         </ul>
@@ -643,7 +644,7 @@ function Comments({
           {film.comments.map((c) => (
             <li key={c.id} className="comment">
               <p className="comment-meta">
-                <Chip person={byId.get(c.author_id)} />{' '}
+                <RoleChip person={byId.get(c.author_id)} />{' '}
                 <span className="muted">
                   {when(c.created_at, c.is_legacy)}
                   {c.edited_at && ' (edited)'}

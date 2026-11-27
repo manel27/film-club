@@ -1,6 +1,11 @@
+import { useContext, useEffect, useRef } from 'react'
 import tmdbLogo from '../assets/tmdb-logo.svg'
+import { AuthContext } from '../auth/authContext'
+import { ROLE_NAMES } from '../people/profile'
 
-const ROLES = ['Admin', 'Moderator', 'Member', 'Viewer']
+// In ROLE_NAMES' order (admin, moderator, member, viewer), which the marks below follow.
+const ROLE_KEYS: readonly string[] = Object.keys(ROLE_NAMES)
+const ROLES = Object.values(ROLE_NAMES)
 
 // What each role can do, exactly as the database's row-level security allows.
 // Marks are [admin, moderator, member, viewer].
@@ -43,6 +48,20 @@ const PERMISSIONS: [string, boolean[]][] = [
  * it as a data: URI, which the CSP's img-src allows.
  */
 export default function AboutPage() {
+  // Logged out (or rendered outside the provider): no highlight. Same for an unknown role
+  // or a system profile (they never log in, but never claim to be one).
+  const profile = useContext(AuthContext)?.profile
+  const mine = profile && !profile.is_system ? ROLE_KEYS.indexOf(profile.role) : -1
+  const you = (i: number) => (i === mine ? 'your-role' : undefined)
+  // On a phone the columns scroll sideways: bring "(you)" into view, the page itself unmoved.
+  const scrollBox = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const box = scrollBox.current
+    const th = box?.querySelector('thead .your-role')
+    if (!box || !th) return
+    const over = th.getBoundingClientRect().right - box.getBoundingClientRect().right
+    if (over > 0) box.scrollLeft += Math.ceil(over) // scrollLeft rounds down
+  }, [mine])
   return (
     <main className="page about-page">
       <h1>About Film Club</h1>
@@ -57,15 +76,21 @@ export default function AboutPage() {
         logins and the club's data. Viewers can look, pick a theme and write suggestions, nothing
         else.
       </p>
-      <div className="table-scroll" role="region" aria-label="Roles" tabIndex={0}>
+      {mine >= 0 && (
+        <p className="your-role-note">
+          You are {/^[AEIOU]/.test(ROLES[mine]) ? 'an' : 'a'} {ROLES[mine].toLowerCase()}.
+        </p>
+      )}
+      <div ref={scrollBox} className="table-scroll" role="region" aria-label="Roles" tabIndex={0}>
         <table className="rotation-table roles-table">
           <caption className="sr-only">What each role can do</caption>
           <thead>
             <tr>
               <th scope="col">What you can do</th>
-              {ROLES.map((role) => (
-                <th scope="col" key={role}>
+              {ROLES.map((role, i) => (
+                <th scope="col" key={role} className={you(i)}>
                   {role}
+                  {i === mine && ' (you)'}
                 </th>
               ))}
             </tr>
@@ -75,7 +100,7 @@ export default function AboutPage() {
               <tr key={what}>
                 <th scope="row">{what}</th>
                 {marks.map((yes, i) => (
-                  <td key={ROLES[i]}>
+                  <td key={ROLES[i]} className={you(i)}>
                     <span aria-hidden="true">{yes ? '✓' : '—'}</span>
                     <span className="sr-only">{yes ? 'yes' : 'no'}</span>
                   </td>

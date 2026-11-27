@@ -485,12 +485,6 @@ a {
   padding: 0 0.5rem;
 }
 
-/* Present names end the row, near the screen edge: their tips open to the left. */
-.present-names .role-tip {
-  left: auto;
-  right: 0;
-}
-
 .film-row .film-thumb-link {
   flex: none;
   display: block;
@@ -1264,6 +1258,7 @@ a.chip:hover,
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--text);
+  /* tipsOff shifts a shown tip sideways if it would cross a screen edge. */
   /* A focus-shown tip must not swallow clicks on the row below. */
   pointer-events: none;
 }
@@ -1277,6 +1272,11 @@ a.chip:hover,
     display: block;
     pointer-events: auto;
   }
+}
+
+/* Opened by a first tap on touch screens (tipsOff). */
+.role-chip.tip-open .role-tip {
+  display: block;
 }
 
 .tips-off .role-chip .role-tip {
@@ -1367,6 +1367,19 @@ a.chip:hover,
 
 .about-page {
   text-align: left;
+}
+
+/* The viewer's own role column: a heavier frame and "(you)" in the header, not colour alone. */
+.roles-table .your-role {
+  border-inline: 3px solid var(--accent);
+}
+
+.roles-table thead .your-role {
+  border-top: 3px solid var(--accent);
+}
+
+.roles-table tbody tr:last-child .your-role {
+  border-bottom: 3px solid var(--accent);
 }
 
 /* On a phone the actions stay readable; the role columns scroll sideways instead. */

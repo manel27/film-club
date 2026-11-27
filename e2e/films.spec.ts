@@ -336,12 +336,19 @@ test('the films page fits a 360px screen in every view and theme', async ({ page
     .getByRole('region', { name: 'Next film' })
     .screenshot({ path: `${SCREENSHOTS}/films-narrow-next-film.png` })
 
-  // A present name's role tip, shown by focus near the right edge, doesn't widen the page.
   await page.getByRole('button', { name: 'Compact', exact: true }).click()
   const orchard = page.getByRole('listitem').filter({ hasText: 'The Quiet Orchard' })
-  await orchard.getByRole('group', { name: 'Present' }).getByRole('link').last().focus()
-  await expect(orchard.getByRole('group', { name: 'Present' }).getByRole('tooltip')).toBeVisible()
-  expect(await overflow(page)).toBe(0)
+  // Shown by focus, each present name's tip stays inside the screen.
+  const present = orchard.getByRole('group', { name: 'Present' })
+  for (const link of await present.getByRole('link').all()) {
+    await link.focus()
+    const tip = present.getByRole('tooltip')
+    await expect(tip).toBeVisible()
+    const box = (await tip.boundingBox())!
+    expect(box.x).toBeGreaterThanOrEqual(0)
+    expect(box.x + box.width).toBeLessThanOrEqual(360)
+    expect(await overflow(page)).toBe(0)
+  }
 
   // The present panel opens inline.
   await page.getByText('Present', { exact: true }).click()
@@ -457,4 +464,42 @@ test('pressing a poster in the poster list opens its film', async ({ page }) => 
   await row.locator('.film-thumb-link').click()
   await expect(page).toHaveURL(/#\/films\/\d+$/)
   await expect(page.getByRole('heading', { level: 1, name: title! })).toBeVisible()
+})
+
+test.describe('on a touch screen', () => {
+  test.use({ viewport: { width: 360, height: 740 }, isMobile: true, hasTouch: true })
+
+  test('a first tap on a name shows its role inside the screen, a second opens the profile', async ({
+    page,
+  }) => {
+    await logIn(page, E2E_MEMBER.email, E2E_PASSWORD)
+    expect(await page.evaluate(() => matchMedia('(hover: none)').matches)).toBe(true)
+    // A non-default theme, set on the page only (the picker would save it to the database).
+    await page.evaluate(() => (document.documentElement.dataset.theme = 'superman'))
+    const orchard = page.getByRole('listitem').filter({ hasText: 'The Quiet Orchard' })
+    const present = orchard.getByRole('group', { name: 'Present' })
+    const url = page.url()
+    // Every present name, wherever it falls on its line (#35: line starts were cut off).
+    for (const name of ['Kwame', 'Orla', 'Tamsin', 'Viggo']) {
+      await present.getByRole('link', { name }).tap()
+      const tip = present.getByRole('tooltip')
+      await expect(tip).toHaveCount(1)
+      await expect(tip).toBeVisible()
+      const box = (await tip.boundingBox())!
+      expect(box.x, name).toBeGreaterThanOrEqual(0)
+      expect(box.x + box.width, name).toBeLessThanOrEqual(360)
+      expect(await overflow(page), name).toBe(0)
+      expect(page.url()).toBe(url)
+    }
+    // A tap elsewhere closes it; the next tap on a name shows its tip again.
+    await page.getByRole('heading', { name: 'Films', exact: true }).tap()
+    await expect(present.getByRole('tooltip')).toHaveCount(0)
+    const kwame = present.getByRole('link', { name: 'Kwame' })
+    await kwame.tap()
+    await expect(present.getByRole('tooltip', { name: 'Member' })).toBeVisible()
+    await page.screenshot({ path: `${SCREENSHOTS}/films-touch-role-tip.png` })
+    expect(page.url()).toBe(url)
+    await kwame.tap()
+    await expect(page.getByRole('heading', { level: 1, name: 'Kwame' })).toBeVisible()
+  })
 })
