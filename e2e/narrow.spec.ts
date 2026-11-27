@@ -8,6 +8,7 @@ const PAGES = [
   '/films/1',
   '/rotation',
   '/people',
+  '/stats',
   'profile',
   '/support',
   '/support?show=closed',

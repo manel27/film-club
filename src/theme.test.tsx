@@ -13,6 +13,7 @@ vi.mock('./films/api', () => ({
 }))
 // The admin page's data comes from Supabase too (tested in pages/InvitePages.test.tsx).
 vi.mock('./invites/api', () => ({}))
+vi.mock('./stats/api', () => ({}))
 vi.mock('./rotation/api', () => ({
   fetchRotation: async () => ({
     ...{ epoch: null, weekStart: null, standings: [], passes: [], decisions: [] },

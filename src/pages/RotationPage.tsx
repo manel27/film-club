@@ -3,6 +3,7 @@ import { Link } from 'react-router'
 import { useAuth } from '../auth/authContext'
 import Chip, { PersonName } from '../components/Chip'
 import { NextUp } from '../components/NextUp'
+import Scroll from '../components/Scroll'
 import { KindBadge } from '../components/FilmViews'
 import { tipsOff } from '../components/tipsOff'
 import { type Person } from '../films/films'
@@ -34,15 +35,6 @@ function useNotice() {
     </p>
   )
   return [element, (text: string) => setNotice((n) => ({ text, n: n.n + 1 }))] as const
-}
-
-/** A table that scrolls sideways on its own on a narrow screen, keyboard-reachable. */
-function Scroll({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="table-scroll" role="region" aria-label={label} tabIndex={0}>
-      {children}
-    </div>
-  )
 }
 
 /**

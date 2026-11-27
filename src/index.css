@@ -1038,7 +1038,7 @@ a.button {
 
 .main-nav {
   display: flex;
-  /* Six links (with Admin) don't fit one line on a phone. */
+  /* Seven links (with Admin) do not fit one line on a phone. */
   flex-wrap: wrap;
   gap: 0.25rem 1rem;
   margin-right: auto;
@@ -1428,4 +1428,27 @@ a.chip:hover,
   .people-table .actions {
     justify-content: flex-start;
   }
+}
+
+/* ---------------------------------------------------------------- stats */
+
+.stats-block {
+  margin: 1.25rem 0;
+}
+
+.rotation-table caption {
+  text-align: left;
+  font-weight: 600;
+  padding-bottom: 0.25rem;
+}
+
+.stats-note {
+  margin: 0.25rem 0 0;
+  font-size: 0.875rem;
+}
+
+.stats-pair {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
 }

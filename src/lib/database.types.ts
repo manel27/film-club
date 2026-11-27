@@ -936,6 +936,7 @@ export type Database = {
       }
       profile_remove_login: { Args: { p_admin_id: string; p_profile_id: string }; Returns: string }
       set_suggestion_closed: { Args: { closed: boolean; target_id: number }; Returns: undefined }
+      stats_data: { Args: Record<PropertyKey, never>; Returns: Json }
       tmdb_search_hit: { Args: Record<PropertyKey, never>; Returns: boolean }
     }
     Enums: {

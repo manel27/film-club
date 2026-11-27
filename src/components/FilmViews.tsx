@@ -135,7 +135,7 @@ export function Dot({ person }: { person: Person | undefined }) {
 }
 
 /** An average with its band's emoji ("7.35 👌"), read as "average 7.35, good". The easter egg gets no emoji. */
-export function Rating({ film }: { film: FilmItem }) {
+export function Rating({ film }: { film: Pick<FilmItem, 'avgScore' | 'isEasterEgg'> }) {
   const band = film.avgScore == null || film.isEasterEgg ? null : ratingBand(film.avgScore)
   return (
     <span className="film-avg">
@@ -148,7 +148,7 @@ export function Rating({ film }: { film: FilmItem }) {
   )
 }
 
-function ratingText(film: FilmItem): string {
+function ratingText(film: Pick<FilmItem, 'avgScore' | 'isEasterEgg'>): string {
   if (film.avgScore == null) return 'No average'
   const avg = `average ${film.avgScore.toFixed(2)}`
   return film.isEasterEgg ? avg : `${avg}, ${ratingBand(film.avgScore).label}`
