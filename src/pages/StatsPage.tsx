@@ -10,6 +10,7 @@ import { lisbonDate } from '../rotation/rotation'
 import { fetchStatsData } from '../stats/api'
 import { CountChart, OverTimeChart } from '../stats/StatsCharts'
 import {
+  chartGenres,
   computeStats,
   DIRECTOR_ROWS,
   MIN,
@@ -75,12 +76,6 @@ function Table(props: { caption: string; note?: string; head: string[]; rows: Re
 
 const groupRows = (groups: Group[]) =>
   groups.map((g) => [g.label ?? 'Unknown', g.count, <Avg key="avg" value={g.avg} />])
-
-/** The chart's genres: the 10 with the most films, then Unknown. */
-const topGenres = (genres: Group[]) => [
-  ...genres.filter((g) => g.label != null).slice(0, 10),
-  ...genres.filter((g) => g.label == null),
-]
 
 const pairRows = (pairs: Pair[]) =>
   pairs.map((p) => [
@@ -309,7 +304,7 @@ export default function StatsPage() {
 
             <section className="film-section" aria-labelledby="stats-breakdowns">
               <h2 id="stats-breakdowns">Breakdowns</h2>
-              <CountChart horizontal groups={topGenres(stats.genres)} />
+              <CountChart horizontal groups={chartGenres(stats.genres)} />
               <Table
                 caption="By genre"
                 note="A film counts once in each of its genres"

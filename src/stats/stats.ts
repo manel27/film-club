@@ -256,6 +256,12 @@ function groups(
     )
 }
 
+/** The genre chart's bars: the 10 genres with the most films, then Unknown. */
+export const chartGenres = (genres: Group[]) => [
+  ...genres.filter((g) => g.label != null).slice(0, 10),
+  ...genres.filter((g) => g.label == null),
+]
+
 /**
  * Every number on the Stats page for one period: `year` (YYYY) or '' for all
  * time. Only non-system people from `people` are ranked; every score counts

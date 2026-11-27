@@ -11,6 +11,8 @@ import { adminClient, SEED_MEMBER, SEED_VIEWER, watchCsp } from './fixtures'
 const SCREENSHOTS = 'test-results/screenshots'
 const TITLE = 'E2E Stats Archive Night'
 const OWN_YEAR = '2019'
+/** A class name Recharts renders: in its code, minified or not. */
+const RECHARTS = 'recharts-wrapper'
 const WREN = '00000000-0000-4000-8000-0000000000b2'
 
 test.describe.configure({ mode: 'serial' })
@@ -89,17 +91,25 @@ const tableRows = (page: Page, name: string) =>
 
 test('a member sees the club stats, filters them by year and opens a film', async ({ page }) => {
   const violations = await watchCsp(page)
-  // The Stats page and its chart library are a chunk of their own (routes.tsx).
-  const statsChunk: string[] = []
-  page.on('request', (r) => {
-    if (/\/assets\/StatsPage-[^/]*\.js$/.test(r.url())) statsChunk.push(r.url())
+  // The Stats page and its chart library are a chunk of their own (routes.tsx):
+  // no script the Films page loads contains Recharts (its class name as a marker).
+  const scripts: { url: string; text: Promise<string> }[] = []
+  page.on('response', (r) => {
+    if (r.request().resourceType() === 'script') scripts.push({ url: r.url(), text: r.text() })
   })
+  const withRecharts = async () => {
+    const found: string[] = []
+    for (const s of scripts) if ((await s.text).includes(RECHARTS)) found.push(s.url)
+    return found
+  }
   await logIn(page, SEED_MEMBER)
   await page.waitForLoadState('networkidle')
-  expect(statsChunk, 'the Films page loads no Stats chunk').toEqual([])
+  expect(scripts.length, 'scripts seen').toBeGreaterThan(0)
+  expect(await withRecharts(), 'the Films page loads no Recharts').toEqual([])
   await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Stats' }).click()
   await expect(page.getByRole('heading', { level: 1, name: 'Stats' })).toBeVisible()
-  expect(statsChunk).toHaveLength(1)
+  // The marker is real: the Stats chunk, and only it, has it.
+  expect(await withRecharts()).toEqual([expect.stringMatching(/\/assets\/StatsPage-[^/]*\.js$/)])
 
   const all = await screened()
   expect(all.years).toContain(OWN_YEAR)
@@ -116,9 +126,9 @@ test('a member sees the club stats, filters them by year and opens a film', asyn
     expect.stringContaining('4.00 👎'),
     '1.00',
   ])
-  // Three charts, each an SVG, hidden from screen readers (the tables carry the numbers).
+  // Four charts (films and average over time, genres, decades), each an SVG, hidden from screen readers (the tables carry the numbers).
   const charts = page.locator('.stats-chart')
-  await expect(charts).toHaveCount(3)
+  await expect(charts).toHaveCount(4)
   for (const chart of await charts.all()) {
     await expect(chart).toHaveAttribute('aria-hidden', 'true')
     await expect(chart.locator('.recharts-wrapper > svg')).toBeVisible()
@@ -165,7 +175,7 @@ test('a viewer can open the stats; at 360px the charts fit and only the tables s
   await logIn(page, SEED_VIEWER)
   await page.goto('./#/stats')
   await expect(fact(page, 'Films screened')).toHaveText((await screened()).films)
-  await expect(page.locator('.stats-chart .recharts-wrapper > svg')).toHaveCount(3)
+  await expect(page.locator('.stats-chart .recharts-wrapper > svg')).toHaveCount(4)
   for (const theme of ['letterboxd', 'superman', 'batman']) {
     await page.evaluate((t) => (document.documentElement.dataset.theme = t), theme)
     const overflow = await page.evaluate(
@@ -180,4 +190,23 @@ test('a viewer can open the stats; at 360px the charts fit and only the tables s
     }
   }
   await page.screenshot({ path: `${SCREENSHOTS}/stats-360.png`, fullPage: true })
+})
+
+test('if the Stats chunk is missing (an old tab after a release), the page offers a reload', async ({
+  page,
+}) => {
+  const chunk = /\/assets\/StatsPage-[^/]*\.js$/
+  await page.route(chunk, (route) => route.abort())
+  await logIn(page, SEED_VIEWER)
+  const nav = page.getByRole('navigation', { name: 'Main' })
+  await nav.getByRole('link', { name: 'Stats' }).click()
+  await expect(page.getByRole('alert')).toHaveText(
+    "Couldn't load this page. The site may have been updated.",
+  )
+  await expect(page.getByText('Unexpected Application Error')).toHaveCount(0)
+  // The header stays, so the visitor can go elsewhere; Reload fetches the page again.
+  await expect(nav).toBeVisible()
+  await page.unroute(chunk)
+  await page.getByRole('button', { name: 'Reload' }).click()
+  await expect(page.getByLabel('Period')).toBeVisible()
 })

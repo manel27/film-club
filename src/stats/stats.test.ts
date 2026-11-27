@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import type { Person } from '../films/films'
-import { computeStats, parseStatsData, readYear, statsYears, type StatsData } from './stats'
+import {
+  chartGenres,
+  computeStats,
+  parseStatsData,
+  readYear,
+  statsYears,
+  type StatsData,
+} from './stats'
 
 const TODAY = '2026-11-27'
 
@@ -699,5 +706,25 @@ describe('computeStats', () => {
         { label: 'May', films: 3, avg: null, attendance: 1.67 },
       ])
     })
+  })
+})
+
+describe('chartGenres', () => {
+  const group = (label: string | null, count: number) => ({ label, count, avg: null })
+
+  it('keeps the first 10 of 12 genres in their order, then Unknown last', () => {
+    const genres = [
+      ...Array.from({ length: 12 }, (_, i) => group(`G${i + 1}`, 20 - i)),
+      group(null, 30),
+    ]
+    expect(chartGenres(genres).map((g) => g.label)).toEqual([
+      ...['G1', 'G2', 'G3', 'G4', 'G5', 'G6', 'G7', 'G8', 'G9', 'G10'],
+      null,
+    ])
+  })
+
+  it('keeps all of a short list, with no Unknown when every film has a genre', () => {
+    const genres = [group('Drama', 2), group('Crime', 1)]
+    expect(chartGenres(genres)).toEqual(genres)
   })
 })

@@ -14,6 +14,7 @@ import NotFoundPage from './pages/NotFoundPage'
 import PeoplePage from './pages/PeoplePage'
 import ProfilePage from './pages/ProfilePage'
 import ResetPage from './pages/ResetPage'
+import RouteErrorPage from './pages/RouteErrorPage'
 import RotationPage from './pages/RotationPage'
 import SuggestionPage from './pages/SuggestionPage'
 import SupportPage from './pages/SupportPage'
@@ -35,26 +36,33 @@ export const routes: RouteObject[] = [
       </RequireAuth>
     ),
     children: [
-      { path: '/', element: <FilmsPage /> },
-      { path: '/films/new', element: <FilmFormPage /> },
-      { path: '/films/:id', element: <FilmPage /> },
-      { path: '/films/:id/edit', element: <FilmFormPage /> },
-      { path: '/rotation', element: <RotationPage /> },
-      { path: '/people', element: <PeoplePage /> },
-      { path: '/people/:id', element: <ProfilePage /> },
       {
-        path: '/stats',
-        element: (
-          <Suspense fallback={<LoadingPage />}>
-            <StatsPage />
-          </Suspense>
-        ),
+        // A page that fails to render (e.g. a chunk gone after a deploy) shows
+        // RouteErrorPage inside the header, not React Router's raw error.
+        errorElement: <RouteErrorPage />,
+        children: [
+          { path: '/', element: <FilmsPage /> },
+          { path: '/films/new', element: <FilmFormPage /> },
+          { path: '/films/:id', element: <FilmPage /> },
+          { path: '/films/:id/edit', element: <FilmFormPage /> },
+          { path: '/rotation', element: <RotationPage /> },
+          { path: '/people', element: <PeoplePage /> },
+          { path: '/people/:id', element: <ProfilePage /> },
+          {
+            path: '/stats',
+            element: (
+              <Suspense fallback={<LoadingPage />}>
+                <StatsPage />
+              </Suspense>
+            ),
+          },
+          { path: '/support', element: <SupportPage /> },
+          { path: '/support/:id', element: <SuggestionPage /> },
+          { path: '/admin', element: <AdminPage /> },
+          { path: '/about', element: <AboutPage /> },
+          { path: '*', element: <NotFoundPage /> },
+        ],
       },
-      { path: '/support', element: <SupportPage /> },
-      { path: '/support/:id', element: <SuggestionPage /> },
-      { path: '/admin', element: <AdminPage /> },
-      { path: '/about', element: <AboutPage /> },
-      { path: '*', element: <NotFoundPage /> },
     ],
   },
 ]

@@ -14,7 +14,17 @@ const people: Person[] = [
 // stats_data()'s shape: films [id, title, year, date, kind, assigned, genres, directors, runtime].
 const RAW = {
   films: [
-    [1, 'Glass River', 2001, '2026-03-01', 'normal', 'p-ada', ['Drama'], ['Rui'], 100],
+    [
+      1,
+      'Glass River',
+      2001,
+      '2026-03-01',
+      'normal',
+      'p-ada',
+      ['Drama', 'Psychological Thriller'],
+      ['Rui'],
+      100,
+    ],
     [2, 'Night Bus', 1995, '2025-05-01', 'cinema', 'p-cin', [], [], null],
     // In the future: the database leaves these out, and so does the page.
     [3, 'Far Future', 2020, '2999-01-01', 'normal', 'p-ada', ['Drama'], [], 90],
@@ -218,19 +228,29 @@ describe('StatsPage', () => {
     renderPage()
     await screen.findByText('Films screened')
     const charts = [...document.querySelectorAll('.stats-chart')]
-    expect(charts).toHaveLength(3)
+    expect(charts).toHaveLength(4)
     for (const chart of charts) {
       expect(chart).toHaveAttribute('aria-hidden', 'true')
       expect(chart.querySelector('svg')).not.toBeNull()
       expect(chart.querySelector('[tabindex]:not([tabindex="-1"])')).toBeNull()
     }
-    const [overTime, genres, decades] = charts
-    expect(overTime).toHaveTextContent('Films')
-    expect(overTime).toHaveTextContent('Average score')
-    // Glass River is Drama; Night Bus has no genres.
-    expect(within(genres as HTMLElement).getByText('Drama')).toBeInTheDocument()
-    expect(within(genres as HTMLElement).getByText('Unknown')).toBeInTheDocument()
-    expect(within(decades as HTMLElement).getByText('1990s')).toBeInTheDocument()
+    const [films, average, genres, decades] = charts as HTMLElement[]
+    // Two stacked charts, each with its title and the periods on its x-axis.
+    expect(within(films).getByText('Films')).toBeInTheDocument()
+    expect(within(average).getByText('Average score')).toBeInTheDocument()
+    expect(within(films).getByText('2025')).toBeInTheDocument()
+    expect(within(average).getByText('2026')).toBeInTheDocument()
+    // Even ticks on the 0–10 score axis.
+    for (const tick of ['0', '2', '4', '6', '8', '10']) {
+      expect(within(average).getByText(tick)).toBeInTheDocument()
+    }
+    // Glass River is Drama and a long genre, shortened on the axis; Night Bus has no genres.
+    expect(within(genres).getByText('Drama')).toBeInTheDocument()
+    expect(within(genres).getByText('Psychological…')).toBeInTheDocument()
+    expect(within(genres).queryByText('Psychological Thriller')).toBeNull()
+    expect(within(table('By genre')).getByText('Psychological Thriller')).toBeInTheDocument()
+    expect(within(genres).getByText('Unknown')).toBeInTheDocument()
+    expect(within(decades).getByText('1990s')).toBeInTheDocument()
   })
 
   it('says so when there are no screenings', async () => {
