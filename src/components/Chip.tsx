@@ -52,8 +52,9 @@ export function PersonName({ person }: { person: Person | undefined }) {
 
 /**
  * A Chip whose role shows on hover (pointer devices) and keyboard focus. aria-describedby
- * reads it even while hidden. Touch: no tip (the profile shows the role). System profiles
- * and unknown people get no tip. Put it inside an element with ref={tipsOff}.
+ * reads it even while hidden. Touch: the first tap shows the tip, a second opens the profile
+ * (tipsOff does both). System profiles, unknown people and a missing or unknown role get no
+ * tip. Put it inside an element with ref={tipsOff}.
  * `tabbable={false}`: a mouse shortcut with no Tab stop (long film lists keep one stop
  * per film); screen readers still read it, with its role, in browse mode.
  */
@@ -67,17 +68,16 @@ export function RoleChip({
   peopleHref?: string
 }) {
   const id = useId()
-  if (!person || person.isSystem) return <Chip person={person} />
+  // The role comes from the database: anything but a known role gets no tip, not "Member".
+  const role = person?.role && Object.hasOwn(ROLE_NAMES, person.role) ? ROLE_NAMES[person.role] : ''
+  const tabIndex = tabbable ? undefined : -1
+  if (!person || person.isSystem || !role)
+    return <Chip person={person} tabIndex={tabIndex} peopleHref={peopleHref} />
   return (
     <span className="role-chip">
-      <Chip
-        person={person}
-        describedBy={id}
-        tabIndex={tabbable ? undefined : -1}
-        peopleHref={peopleHref}
-      />
+      <Chip person={person} describedBy={id} tabIndex={tabIndex} peopleHref={peopleHref} />
       <span id={id} role="tooltip" className="role-tip">
-        {ROLE_NAMES[person.role ?? 'member']}
+        {role}
       </span>
     </span>
   )

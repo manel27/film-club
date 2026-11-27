@@ -1,6 +1,9 @@
+import { useContext } from 'react'
 import tmdbLogo from '../assets/tmdb-logo.svg'
+import { AuthContext } from '../auth/authContext'
 
 const ROLES = ['Admin', 'Moderator', 'Member', 'Viewer']
+const ROLE_KEYS: readonly string[] = ['admin', 'moderator', 'member', 'viewer']
 
 // What each role can do, exactly as the database's row-level security allows.
 // Marks are [admin, moderator, member, viewer].
@@ -43,6 +46,11 @@ const PERMISSIONS: [string, boolean[]][] = [
  * it as a data: URI, which the CSP's img-src allows.
  */
 export default function AboutPage() {
+  // Logged out (or rendered outside the provider): no highlight. Same for an unknown role
+  // or a system profile (they never log in, but never claim to be one).
+  const profile = useContext(AuthContext)?.profile
+  const mine = profile && !profile.is_system ? ROLE_KEYS.indexOf(profile.role) : -1
+  const you = (i: number) => (i === mine ? 'your-role' : undefined)
   return (
     <main className="page about-page">
       <h1>About Film Club</h1>
@@ -57,15 +65,21 @@ export default function AboutPage() {
         logins and the club's data. Viewers can look, pick a theme and write suggestions, nothing
         else.
       </p>
+      {mine >= 0 && (
+        <p className="your-role-note">
+          You are {mine === 0 ? 'an' : 'a'} {ROLES[mine].toLowerCase()}.
+        </p>
+      )}
       <div className="table-scroll" role="region" aria-label="Roles" tabIndex={0}>
         <table className="rotation-table roles-table">
           <caption className="sr-only">What each role can do</caption>
           <thead>
             <tr>
               <th scope="col">What you can do</th>
-              {ROLES.map((role) => (
-                <th scope="col" key={role}>
+              {ROLES.map((role, i) => (
+                <th scope="col" key={role} className={you(i)}>
                   {role}
+                  {i === mine && ' (you)'}
                 </th>
               ))}
             </tr>
@@ -75,7 +89,7 @@ export default function AboutPage() {
               <tr key={what}>
                 <th scope="row">{what}</th>
                 {marks.map((yes, i) => (
-                  <td key={ROLES[i]}>
+                  <td key={ROLES[i]} className={you(i)}>
                     <span aria-hidden="true">{yes ? '✓' : '—'}</span>
                     <span className="sr-only">{yes ? 'yes' : 'no'}</span>
                   </td>

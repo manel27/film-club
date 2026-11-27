@@ -1,6 +1,16 @@
 import { render, screen, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
+import { AuthContext, type AuthState } from '../auth/authContext'
+import type { MyProfile } from '../auth/backend'
+import { fakeProfile } from '../test/fakeAuthBackend'
 import AboutPage from './AboutPage'
+
+const renderAs = (profile: MyProfile | null) =>
+  render(
+    <AuthContext.Provider value={{ profile } as AuthState}>
+      <AboutPage />
+    </AuthContext.Provider>,
+  )
 
 /** The marks in a row, as a screen reader reads them: [admin, moderator, member, viewer]. */
 function marks(rowName: string) {
@@ -58,5 +68,46 @@ describe('AboutPage roles', () => {
     expect(
       screen.getByText(/Jurassic Shark 2's scores are locked, and the film can't be deleted/),
     ).toBeInTheDocument()
+  })
+})
+
+describe('AboutPage: your role', () => {
+  it.each([
+    ['admin', 'You are an admin.', 1],
+    ['moderator', 'You are a moderator.', 2],
+    ['member', 'You are a member.', 3],
+    ['viewer', 'You are a viewer.', 4],
+  ] as const)('highlights a logged-in %s’s column and says so', (role, sentence, column) => {
+    renderAs(fakeProfile({ role }))
+    expect(screen.getByText(sentence)).toBeInTheDocument()
+    const ths = screen.getAllByRole('columnheader')
+    expect(ths[column]).toHaveTextContent(/ \(you\)$/)
+    expect(ths[column]).toHaveClass('your-role')
+    expect(ths.filter((th) => th.classList.contains('your-role'))).toHaveLength(1)
+    expect(screen.getAllByText(/\(you\)/)).toHaveLength(1)
+    // Every cell of that column, and only those.
+    for (const row of screen.getAllByRole('row').slice(1)) {
+      const cells = within(row).getAllByRole('cell')
+      expect(cells.map((c) => c.classList.contains('your-role'))).toEqual(
+        [1, 2, 3, 4].map((i) => i === column),
+      )
+    }
+  })
+
+  it.each([
+    ['logged out', null],
+    ['an unknown role', fakeProfile({ role: 'owner' as MyProfile['role'] })],
+    ['a system profile', fakeProfile({ role: 'member', is_system: true })],
+  ])('highlights nothing and says nothing for %s', (_, profile) => {
+    renderAs(profile)
+    expect(screen.queryByText(/^You are/)).not.toBeInTheDocument()
+    expect(document.querySelector('.your-role')).toBeNull()
+    expect(screen.getAllByRole('columnheader').map((th) => th.textContent)).toEqual([
+      'What you can do',
+      'Admin',
+      'Moderator',
+      'Member',
+      'Viewer',
+    ])
   })
 })
