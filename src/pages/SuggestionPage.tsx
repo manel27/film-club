@@ -5,7 +5,6 @@ import { RoleChip } from '../components/Chip'
 import { tipsOff } from '../components/tipsOff'
 import type { Person } from '../films/films'
 import { parseId } from '../lib/ids'
-import { dayLabel } from '../invites/links'
 import { fetchSuggestion, supportWrites, type Suggestion } from '../support/api'
 import StateBadge from '../support/StateBadge'
 import {
@@ -202,33 +201,35 @@ function SuggestionView({ id }: { id: string }) {
       </p>
       {s.closed_at && (
         <p className="comment-meta">
-          Closed by <RoleChip person={byId.get(s.closed_by ?? '')} /> on {dayLabel(s.closed_at)}
+          Closed by <RoleChip person={byId.get(s.closed_by ?? '')} /> on {dateTime(s.closed_at)}
         </p>
       )}
       <p className="comment-body">{s.body}</p>
-      <div className="comment-actions">
-        {staff && (
-          <button
-            ref={toggleRef}
-            type="button"
-            className="button button-secondary button-small"
-            disabled={busy}
-            onClick={() => void toggle()}
-          >
-            {s.closed_at ? 'Reopen suggestion' : 'Close suggestion'}
-          </button>
-        )}
-        {canDelete(profile, s) && (
-          <button
-            type="button"
-            className="button button-danger button-small"
-            disabled={busy}
-            onClick={() => void remove()}
-          >
-            Delete suggestion
-          </button>
-        )}
-      </div>
+      {(staff || canDelete(profile, s)) && (
+        <div className="comment-actions">
+          {staff && (
+            <button
+              ref={toggleRef}
+              type="button"
+              className="button button-secondary button-small"
+              disabled={busy}
+              onClick={() => void toggle()}
+            >
+              {s.closed_at ? 'Reopen suggestion' : 'Close suggestion'}
+            </button>
+          )}
+          {canDelete(profile, s) && (
+            <button
+              type="button"
+              className="button button-danger button-small"
+              disabled={busy}
+              onClick={() => void remove()}
+            >
+              Delete suggestion
+            </button>
+          )}
+        </div>
+      )}
       <p role="status" className={stateStatus ? 'form-notice' : 'sr-only'}>
         {stateStatus}
       </p>

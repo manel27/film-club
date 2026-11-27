@@ -321,7 +321,7 @@ describe('suggestion page', () => {
         renderPage(role)
         expect(await screen.findByText('Closed')).toHaveClass('badge-muted')
         const closedBy = screen.getByText(/Closed by/)
-        expect(closedBy).toHaveTextContent(/^Closed by Tam.* on 23 Nov 2026$/)
+        expect(closedBy).toHaveTextContent(/^Closed by Tam.* on 23 Nov 2026, 10:00$/)
         expect(within(closedBy).getByRole('link', { name: 'Tam' })).toHaveAttribute(
           'href',
           '/people/p-mod',
@@ -330,6 +330,14 @@ describe('suggestion page', () => {
         expect(screen.queryByLabelText('Reply')).not.toBeInTheDocument()
       },
     )
+
+    it('renders no empty actions row when there is no button', async () => {
+      // The author, after a staff reply: no Delete, and no Close (not staff).
+      api.fetchSuggestion.mockResolvedValue(data({ suggestion_replies: [STAFF_REPLY] }))
+      renderPage('member')
+      await screen.findByRole('heading', { name: 'More subtitles' })
+      expect(document.querySelector('.comment-actions')).toBeNull()
+    })
 
     it.each([
       ['member', false],

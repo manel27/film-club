@@ -61,6 +61,12 @@ editing data by hand.
 
 To lint the plpgsql functions: `npx supabase db lint -s public,app --level warning`.
 
+Not covered by pgTAP (one transaction can't race itself): the two suggestion
+races, a staff reply against the author's delete and a reply against a close.
+Both are checked by hand with two `psql` sessions (one holds its transaction
+open while the other runs). The guards are commented in migration
+`20261127120000_support.sql`.
+
 ## Reset
 
 ```bash

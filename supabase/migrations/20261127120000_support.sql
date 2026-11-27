@@ -91,7 +91,7 @@ create index suggestion_replies_author_id_idx on public.suggestion_replies (auth
 -- a close (or reopen) in progress, and makes one that starts later wait for
 -- the reply. SECURITY DEFINER because a row lock needs UPDATE rights, which
 -- browsers don't have on suggestions; it reads and returns nothing.
-create function app.lock_suggestion(suggestion_id bigint)
+create function app.lock_suggestion(target_id bigint)
 returns void
 language plpgsql
 volatile
@@ -99,7 +99,7 @@ security definer
 set search_path = ''
 as $$
 begin
-  perform 1 from public.suggestions s where s.id = suggestion_id for share;
+  perform 1 from public.suggestions s where s.id = target_id for share;
 end;
 $$;
 
@@ -122,7 +122,10 @@ begin
     raise exception 'System profiles cannot write suggestions or replies' using errcode = '42501';
   end if;
   if tg_table_name = 'suggestion_replies' then
-    perform app.lock_suggestion(new.suggestion_id);
+    -- Lock only a row the caller can see (this function is invoker: RLS applies).
+    if exists (select 1 from public.suggestions s where s.id = new.suggestion_id) then
+      perform app.lock_suggestion(new.suggestion_id);
+    end if;
     if exists (select 1 from public.suggestions s
         where s.id = new.suggestion_id and s.closed_at is not null) then
       raise exception 'This suggestion is closed' using errcode = '42501';
@@ -214,6 +217,8 @@ revoke all on public.suggestions, public.suggestion_replies from anon, authentic
 grant select, insert, delete on public.suggestions to authenticated;
 grant select, insert on public.suggestion_replies to authenticated;
 
+-- A restore (from export_data) must insert a suggestion's replies before
+-- setting its closed_at: the reply guard refuses replies to closed suggestions.
 -- Close or reopen a suggestion: staff only, and the only way to change one
 -- (browsers have no update grant). A function rather than a column update
 -- grant + policy + guard trigger: one narrow path, nothing else on the row can
@@ -232,6 +237,9 @@ begin
   if not app.is_staff() then
     raise exception 'Only moderators and the admin can close or reopen suggestions'
       using errcode = '42501';
+  end if;
+  if closed is null then
+    raise exception 'closed must be true or false' using errcode = '22004';
   end if;
   update public.suggestions s
   set closed_at = case when closed then coalesce(s.closed_at, now()) end,

@@ -4,7 +4,7 @@
 -- is "another member". Only staff close and reopen (set_suggestion_closed);
 -- a closed suggestion takes no replies from anyone.
 begin;
-select plan(36);
+select plan(41);
 
 create temporary table export on commit drop as select null::json as data;
 grant all on export to authenticated;
@@ -35,6 +35,17 @@ select tests.login_as('member2');
 select throws_ok($$insert into public.suggestion_replies (suggestion_id, body) values (1, 'Nosy')$$,
   '42501', 'new row violates row-level security policy for table "suggestion_replies"',
   'another member gets the usual refusal: no hint that it exists or is closed');
+-- The same message for an open suggestion they can't see, and for one that doesn't exist.
+select throws_ok($$insert into public.suggestion_replies (suggestion_id, body) values (2, 'Nosy')$$,
+  '42501', 'new row violates row-level security policy for table "suggestion_replies"',
+  'the same refusal for someone else''s open suggestion');
+select throws_ok($$insert into public.suggestion_replies (suggestion_id, body) values (999999, 'Nosy')$$,
+  '42501', 'new row violates row-level security policy for table "suggestion_replies"',
+  'and for one that doesn''t exist');
+-- The staff check comes first: no hint whether the id exists.
+select throws_ok($$select public.set_suggestion_closed(999999, true)$$,
+  '42501', 'Only moderators and the admin can close or reopen suggestions',
+  'a member closing an unknown id gets the staff refusal, not "No such suggestion"');
 reset role;
 select throws_ok($$insert into public.suggestion_replies (suggestion_id, author_id, body)
   values (1, tests.profile_id('moderator'), 'Import')$$,
@@ -55,6 +66,17 @@ select throws_ok($$select public.set_suggestion_closed(2, true)$$,
 reset role;
 select tests.login_anon();
 select throws_ok($$select public.set_suggestion_closed(2, true)$$, '42501', null, 'anon cannot call it');
+reset role;
+-- A moderator whose session is gone (logged out elsewhere) is nobody.
+select set_config('request.jwt.claims', json_build_object('sub', tests.auth_user_id('moderator'),
+  'role', 'authenticated', 'session_id', '00000000-0000-4000-8000-000000000000')::text, true);
+set local role authenticated;
+select throws_ok($$select public.set_suggestion_closed(1, false)$$,
+  '42501', 'Only moderators and the admin can close or reopen suggestions', 'a dead staff session cannot reopen');
+reset role;
+select tests.login_as('moderator');
+select throws_ok($$select public.set_suggestion_closed(2, null)$$, '22004', 'closed must be true or false',
+  'null is refused, not taken as "reopen"');
 reset role;
 select is((select array_agg(closed_by::text order by id) from public.suggestions where id in (1, 2)),
   array[tests.profile_id('moderator')::text, null], 'none of that changed anything');
