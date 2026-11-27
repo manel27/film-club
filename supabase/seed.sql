@@ -178,7 +178,7 @@ values (extensions.digest('local-dev-invite-viggo', 'sha256'), '00000000-0000-40
 
 insert into public.suggestions (id, author_id, title, body, created_at) overriding system value values
   (1, '00000000-0000-4000-8000-0000000000a3', 'Subtitles for every film',
-     'Could we always turn subtitles on for films that are not in English?', '2026-11-20 20:00+00'),
+     E'Could we always turn subtitles on for films that are not in English?\n\nEven the quiet ones.', '2026-11-20 20:00+00'),
   (2, '00000000-0000-4000-8000-0000000000a5', 'Runtime on the poster list',
      'It would help to see how long a film is before choosing it.', '2026-11-22 21:30+00');
 

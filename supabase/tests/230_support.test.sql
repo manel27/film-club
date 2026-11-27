@@ -4,7 +4,7 @@
 -- member"; there is no second viewer login, so a member stands in for the
 -- other viewer's rights (the same policies: only author or staff).
 begin;
-select plan(75);
+select plan(91);
 
 -- ---------------------------------------------------------------- who sees what
 select tests.login_as('admin');
@@ -98,8 +98,31 @@ select throws_ok($$insert into public.suggestions (title, body) values ('Title',
 select throws_ok($$insert into public.suggestions (title, body) values ('Title', E'\u00a0')$$,
   '23514', null, 'no-break-space-only text is refused');
 select throws_ok($$insert into public.suggestions (title, body) values (' Title ', 'Body')$$, '23514', null, 'an untrimmed title is refused');
-select throws_ok($$insert into public.suggestions (title, body) values ('Title', E'line\nbreak')$$,
-  '23514', null, 'a control character is refused');
+select throws_ok($$insert into public.suggestions (title, body) values (E'line\nbreak', 'Body')$$,
+  '23514', null, 'a title is one line');
+select throws_ok($$insert into public.suggestions (title, body) values ('Title', E'a\u0007b')$$,
+  '23514', null, 'a control character in the text is refused');
+-- The text keeps line breaks (app.is_tidy_multiline).
+select lives_ok($$insert into public.suggestions (title, body) values ('One break', E'line\nbreak')$$,
+  'a line break in the text is accepted');
+select lives_ok($$insert into public.suggestions (title, body) values ('Paragraphs', E'one\n\ntwo\n\nthree')$$,
+  'a blank line between paragraphs is accepted');
+select throws_ok($$insert into public.suggestions (title, body) values ('Title', E'one\n\n\ntwo')$$,
+  '23514', null, 'two blank lines in a row are refused');
+select throws_ok($$insert into public.suggestions (title, body) values ('Title', E'one \ntwo')$$,
+  '23514', null, 'a space before a line break is refused');
+select throws_ok($$insert into public.suggestions (title, body) values ('Title', E'one\n two')$$,
+  '23514', null, 'a space after a line break is refused');
+select throws_ok($$insert into public.suggestions (title, body) values ('Title', E'one\r\ntwo')$$,
+  '23514', null, 'a carriage return is refused');
+select throws_ok($$insert into public.suggestions (title, body) values ('Title', E'one\u2028two')$$,
+  '23514', null, 'a Unicode line separator is refused');
+select throws_ok($$insert into public.suggestions (title, body) values ('Title', E'text\n')$$,
+  '23514', null, 'a trailing line break is refused');
+select throws_ok($$insert into public.suggestion_replies (suggestion_id, body) values (1, E'a\n\n\nb')$$,
+  '23514', null, 'replies follow the same rules');
+select lives_ok($$insert into public.suggestion_replies (suggestion_id, body) values (1, E'a\n\nb')$$,
+  'and keep their paragraphs');
 select lives_ok($$insert into public.suggestions (title, body) values (E'\U0001F468\u200d\U0001F469 ok', E'می\u200cخواهم')$$,
   'emoji sequences and ZWNJ words are accepted');
 reset role;
@@ -192,6 +215,40 @@ select is((select count(*)::int from public.suggestion_replies where suggestion_
   'its replies go with it (cascade)');
 select is((select confdeltype from pg_constraint where conname = 'suggestion_replies_suggestion_id_fkey'), 'c',
   'suggestion_replies.suggestion_id is on delete cascade');
+
+-- No leak: replying to a suggestion that doesn't exist is refused exactly like
+-- replying to someone else's.
+select tests.login_as('member');
+select throws_ok($$insert into public.suggestion_replies (suggestion_id, body) values (999999, 'Hello?')$$,
+  '42501', 'new row violates row-level security policy for table "suggestion_replies"',
+  'a member replying to an unknown suggestion gets the same refusal');
+select throws_ok($$insert into public.suggestion_replies (suggestion_id, body) values (2, 'Hello?')$$,
+  '42501', 'new row violates row-level security policy for table "suggestion_replies"',
+  'as replying to someone else''s');
+reset role;
+
+-- ---------------------------------------------------------------- function grants
+-- Never schema-wide: app.session_is_live() stays revoked (security finding S1).
+select ok(not has_function_privilege('authenticated', 'app.session_is_live()', 'execute')
+  and not has_function_privilege('service_role', 'app.session_is_live()', 'execute')
+  and not has_function_privilege('anon', 'app.session_is_live()', 'execute'),
+  'nobody can execute app.session_is_live() directly');
+select is(
+  (select array_agg(p.oid::regprocedure::text order by p.oid::regprocedure::text) from pg_proc p
+   where p.pronamespace = 'app'::regnamespace and has_function_privilege('authenticated', p.oid, 'execute')),
+  array['app."current_role"()', 'app.assert_not_system_profile(uuid)', 'app.attendance_guard()',
+    'app.block_truncate_when_locked()', 'app.can_write()', 'app.comments_guard()', 'app.current_profile_id()',
+    'app.film_lock_state(bigint)', 'app.films_day_order()', 'app.films_delete_one_at_a_time()', 'app.films_guard()',
+    'app.films_no_duplicate()', 'app.immutable_unaccent(text)', 'app.invites_guard()', 'app.is_admin()',
+    'app.is_iso_date(text)', 'app.is_privileged()', 'app.is_staff()', 'app.is_tidy_multiline(text,integer)',
+    'app.is_tidy_text(text,integer)', 'app.is_viewer_profile(uuid)', 'app.normalize_title(text)',
+    'app.other_admin_count(uuid)', 'app.profiles_guard()', 'app.rotation_coming_week()', 'app.rotation_guard()',
+    'app.rotation_replay()', 'app.scores_guard()', 'app.set_updated_at()', 'app.suggestions_delete_guard()',
+    'app.support_insert_guard()'],
+  'browsers can execute exactly these app functions (a new one, or a schema-wide grant, must update this list)');
+select ok(not has_function_privilege('anon', 'app.is_tidy_multiline(text, integer)', 'execute')
+  and not has_function_privilege('anon', 'app.support_insert_guard()', 'execute'),
+  'anon executes none of the new functions');
 
 -- ---------------------------------------------------------------- grants
 select ok(not has_table_privilege('anon', 'public.suggestions', 'select')

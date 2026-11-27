@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { NO_ROWS } from '../films/filmDetail'
 import { fakeProfile } from '../test/fakeAuthBackend'
-import { canDelete, checkText, dateTime, isStaff, supportError } from './support'
+import { canDelete, checkText, dateTime, isStaff, savedLength, supportError } from './support'
 
 describe('checkText', () => {
   it('returns the text as stored: invisible characters gone, spaces collapsed, trimmed', () => {
@@ -29,6 +29,22 @@ describe('checkText', () => {
     expect(checkText('a'.repeat(101), 100, '')).toEqual({
       error: 'Keep it to 100 characters or fewer.',
     })
+  })
+})
+
+describe('checkText, multiline (suggestion text and replies)', () => {
+  it('keeps paragraphs and tidies the rest', () => {
+    expect(checkText('One.\r\n\r\n\r\n Two. ', 100, 'empty', true)).toEqual({
+      value: 'One.\n\nTwo.',
+    })
+    // Titles stay one line.
+    expect(checkText('One.\nTwo.', 100, 'empty')).toEqual({ value: 'One. Two.' })
+  })
+
+  it('refuses text with nothing visible and counts as saved', () => {
+    expect(checkText('\n \n', 100, 'Write a reply.', true)).toEqual({ error: 'Write a reply.' })
+    expect(savedLength('a\n\n\n\nb', true)).toBe(4)
+    expect(savedLength('a\n\n\n\nb')).toBe(3)
   })
 })
 
@@ -80,6 +96,12 @@ describe('supportError', () => {
 
   it('explains a reply to a deleted suggestion', () => {
     expect(supportError({ code: '23503', message: 'violates foreign key' })).toBe(
+      'This suggestion was deleted.',
+    )
+  })
+
+  it('explains a refused reply as a deleted suggestion (RLS answers before the foreign key)', () => {
+    expect(supportError({ code: '42501', message: 'row-level security' }, 'reply')).toBe(
       'This suggestion was deleted.',
     )
   })

@@ -57,6 +57,22 @@ export function normaliseReason(text: string): string | null {
   return /[^\s\p{Cf}]/u.test(r) ? r : null
 }
 
+/**
+ * Like normaliseReason, but keeps line breaks (suggestion text and replies; the database's
+ * app.is_tidy_multiline checks the result): CRLF, CR, NEL, U+2028/9 become \n; no space
+ * next to a \n; at most one blank line in a row. Nothing visible left: null.
+ */
+export function normaliseText(text: string): string | null {
+  const r = text
+    .replace(/\r\n?|[\u0085\u2028\u2029]/g, '\n')
+    .replace(/(?!\u200c|\u200d|[\u{e0020}-\u{e007f}])\p{Cf}/gu, '')
+    .replace(/(?:(?!\n)[\s\p{Cc}])+/gu, ' ')
+    .replace(/ ?\n ?/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+  return /[^\s\p{Cf}]/u.test(r) ? r : null
+}
+
 /** Characters in a reason as film-save and the database count them (code points). */
 export const reasonLength = (reason: string | null) => (reason ? [...reason].length : 0)
 

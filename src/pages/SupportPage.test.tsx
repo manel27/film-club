@@ -131,12 +131,13 @@ describe('Support page', () => {
       list(summary({ id: 8, title: 'Popcorn', author_id: 'profile-1', replies: 0 })),
     )
     fill('Title', '  Pop\u200bcorn ')
-    fill('Your suggestion', 'Salted,\n\nplease ')
+    fill('Your suggestion', 'Salted, \r\n\r\n\r\nplease ')
     fireEvent.click(screen.getByRole('button', { name: 'Send' }))
     const status = await screen.findByText('Sent "Popcorn".')
     expect(status).toHaveAttribute('role', 'status')
     expect(status).toHaveFocus()
-    expect(api.addSuggestion).toHaveBeenCalledWith('Popcorn', 'Salted, please')
+    // Line breaks stay in the text (at most one blank line); the title is one line.
+    expect(api.addSuggestion).toHaveBeenCalledWith('Popcorn', 'Salted,\n\nplease')
     expect(screen.getByLabelText('Title')).toHaveValue('')
     expect(screen.getByLabelText('Your suggestion')).toHaveValue('')
     expect(await screen.findByRole('link', { name: 'Popcorn' })).toBeInTheDocument()
@@ -171,10 +172,23 @@ describe('Support page', () => {
     expect(api.addSuggestion).not.toHaveBeenCalled()
   })
 
+  it('clears a stale "Sent" status when the next attempt is refused', async () => {
+    await renderPage()
+    fill('Title', 'First')
+    fill('Your suggestion', 'Text')
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+    expect(await screen.findByText('Sent "First".')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+    expect(screen.getByRole('alert')).toHaveTextContent('Give your suggestion a title.')
+    expect(screen.queryByText('Sent "First".')).not.toBeInTheDocument()
+  })
+
   it('counts characters as saved', async () => {
     await renderPage()
     fill('Title', ' 😀\u200b ')
     expect(screen.getByText('1/100')).toBeInTheDocument()
+    fill('Your suggestion', 'a \n\n\n b')
+    expect(screen.getByText('4/2000')).toBeInTheDocument()
   })
 
   it('sends once for a double click, with the button disabled meanwhile', async () => {
@@ -216,9 +230,13 @@ describe('Support page', () => {
     expect(screen.getByRole('link', { name: 'Newer' })).toBeInTheDocument()
   })
 
-  it('shows and focuses the notice it was opened with (after a delete)', async () => {
+  it('shows and focuses the notice it was opened with (after a delete), once', async () => {
+    const replace = vi.spyOn(window.history, 'replaceState')
     await renderPage('member', { pathname: '/support', state: { notice: 'Deleted "Old idea".' } })
     const notice = await screen.findByText('Deleted "Old idea".')
     await waitFor(() => expect(notice).toHaveFocus())
+    // Dropped from the history entry, so a reload or Back doesn't show it again.
+    expect(replace).toHaveBeenCalledWith(expect.objectContaining({ usr: null }), '')
+    replace.mockRestore()
   })
 })

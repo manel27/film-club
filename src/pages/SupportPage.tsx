@@ -1,30 +1,30 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
-import { Link, useLocation } from 'react-router'
+import { Link } from 'react-router'
 import { useAuth } from '../auth/authContext'
 import { RoleChip } from '../components/Chip'
 import { tipsOff } from '../components/tipsOff'
 import { dayLabel } from '../invites/links'
 import { fetchSuggestions, supportWrites, type SuggestionSummary } from '../support/api'
-import { checkText, isStaff, supportError, TEXT_MAX, TITLE_MAX } from '../support/support'
-import { normaliseReason, reasonLength } from '../films/filmForm'
+import { useNotice } from '../components/useNotice'
+import {
+  checkText,
+  isStaff,
+  savedLength,
+  supportError,
+  TEXT_MAX,
+  TITLE_MAX,
+} from '../support/support'
 import type { Person } from '../films/films'
 
-/**
- * Support (#/support, US9-US11): the suggestion box. Keyed by the navigation, so
- * a notice (after a delete) and the form start fresh every time the page is opened.
- */
+/** Support (#/support, US9-US11): the suggestion box. */
 export default function SupportPage() {
-  const location = useLocation()
-  return <Support key={location.key} notice={(location.state as { notice?: string })?.notice} />
-}
-
-function Support({ notice }: { notice?: string }) {
   const { profile } = useAuth()
   const staff = isStaff(profile)
   const [data, setData] = useState<{ suggestions: SuggestionSummary[]; people: Person[] }>()
   const [failed, setFailed] = useState(false)
+  // "Deleted …" after a delete, then "Sent …" after sending.
+  const [notice, statusRef] = useNotice<HTMLParagraphElement>()
   const [status, setStatus] = useState(notice ?? '')
-  const statusRef = useRef<HTMLParagraphElement>(null)
   const latest = useRef(0)
 
   // Only the newest load may land: a slow earlier one never overwrites it.
@@ -42,9 +42,6 @@ function Support({ notice }: { notice?: string }) {
   useEffect(() => {
     void load()
   }, [load])
-  useEffect(() => {
-    if (notice) statusRef.current?.focus()
-  }, [notice])
 
   const sent = (title: string) => {
     setStatus(`Sent "${title}".`)
@@ -63,7 +60,7 @@ function Support({ notice }: { notice?: string }) {
       <p ref={statusRef} role="status" tabIndex={-1} className={status ? 'form-notice' : 'sr-only'}>
         {status}
       </p>
-      <NewSuggestion onSent={sent} />
+      <NewSuggestion onSent={sent} onInvalid={() => setStatus('')} />
 
       <h2>{staff ? 'All suggestions' : 'Your suggestions'}</h2>
       {/* Only the first load can fail the list; a failed reload keeps what is shown. */}
@@ -117,7 +114,14 @@ function Support({ notice }: { notice?: string }) {
 }
 
 /** The title and text form. Double submits are ignored while one is being sent. */
-function NewSuggestion({ onSent }: { onSent: (title: string) => void }) {
+function NewSuggestion({
+  onSent,
+  onInvalid,
+}: {
+  onSent: (title: string) => void
+  /** A stale "Sent …" must not sit next to a new error. */
+  onInvalid: () => void
+}) {
   const [title, setTitle] = useState('')
   const [text, setText] = useState('')
   const [error, setError] = useState<{ field: 'title' | 'text' | 'form'; message: string }>()
@@ -129,12 +133,14 @@ function NewSuggestion({ onSent }: { onSent: (title: string) => void }) {
     if (busyRef.current) return
     const t = checkText(title, TITLE_MAX, 'Give your suggestion a title.')
     if ('error' in t) {
+      onInvalid()
       setError({ field: 'title', message: t.error })
       document.getElementById('suggestion-title')?.focus()
       return
     }
-    const b = checkText(text, TEXT_MAX, 'Write your suggestion.')
+    const b = checkText(text, TEXT_MAX, 'Write your suggestion.', true)
     if ('error' in b) {
+      onInvalid()
       setError({ field: 'text', message: b.error })
       document.getElementById('suggestion-text')?.focus()
       return
@@ -170,7 +176,7 @@ function NewSuggestion({ onSent }: { onSent: (title: string) => void }) {
         aria-describedby={`suggestion-title-count ${fieldError('title') ?? ''}`.trim()}
       />
       <span id="suggestion-title-count" className="muted">
-        {reasonLength(normaliseReason(title))}/{TITLE_MAX}
+        {savedLength(title)}/{TITLE_MAX}
       </span>
       <FieldError id={fieldError('title')} message={error?.message} />
       <label htmlFor="suggestion-text">Your suggestion</label>
@@ -182,7 +188,7 @@ function NewSuggestion({ onSent }: { onSent: (title: string) => void }) {
         aria-describedby={`suggestion-text-count ${fieldError('text') ?? ''}`.trim()}
       />
       <span id="suggestion-text-count" className="muted">
-        {reasonLength(normaliseReason(text))}/{TEXT_MAX}
+        {savedLength(text, true)}/{TEXT_MAX}
       </span>
       <FieldError id={fieldError('text')} message={error?.message} />
       {error?.field === 'form' && <FieldError id="suggestion-error" message={error.message} />}

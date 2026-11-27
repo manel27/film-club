@@ -6,7 +6,15 @@ import { tipsOff } from '../components/tipsOff'
 import type { Person } from '../films/films'
 import { parseId } from '../lib/ids'
 import { fetchSuggestion, supportWrites, type Suggestion } from '../support/api'
-import { canDelete, checkText, dateTime, isStaff, supportError, TEXT_MAX } from '../support/support'
+import {
+  canDelete,
+  checkText,
+  dateTime,
+  isStaff,
+  savedLength,
+  supportError,
+  TEXT_MAX,
+} from '../support/support'
 
 const BackLink = () => (
   <Link to="/support" className="back-link">
@@ -33,6 +41,7 @@ function SuggestionView({ id }: { id: string }) {
   const [busy, setBusy] = useState(false)
   const busyRef = useRef(false)
   const statusRef = useRef<HTMLParagraphElement>(null)
+  const deleteErrorRef = useRef<HTMLParagraphElement>(null)
   const latest = useRef(0)
 
   // Only the newest load may land. A failed reload keeps what is shown.
@@ -51,6 +60,10 @@ function SuggestionView({ id }: { id: string }) {
   useEffect(() => {
     void load()
   }, [load])
+  // A refused delete reloads, which can remove the Delete button that had focus.
+  useEffect(() => {
+    if (error?.at === 'delete') deleteErrorRef.current?.focus()
+  }, [error])
 
   /** Runs one write at a time; reloads afterwards (a reply may have arrived meanwhile). */
   const run = async (at: 'reply' | 'delete', write: () => Promise<void>) => {
@@ -63,7 +76,7 @@ function SuggestionView({ id }: { id: string }) {
       await write()
       return true
     } catch (e) {
-      setError({ at, message: supportError(e) })
+      setError({ at, message: supportError(e, at) })
       await load()
       return false
     } finally {
@@ -122,8 +135,9 @@ function SuggestionView({ id }: { id: string }) {
 
   const reply = async (e: FormEvent) => {
     e.preventDefault()
-    const body = checkText(draft, TEXT_MAX, 'Write a reply.')
+    const body = checkText(draft, TEXT_MAX, 'Write a reply.', true)
     if ('error' in body) {
+      setStatus('')
       setError({ at: 'reply', message: body.error })
       document.getElementById('reply-text')?.focus()
       return
@@ -172,7 +186,7 @@ function SuggestionView({ id }: { id: string }) {
         </div>
       )}
       {error?.at === 'delete' && (
-        <p role="alert" className="form-error">
+        <p ref={deleteErrorRef} role="alert" className="form-error" tabIndex={-1}>
           {error.message}
         </p>
       )}
@@ -210,8 +224,11 @@ function SuggestionView({ id }: { id: string }) {
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               aria-invalid={error?.at === 'reply'}
-              aria-describedby={error?.at === 'reply' ? 'reply-error' : undefined}
+              aria-describedby={`reply-count ${error?.at === 'reply' ? 'reply-error' : ''}`.trim()}
             />
+            <span id="reply-count" className="muted">
+              {savedLength(draft, true)}/{TEXT_MAX}
+            </span>
             <button type="submit" className="button button-small" disabled={busy}>
               {busy ? 'Sending…' : 'Send reply'}
             </button>

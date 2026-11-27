@@ -185,14 +185,22 @@ describe('suggestion page', () => {
     renderPage()
     await screen.findByRole('heading', { name: 'More subtitles' })
     api.fetchSuggestion.mockResolvedValue(data({ suggestion_replies: [OWN_REPLY] }))
-    fireEvent.change(screen.getByLabelText('Reply'), { target: { value: ' Thanks!\u200b\n' } })
+    fireEvent.change(screen.getByLabelText('Reply'), {
+      target: { value: ' Thanks!\u200b \r\n\r\n\r\nBye ' },
+    })
+    expect(screen.getByText('12/2000')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Send reply' }))
     const status = await screen.findByText('Reply sent.')
     expect(status).toHaveAttribute('role', 'status')
     expect(status).toHaveFocus()
-    expect(api.addReply).toHaveBeenCalledWith(7, 'Thanks!')
+    expect(api.addReply).toHaveBeenCalledWith(7, 'Thanks!\n\nBye')
     expect(screen.getByLabelText('Reply')).toHaveValue('')
     expect(screen.getByText('Thanks!')).toBeInTheDocument()
+
+    // A refused next attempt doesn't leave the old status next to its error.
+    fireEvent.click(screen.getByRole('button', { name: 'Send reply' }))
+    expect(screen.getByRole('alert')).toHaveTextContent('Write a reply.')
+    expect(screen.queryByText('Reply sent.')).not.toBeInTheDocument()
   })
 
   it('refuses a blank or too long reply before sending', async () => {
@@ -202,7 +210,7 @@ describe('suggestion page', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Send reply' }))
     expect(screen.getByRole('alert')).toHaveTextContent('Write a reply.')
     expect(screen.getByLabelText('Reply')).toHaveFocus()
-    expect(screen.getByLabelText('Reply')).toHaveAccessibleDescription('Write a reply.')
+    expect(screen.getByLabelText('Reply')).toHaveAccessibleDescription('0/2000 Write a reply.')
     fireEvent.change(screen.getByLabelText('Reply'), { target: { value: 'r'.repeat(2001) } })
     fireEvent.click(screen.getByRole('button', { name: 'Send reply' }))
     expect(screen.getByRole('alert')).toHaveTextContent('Keep it to 2000 characters or fewer.')
@@ -223,10 +231,13 @@ describe('suggestion page', () => {
     expect(api.addReply).toHaveBeenCalledTimes(1)
   })
 
-  it('says so when the suggestion was deleted before the reply landed', async () => {
+  it.each([
+    ['the foreign key (staff)', '23503'],
+    ['row-level security (the author)', '42501'],
+  ])('says the suggestion was deleted when %s refuses the reply', async (_, code) => {
     renderPage()
     await screen.findByRole('heading', { name: 'More subtitles' })
-    api.addReply.mockRejectedValueOnce({ code: '23503', message: 'foreign key' })
+    api.addReply.mockRejectedValueOnce({ code, message: 'refused' })
     api.fetchSuggestion.mockResolvedValue(null)
     fireEvent.change(screen.getByLabelText('Reply'), { target: { value: 'Too late' } })
     fireEvent.click(screen.getByRole('button', { name: 'Send reply' }))
@@ -256,11 +267,14 @@ describe('suggestion page', () => {
     })
     api.fetchSuggestion.mockResolvedValue(data({ suggestion_replies: [STAFF_REPLY] }))
     fireEvent.click(screen.getByRole('button', { name: 'Delete suggestion' }))
-    expect(await screen.findByRole('alert')).toHaveTextContent(
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(
       'Someone has replied, so this suggestion can no longer be deleted.',
     )
     expect(await screen.findByText('Good idea.')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Delete suggestion' })).not.toBeInTheDocument()
+    // The button that had focus is gone: the error has it instead.
+    expect(alert).toHaveFocus()
   })
 
   it('starts fresh when the id changes, and a slow earlier load never lands', async () => {

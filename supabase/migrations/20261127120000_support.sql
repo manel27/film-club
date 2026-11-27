@@ -30,13 +30,33 @@ as $$
     and value ~ '[^[:space:]\u00a0\u1680\u2000-\u200f\u2028-\u202f\u205f-\u2064\u2066-\u206f\u3000\u00ad\u061c\u180e\ufeff\U000e0000-\U000e007f]';
 $$;
 
+-- Text that keeps its line breaks, as the browser's normaliseText leaves it:
+-- like app.is_tidy_text, but U+000A is allowed, with no space next to it and
+-- at most one blank line in a row. Other line separators (\r, U+2028/9) and
+-- control characters are refused: the browser turns them into \n or spaces.
+create function app.is_tidy_multiline(value text, max_length integer)
+returns boolean
+language sql
+immutable
+parallel safe
+set search_path = ''
+as $$
+  select char_length(value) <= max_length
+    and value !~ '[\u0001-\u0009\u000b-\u001f\u007f-\u009f\u2028\u2029]'
+    and value !~ '\n\n\n'
+    and value !~ '[ \u00a0\u1680\u2000-\u200a\u202f\u205f\u3000]\n|\n[ \u00a0\u1680\u2000-\u200a\u202f\u205f\u3000]'
+    and value !~ '^[[:space:]\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]'
+    and value !~ '[[:space:]\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]$'
+    and value ~ '[^[:space:]\u00a0\u1680\u2000-\u200f\u2028-\u202f\u205f-\u2064\u2066-\u206f\u3000\u00ad\u061c\u180e\ufeff\U000e0000-\U000e007f]';
+$$;
+
 create table public.suggestions (
   id bigint generated always as identity primary key,
   -- The writer, always: the default fills it in and the insert policy refuses anyone else.
   author_id uuid not null default app.current_profile_id()
     references public.profiles (id) on delete restrict,
   title text not null constraint suggestions_title check (app.is_tidy_text(title, 100)),
-  body text not null constraint suggestions_body check (app.is_tidy_text(body, 2000)),
+  body text not null constraint suggestions_body check (app.is_tidy_multiline(body, 2000)),
   created_at timestamptz not null default now()
 );
 
@@ -48,7 +68,7 @@ create table public.suggestion_replies (
   suggestion_id bigint not null references public.suggestions (id) on delete cascade,
   author_id uuid not null default app.current_profile_id()
     references public.profiles (id) on delete restrict,
-  body text not null constraint suggestion_replies_body check (app.is_tidy_text(body, 2000)),
+  body text not null constraint suggestion_replies_body check (app.is_tidy_multiline(body, 2000)),
   created_at timestamptz not null default now()
 );
 
@@ -91,8 +111,10 @@ create trigger suggestion_replies_insert_guard
 -- The author can't delete once staff have replied. A BEFORE ROW DELETE trigger
 -- runs after Postgres has locked the row, and that lock waits for any reply
 -- still being inserted (its foreign key check holds FOR KEY SHARE on the
--- suggestion). This statement then reads with a fresh snapshot, so a reply
--- committed meanwhile is seen and the delete refused. The other way round, a
+-- suggestion). The query below then takes a new snapshot (a VOLATILE plpgsql
+-- function does, per statement, under READ COMMITTED), so a reply committed
+-- meanwhile is seen and the delete refused. Keep it VOLATILE; this relies on
+-- READ COMMITTED (PostgREST's default). The other way round, a
 -- reply arriving after the delete took the lock fails its foreign key check:
 -- no orphan, and no delete after a reply.
 -- SECURITY INVOKER on purpose (app.is_privileged()); the author can read the replies.
@@ -154,8 +176,12 @@ revoke all on public.suggestions, public.suggestion_replies from anon, authentic
 grant select, insert, delete on public.suggestions to authenticated;
 grant select, insert on public.suggestion_replies to authenticated;
 
-revoke execute on all functions in schema app from public;
-grant execute on all functions in schema app to authenticated, service_role;
+-- Per function, never schema-wide: app.session_is_live() must stay revoked
+-- (migration 20261123120000).
+revoke execute on function app.is_tidy_text(text, integer), app.is_tidy_multiline(text, integer),
+  app.support_insert_guard(), app.suggestions_delete_guard() from public, anon;
+grant execute on function app.is_tidy_text(text, integer), app.is_tidy_multiline(text, integer),
+  app.support_insert_guard(), app.suggestions_delete_guard() to authenticated, service_role;
 
 -- Same as migration 20261124180000, plus suggestions and suggestion_replies.
 create or replace function public.export_data()

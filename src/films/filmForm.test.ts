@@ -6,6 +6,7 @@ import {
   defaultChooser,
   functionErrorMessage,
   normaliseReason,
+  normaliseText,
   parseYear,
   reasonLength,
   screeningDateRange,
@@ -227,5 +228,37 @@ describe('functionErrorMessage', () => {
     expect(functionErrorMessage({ status: 500, error: 'server_error' })).toBe(
       'Something went wrong. Try again.',
     )
+  })
+})
+
+describe('normaliseText', () => {
+  it('keeps paragraphs: one or two line breaks stay', () => {
+    expect(normaliseText('One.\nTwo.\n\nThree.')).toBe('One.\nTwo.\n\nThree.')
+  })
+
+  it('turns every kind of line break into \\n', () => {
+    expect(normaliseText('a\r\nb\rc\u0085d\u2028e\u2029f')).toBe('a\nb\nc\nd\ne\nf')
+  })
+
+  it('allows at most one blank line in a row', () => {
+    expect(normaliseText('a\n\n\n\nb')).toBe('a\n\nb')
+    expect(normaliseText('a\n \n\t\n \nb')).toBe('a\n\nb')
+  })
+
+  it('removes spaces next to a line break and collapses other whitespace and controls', () => {
+    expect(normaliseText('a  \t \n   b\u0007\u00a0c')).toBe('a\nb c')
+  })
+
+  it('strips invisible format characters but keeps joiners and tags', () => {
+    expect(
+      normaliseText('\u200bHi\ufeff \u{1f468}\u200d\u{1f469} \u{1f3f4}\u{e0067}\u{e007f}'),
+    ).toBe('Hi \u{1f468}\u200d\u{1f469} \u{1f3f4}\u{e0067}\u{e007f}')
+  })
+
+  it('trims, and returns null when nothing visible is left', () => {
+    expect(normaliseText('\n\n  Hi  \n\n')).toBe('Hi')
+    for (const blank of ['', ' \n\r\n ', '\u200b\n\u200d', '\u2028\u00a0']) {
+      expect(normaliseText(blank), JSON.stringify(blank)).toBeNull()
+    }
   })
 })

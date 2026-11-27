@@ -14,6 +14,7 @@ import {
 const IDEA = 'E2E Member idea'
 const THROWAWAY = 'E2E Throwaway'
 const VIEWER_IDEA = 'E2E Viewer idea'
+const PARAGRAPHS = 'A popcorn machine for the club.\n\nSalted, please.\n\nSweet would do too.'
 
 test.describe.configure({ mode: 'serial' })
 
@@ -62,7 +63,7 @@ test('a member writes suggestions, sees only theirs, and deletes one before any 
   await expect(page.getByRole('link', { name: 'Subtitles for every film' })).toBeVisible()
   await expect(page.getByRole('link', { name: 'Runtime on the poster list' })).toHaveCount(0)
 
-  await write(page, IDEA, 'A popcorn machine for the club.')
+  await write(page, IDEA, PARAGRAPHS)
   await expect(page.getByRole('link', { name: IDEA })).toBeVisible()
   await write(page, THROWAWAY, 'Never mind.')
 
@@ -95,7 +96,8 @@ test('a moderator sees every suggestion with its author and replies', async ({ p
   await expect(page.getByRole('link', { name: 'Runtime on the poster list' })).toBeVisible()
 
   await item.getByRole('link', { name: IDEA }).click()
-  await expect(page.getByText('A popcorn machine for the club.')).toBeVisible()
+  // The three paragraphs show as paragraphs (pre-wrap), not one run-on line.
+  await expect(page.locator('p.comment-body').first()).toHaveJSProperty('innerText', PARAGRAPHS)
   await expect(page.getByRole('button', { name: 'Delete suggestion' })).toHaveCount(0)
   await page.getByLabel('Reply').fill('E2E: we will look into it.')
   await page.getByRole('button', { name: 'Send reply' }).click()
