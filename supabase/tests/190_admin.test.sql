@@ -2,7 +2,7 @@
 -- complete; profile_remove_login() is secret key only with its guards; a
 -- removed login leaves the profile and its history, unclaimed.
 begin;
-select plan(54);
+select plan(56);
 
 -- ---------------------------------------------------------------- export: admin only
 select tests.login_anon();
@@ -44,13 +44,14 @@ select is((select data->>'schema_version' from export),
 select is((select (data->'row_counts'->>t)::int from export),
   tests.row_count(format('select 1 from public.%I', t)), format('export: all %s rows', t))
 from unnest(array['profiles', 'films', 'attendance', 'scores', 'comments', 'rotation_adjustments',
-  'rotation_passes', 'rotation_next', 'app_settings', 'user_settings']) t;
+  'rotation_passes', 'rotation_next', 'app_settings', 'user_settings', 'suggestions', 'suggestion_replies']) t;
 select is((select json_array_length(data->'tables'->'scores') from export),
   (select count(*)::int from public.scores), 'export: the scores array has every row');
 select ok((select count(*) > 1000 from public.scores), 'export: more than 1,000 scores were exported');
 select is((select (select array_agg(k order by k) from json_object_keys(data->'tables') k) from export),
   array['app_settings', 'attendance', 'comments', 'films', 'profiles', 'rotation_adjustments',
-    'rotation_next', 'rotation_passes', 'scores', 'user_settings'], 'export: no invites or rate_limits');
+    'rotation_next', 'rotation_passes', 'scores', 'suggestion_replies', 'suggestions', 'user_settings'],
+  'export: no invites or rate_limits');
 select ok((select data::text not like '%auth_user_id%' from export), 'export: no auth user ids');
 select ok((select data::text not like '%@example.test%' from export), 'export: no emails');
 select ok((select data::text not like '%token_hash%' from export), 'export: no token hashes');

@@ -125,9 +125,18 @@ otherwise.
   by mistake; **Regenerate** replaces it.
 - **Remove a login.** **Remove login** deletes their email and password, so
   they can't log in any more. Everything else stays: their name, colour,
-  films, attendance, scores and comments. You can invite them again later.
+  films, attendance, scores, comments and suggestions. You can invite them again later.
 - **Change roles and colours.** **Edit** next to a person. You can't change
   your own role, and the club always keeps at least one admin.
+- **Answer suggestions.** Not on the Admin page: **Support**, in the menu, is
+  the club's suggestion box. Everyone logged in (viewers too) can write one and
+  sees only their own; moderators and admins see them all and can reply. Its
+  author can delete a suggestion until someone else replies; an admin can
+  delete any (its replies go with it). When one is dealt with, a moderator or
+  admin presses **Close suggestion**: nobody can reply to it until staff press
+  **Reopen suggestion**. The list shows open ones first and can show only open
+  or only closed ones. There are no email notifications, so look in now and
+  then.
 - **Export the data every month.** **Export all data** downloads one zip (a
   complete JSON file plus a CSV per table, no emails or passwords). Keep it
   somewhere private and safe, such as your own cloud drive, and keep the old

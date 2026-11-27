@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { Link, useHref, useLocation, useSearchParams } from 'react-router'
+import { Link, useHref, useSearchParams } from 'react-router'
+import { useNotice } from '../components/useNotice'
 import { useAuth } from '../auth/authContext'
 import { tipsOff } from '../components/tipsOff'
 import { Dot, FilmRow, NextFilmCard, PosterTile, ViewToggle } from '../components/FilmViews'
@@ -58,16 +59,7 @@ export default function FilmsPage() {
   const [failed, setFailed] = useState(false)
   const [attempt, setAttempt] = useState(0)
   // E.g. "Deleted …" after deleting a film. Kept in state: restoring the saved view replaces the URL and its state.
-  const { state: navState } = useLocation()
-  const [notice] = useState((navState as { notice?: string } | null)?.notice)
-  const noticeRef = useRef<HTMLParagraphElement>(null)
-  useLayoutEffect(() => {
-    if (!notice) return
-    noticeRef.current?.focus()
-    // Shown once: drop it from the history entry (React Router keeps it in
-    // `usr`), so a reload or Back doesn't show it again.
-    window.history.replaceState({ ...window.history.state, usr: null }, '')
-  }, [notice])
+  const [notice, noticeRef] = useNotice<HTMLParagraphElement>()
 
   useEffect(() => {
     if (!profileId) return

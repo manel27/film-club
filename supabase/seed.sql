@@ -170,3 +170,24 @@ insert into public.user_settings (profile_id, theme, films_view) values
 insert into public.invites (token_hash, profile_id, created_by)
 values (extensions.digest('local-dev-invite-viggo', 'sha256'), '00000000-0000-4000-8000-0000000000b1',
         '00000000-0000-4000-8000-0000000000a1');
+
+-- ---------------------------------------------------------------------------
+-- Support suggestions: Kwame's has a staff reply (he can no longer delete it)
+-- and is closed; Petra's (a viewer) is open, with no reply yet.
+-- ---------------------------------------------------------------------------
+
+insert into public.suggestions (id, author_id, title, body, created_at) overriding system value values
+  (1, '00000000-0000-4000-8000-0000000000a3', 'Subtitles for every film',
+     E'Could we always turn subtitles on for films that are not in English?\n\nEven the quiet ones.', '2026-11-20 20:00+00'),
+  (2, '00000000-0000-4000-8000-0000000000a5', 'Runtime on the poster list',
+     'It would help to see how long a film is before choosing it.', '2026-11-22 21:30+00');
+
+insert into public.suggestion_replies (suggestion_id, author_id, body, created_at) values
+  (1, '00000000-0000-4000-8000-0000000000a2', 'Good idea, we will try it next Saturday.', '2026-11-21 09:00+00'),
+  (1, '00000000-0000-4000-8000-0000000000a3', 'Thanks!', '2026-11-21 10:00+00');
+
+update public.suggestions
+set closed_at = '2026-11-23 10:00+00', closed_by = '00000000-0000-4000-8000-0000000000a2'
+where id = 1;
+
+select setval(pg_get_serial_sequence('public.suggestions', 'id'), 100);

@@ -7,7 +7,7 @@ select tables_are(
   'public',
   array['profiles', 'films', 'attendance', 'scores', 'comments', 'invites',
         'rotation_adjustments', 'rotation_passes', 'rotation_next',
-        'app_settings', 'user_settings', 'rate_limits'],
+        'app_settings', 'user_settings', 'rate_limits', 'suggestions', 'suggestion_replies'],
   'public has exactly the plan 4.2 tables'
 );
 

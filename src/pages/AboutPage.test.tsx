@@ -32,6 +32,12 @@ describe('AboutPage roles', () => {
     expect(marks('Add and edit films')).toEqual(['yes', 'yes', 'no', 'no'])
     expect(marks('Delete films')).toEqual(['yes', 'no', 'no', 'no'])
     expect(marks('Export all data')).toEqual(['yes', 'no', 'no', 'no'])
+    // Viewers may write suggestions (an exception to "viewers change nothing").
+    expect(marks('Write suggestions')).toEqual(['yes', 'yes', 'yes', 'yes'])
+    expect(marks('Delete your own suggestion')).toEqual(['yes', 'yes', 'yes', 'yes'])
+    expect(marks("See and reply to everyone's suggestions")).toEqual(['yes', 'yes', 'no', 'no'])
+    expect(marks('Delete any suggestion')).toEqual(['yes', 'no', 'no', 'no'])
+    expect(marks('Close and reopen suggestions')).toEqual(['yes', 'yes', 'no', 'no'])
     // The visible marks are hidden from screen readers.
     const row = screen.getByRole('row', { name: /^Delete films/ })
     expect(within(row).getAllByText('✓')[0]).toHaveAttribute('aria-hidden', 'true')
@@ -46,6 +52,9 @@ describe('AboutPage roles', () => {
       ),
     ).toBeInTheDocument()
     expect(screen.getByText('Nobody can change their own role.')).toBeInTheDocument()
+    expect(
+      screen.getByText('A suggestion is seen only by its author, the moderators and the admin.'),
+    ).toBeInTheDocument()
     expect(
       screen.getByText(/Jurassic Shark 2's scores are locked, and the film can't be deleted/),
     ).toBeInTheDocument()
