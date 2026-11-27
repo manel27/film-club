@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import type { Person } from '../films/films'
-import { computeStats, parseStatsData, readYear, statsYears, type StatsData } from './stats'
+import {
+  chartGenres,
+  computeStats,
+  parseStatsData,
+  readYear,
+  statsYears,
+  type StatsData,
+} from './stats'
 
 const TODAY = '2026-11-27'
 
@@ -218,7 +225,15 @@ describe('computeStats', () => {
       last: null,
     })
     expect(s.overview.kinds.every((k) => k.count === 0)).toBe(true)
-    for (const list of [s.top, s.attendance, s.choosers, s.alike, s.genres, s.runtimes]) {
+    for (const list of [
+      s.top,
+      s.overTime,
+      s.attendance,
+      s.choosers,
+      s.alike,
+      s.genres,
+      s.runtimes,
+    ]) {
       expect(list).toEqual([])
     }
   })
@@ -618,5 +633,98 @@ describe('computeStats', () => {
         ['120–149 min', 1, null],
       ])
     })
+  })
+
+  describe('over time', () => {
+    const d = data(
+      [
+        { id: 1, date: '2024-12-31' },
+        { id: 2, date: '2025-03-01' },
+        { id: 3, date: '2025-03-15' },
+        { id: 4, date: '2025-03-29' },
+        { id: 5, date: '2025-11-02' },
+        { id: 6, date: '2026-01-10' },
+      ],
+      // Film averages: 1 → 9; 2 → 7.25; 3 → 6; 4 none; 5 none; 6 → 5.
+      [
+        ...scored(1, { ana: 9 }),
+        ...scored(2, { ana: 7, ben: 7.5 }),
+        ...scored(3, { ben: 6 }),
+        ...scored(6, { cal: 5 }),
+      ],
+      [
+        [2, 'ana'],
+        [2, 'ben'],
+        [3, 'ana'],
+        [5, 'ana'],
+        [5, 'ben'],
+        [5, 'cal'],
+      ],
+    )
+    const show = (year = '') =>
+      stats(d, year).overTime.map((p) => [p.label, p.films, p.avg, p.attendance])
+
+    it('gives one row per year with screenings, oldest first, for all time', () => {
+      expect(show()).toEqual([
+        ['2024', 1, 9, 0],
+        // (7.25 + 6) / 2 = 6.625 → 6.63; present 2, 1, 0, 3 → 1.5.
+        ['2025', 4, 6.63, 1.5],
+        ['2026', 1, 5, 0],
+      ])
+    })
+
+    it('gives one row per month with screenings, in calendar order, for a year', () => {
+      // No row for the months in between; March's films 2–4 average 7.25 and 6, film 4 has none.
+      expect(show('2025')).toEqual([
+        ['March', 3, 6.63, 1],
+        ['November', 1, null, 3],
+      ])
+    })
+
+    it('gives a single month row for a year with one screening', () => {
+      expect(show('2024')).toEqual([['December', 1, 9, 0]])
+    })
+
+    it('rounds attendance per screening to two decimals', () => {
+      const thirds = data(
+        [
+          { id: 1, date: '2026-05-01' },
+          { id: 2, date: '2026-05-02' },
+          { id: 3, date: '2026-05-03' },
+        ],
+        [],
+        [
+          [1, 'ana'],
+          [2, 'ana'],
+          [2, 'ben'],
+          [2, 'cal'],
+          [2, 'dee'],
+        ],
+      )
+      // Present 1, 4, 0: 5 / 3 = 1.666… → 1.67; no scores at all → null.
+      expect(stats(thirds, '2026').overTime).toEqual([
+        { label: 'May', films: 3, avg: null, attendance: 1.67 },
+      ])
+    })
+  })
+})
+
+describe('chartGenres', () => {
+  const group = (label: string | null, count: number) => ({ label, count, avg: null })
+
+  it('keeps the first 10 of 12 genres in their order, then Unknown last', () => {
+    const genres = [
+      ...Array.from({ length: 12 }, (_, i) => group(`G${i + 1}`, 20 - i)),
+      group(null, 30),
+    ]
+    expect(chartGenres(genres).map((g) => g.label)).toEqual([
+      ...['G1', 'G2', 'G3', 'G4', 'G5', 'G6', 'G7', 'G8', 'G9', 'G10'],
+      null,
+    ])
+  })
+
+  it('keeps all of a short list, with no Unknown when every film has a genre', () => {
+    const genres = [group('Drama', 2), group('Crime', 1)]
+    expect(chartGenres(genres)).toEqual(genres)
   })
 })

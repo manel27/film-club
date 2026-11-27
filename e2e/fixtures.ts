@@ -1,3 +1,4 @@
+import type { Page } from '@playwright/test'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { findUserByEmail } from '../scripts/create-admin.mjs'
 import { localSupabase } from './localSupabase'
@@ -112,4 +113,25 @@ export async function removeLoginAndProfile(
     const { error } = await client.from('profiles').delete().eq('display_name', name)
     if (error) throw new Error(`cleanup: could not delete profile ${name}: ${error.message}`)
   }
+}
+
+/** Collects CSP violations (DOM events and console reports) for the whole page life. */
+export async function watchCsp(page: Page): Promise<() => Promise<string[]>> {
+  const console: string[] = []
+  page.on('console', (m) => {
+    if (/Content Security Policy/i.test(m.text())) console.push(m.text())
+  })
+  await page.addInitScript(() => {
+    const w = window as unknown as { cspViolations: string[] }
+    w.cspViolations = []
+    document.addEventListener('securitypolicyviolation', (e) =>
+      w.cspViolations.push(`${e.violatedDirective} ${e.blockedURI}`),
+    )
+  })
+  return async () => [
+    ...console,
+    ...(await page.evaluate(
+      () => (window as unknown as { cspViolations: string[] }).cspViolations,
+    )),
+  ]
 }

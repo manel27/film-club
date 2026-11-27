@@ -1,5 +1,5 @@
-import { expect, test, type Page } from '@playwright/test'
-import { SEED_ADMIN, SEED_VIEWER, userClient } from './fixtures'
+import { expect, test } from '@playwright/test'
+import { SEED_ADMIN, SEED_VIEWER, userClient, watchCsp } from './fixtures'
 
 // The production build's meta CSP, frame guard and referrer policy (SECURITY.md S5)
 // and that a session is never taken from the URL fragment (S9).
@@ -9,27 +9,6 @@ const PNG = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
   'base64',
 )
-
-/** Collects CSP violations (DOM events and console reports) for the whole page life. */
-async function watchCsp(page: Page): Promise<() => Promise<string[]>> {
-  const console: string[] = []
-  page.on('console', (m) => {
-    if (/Content Security Policy/i.test(m.text())) console.push(m.text())
-  })
-  await page.addInitScript(() => {
-    const w = window as unknown as { cspViolations: string[] }
-    w.cspViolations = []
-    document.addEventListener('securitypolicyviolation', (e) =>
-      w.cspViolations.push(`${e.violatedDirective} ${e.blockedURI}`),
-    )
-  })
-  return async () => [
-    ...console,
-    ...(await page.evaluate(
-      () => (window as unknown as { cspViolations: string[] }).cspViolations,
-    )),
-  ]
-}
 
 test('key pages load under the CSP with no violations, posters included', async ({ page }) => {
   const violations = await watchCsp(page)

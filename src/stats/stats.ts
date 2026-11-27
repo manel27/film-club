@@ -131,6 +131,17 @@ export interface Group {
   avg: number | null
 }
 
+/** One year (all time) or one month (a single year) with screenings. */
+export interface Period {
+  /** "2019", or the month's English name ("March"). */
+  label: string
+  films: number
+  /** Mean of the film averages; null when no film has a score. */
+  avg: number | null
+  /** Mean people present per screening. */
+  attendance: number
+}
+
 export interface Pair {
   a: Person
   b: Person
@@ -153,6 +164,8 @@ export interface Stats {
   bottom: FilmStat[]
   divisive: FilmStat[]
   attended: FilmStat[]
+  /** Oldest first: years for all time, months for a single year. */
+  overTime: Period[]
   attendance: { person: Person; count: number; pct: number }[]
   choosers: { person: Person; avg: number; films: number }[]
   /** Kindest first, harshest last. */
@@ -171,6 +184,29 @@ const RUNTIME_BANDS: [max: number, label: string][] = [
   [149, '120–149 min'],
   [Infinity, '150+ min'],
 ]
+
+// Fixed names, like films.ts (no locale data involved).
+const MONTHS = [
+  ...['January', 'February', 'March', 'April', 'May', 'June'],
+  ...['July', 'August', 'September', 'October', 'November', 'December'],
+]
+
+/** Years (all time) or months of `year` that have screenings, oldest first. */
+function overTime(films: FilmStat[], year: string): Period[] {
+  const map = new Map<string, FilmStat[]>()
+  for (const s of films) {
+    const key = year ? s.film.screenedOn.slice(0, 7) : s.film.screenedOn.slice(0, 4)
+    map.set(key, [...(map.get(key) ?? []), s])
+  }
+  return [...map]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, g]) => ({
+      label: year ? MONTHS[Number(key.slice(5)) - 1] : key,
+      films: g.length,
+      avg: mean(nums(g.map((s) => s.avg))),
+      attendance: mean(g.map((s) => s.present))!,
+    }))
+}
 
 /** Population standard deviation, worked in whole hundredths like mean(). */
 function sd(xs: number[]): number | null {
@@ -219,6 +255,12 @@ function groups(
         (a.label ?? '').localeCompare(b.label ?? ''),
     )
 }
+
+/** The genre chart's bars: the 10 genres with the most films, then Unknown. */
+export const chartGenres = (genres: Group[]) => [
+  ...genres.filter((g) => g.label != null).slice(0, 10),
+  ...genres.filter((g) => g.label == null),
+]
 
 /**
  * Every number on the Stats page for one period: `year` (YYYY) or '' for all
@@ -293,6 +335,7 @@ export function computeStats(data: StatsData, people: Person[], year: string): S
       filmStats.filter((s) => s.present > 0),
       (s) => s.present,
     ),
+    overTime: overTime(filmStats, year),
     attendance: ranked
       .map((person) => {
         const count = attendance.filter((a) => a.profileId === person.id).length

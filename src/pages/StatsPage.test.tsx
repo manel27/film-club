@@ -14,7 +14,17 @@ const people: Person[] = [
 // stats_data()'s shape: films [id, title, year, date, kind, assigned, genres, directors, runtime].
 const RAW = {
   films: [
-    [1, 'Glass River', 2001, '2026-03-01', 'normal', 'p-ada', ['Drama'], ['Rui'], 100],
+    [
+      1,
+      'Glass River',
+      2001,
+      '2026-03-01',
+      'normal',
+      'p-ada',
+      ['Drama', 'Psychological Thriller'],
+      ['Rui'],
+      100,
+    ],
     [2, 'Night Bus', 1995, '2025-05-01', 'cinema', 'p-cin', [], [], null],
     // In the future: the database leaves these out, and so does the page.
     [3, 'Far Future', 2020, '2999-01-01', 'normal', 'p-ada', ['Drama'], [], 90],
@@ -181,6 +191,66 @@ describe('StatsPage', () => {
     renderPage()
     await screen.findByText('Films screened')
     expect(within(table('Best chooser')).getByText('None in this period.')).toBeInTheDocument()
+  })
+
+  it('shows films, average and attendance per year, then per month for one year', async () => {
+    renderPage()
+    await screen.findByText('Films screened')
+    const byYear = table('By year')
+    expect(
+      within(byYear)
+        .getAllByRole('rowheader')
+        .map((c) => c.textContent),
+    ).toEqual(['2025', '2026'])
+    // Night Bus (2025): averages 9 and 5 → 7.00; Ada and Cinema present.
+    const row2025 = within(within(byYear).getByRole('rowheader', { name: '2025' }).closest('tr')!)
+    expect(row2025.getAllByRole('cell').map((c) => c.textContent)).toEqual([
+      '1',
+      '7.00 👌average 7.00, good',
+      '2.00',
+    ])
+    expect(within(byYear).getByRole('columnheader', { name: 'Attendance' })).toHaveAttribute(
+      'scope',
+      'col',
+    )
+
+    fireEvent.change(screen.getByLabelText('Period'), { target: { value: '2026' } })
+    const byMonth = table('By month in 2026')
+    expect(
+      within(byMonth)
+        .getAllByRole('rowheader')
+        .map((c) => c.textContent),
+    ).toEqual(['March'])
+    expect(screen.queryByRole('table', { name: 'By year' })).toBeNull()
+  })
+
+  it('draws the over-time, genre and decade charts, hidden from screen readers and Tab', async () => {
+    renderPage()
+    await screen.findByText('Films screened')
+    const charts = [...document.querySelectorAll('.stats-chart')]
+    expect(charts).toHaveLength(4)
+    for (const chart of charts) {
+      expect(chart).toHaveAttribute('aria-hidden', 'true')
+      expect(chart.querySelector('svg')).not.toBeNull()
+      expect(chart.querySelector('[tabindex]:not([tabindex="-1"])')).toBeNull()
+    }
+    const [films, average, genres, decades] = charts as HTMLElement[]
+    // Two stacked charts, each with its title and the periods on its x-axis.
+    expect(within(films).getByText('Films')).toBeInTheDocument()
+    expect(within(average).getByText('Average score')).toBeInTheDocument()
+    expect(within(films).getByText('2025')).toBeInTheDocument()
+    expect(within(average).getByText('2026')).toBeInTheDocument()
+    // Even ticks on the 0–10 score axis.
+    for (const tick of ['0', '2', '4', '6', '8', '10']) {
+      expect(within(average).getByText(tick)).toBeInTheDocument()
+    }
+    // Glass River is Drama and a long genre, shortened on the axis; Night Bus has no genres.
+    expect(within(genres).getByText('Drama')).toBeInTheDocument()
+    expect(within(genres).getByText('Psychological…')).toBeInTheDocument()
+    expect(within(genres).queryByText('Psychological Thriller')).toBeNull()
+    expect(within(table('By genre')).getByText('Psychological Thriller')).toBeInTheDocument()
+    expect(within(genres).getByText('Unknown')).toBeInTheDocument()
+    expect(within(decades).getByText('1990s')).toBeInTheDocument()
   })
 
   it('says so when there are no screenings', async () => {

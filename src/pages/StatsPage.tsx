@@ -8,7 +8,9 @@ import { fetchPeopleList } from '../films/api'
 import { screeningDay, type Person } from '../films/films'
 import { lisbonDate } from '../rotation/rotation'
 import { fetchStatsData } from '../stats/api'
+import { CountChart, OverTimeChart } from '../stats/StatsCharts'
 import {
+  chartGenres,
   computeStats,
   DIRECTOR_ROWS,
   MIN,
@@ -198,6 +200,22 @@ export default function StatsPage() {
               </p>
             </section>
 
+            <section className="film-section" aria-labelledby="stats-over-time">
+              <h2 id="stats-over-time">Over time</h2>
+              <OverTimeChart periods={stats.overTime} />
+              <Table
+                caption={year ? `By month in ${year}` : 'By year'}
+                note="Average leaves out films with no scores; attendance is per screening"
+                head={[year ? 'Month' : 'Year', 'Films', 'Average', 'Attendance']}
+                rows={stats.overTime.map((p) => [
+                  p.label,
+                  p.films,
+                  <Avg key="a" value={p.avg} />,
+                  p.attendance.toFixed(2),
+                ])}
+              />
+            </section>
+
             <section className="film-section" aria-labelledby="stats-films">
               <h2 id="stats-films">Films</h2>
               <Table
@@ -286,6 +304,7 @@ export default function StatsPage() {
 
             <section className="film-section" aria-labelledby="stats-breakdowns">
               <h2 id="stats-breakdowns">Breakdowns</h2>
+              <CountChart horizontal groups={chartGenres(stats.genres)} />
               <Table
                 caption="By genre"
                 note="A film counts once in each of its genres"
@@ -298,6 +317,7 @@ export default function StatsPage() {
                 head={['Director', 'Films', 'Average']}
                 rows={groupRows(stats.directors)}
               />
+              <CountChart groups={stats.decades} />
               <Table
                 caption="By release decade"
                 head={['Decade', 'Films', 'Average']}
