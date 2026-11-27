@@ -56,6 +56,7 @@ export default function FilmsPage() {
   // Stable between renders, so the memoised rows only re-render when their film changes.
   const people = useMemo(() => new Map(data?.people.map((p) => [p.id, p])), [data])
   const peopleHref = useHref('/people')
+  const filmsHref = useHref('/films')
   const [failed, setFailed] = useState(false)
   const [attempt, setAttempt] = useState(0)
   // E.g. "Deleted …" after deleting a film. Kept in state: restoring the saved view replaces the URL and its state.
@@ -269,6 +270,7 @@ export default function FilmsPage() {
                     film={f}
                     people={people}
                     peopleHref={peopleHref}
+                    filmsHref={filmsHref}
                     poster={view === 'posters'}
                   />
                 ))}

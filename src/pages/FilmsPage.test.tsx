@@ -302,6 +302,17 @@ describe('films page', () => {
     )
     expect(rows[0].querySelector('img.film-thumb')).toHaveAttribute('alt', '')
     expect(rows[1].querySelector('.film-thumb')).toHaveAttribute('aria-hidden', 'true')
+    // Pressing a thumbnail (image or placeholder) opens its film; it adds no Tab stop.
+    for (const [i, id] of [
+      [0, 1],
+      [1, 2],
+    ]) {
+      const link = rows[i].querySelector('a.film-thumb-link')
+      expect(link).toHaveAttribute('href', `/films/${id}`)
+      expect(link).toHaveAttribute('tabindex', '-1')
+      expect(link).toHaveAttribute('aria-hidden', 'true')
+      expect(link?.querySelector('.film-thumb')).toBeInTheDocument()
+    }
   })
 
   it('sorts by average as a flat list with screening dates', async () => {
