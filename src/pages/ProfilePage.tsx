@@ -9,6 +9,7 @@ import {
 } from 'react'
 import { Link, useHref, useParams, useSearchParams } from 'react-router'
 import { useAuth } from '../auth/authContext'
+import { tabKeyIndex } from '../components/tabKeys'
 import { tipsOff } from '../components/tipsOff'
 import { FilmRow, PosterTile, ViewToggle } from '../components/FilmViews'
 import { fetchProfileData, renameProfile, type ProfileData } from '../films/api'
@@ -129,13 +130,12 @@ function Profile({ id }: { id: string }) {
     : undefined
   const canRename = me?.id === id && me.role !== 'viewer'
 
-  // ARIA tabs keyboard: arrows move (and wrap), Home and End jump to the first and last tab.
-  const onTabKey = (e: KeyboardEvent) => {
-    const i = TABS.findIndex(([t]) => t === tab)
-    const to = { ArrowLeft: i - 1, ArrowRight: i + 1, Home: 0, End: TABS.length - 1 }[e.key]
+  // ARIA tabs keyboard, from the pressed tab (i).
+  const onTabKey = (e: KeyboardEvent, i: number) => {
+    const to = tabKeyIndex(e.key, i, TABS.length)
     if (to === undefined) return
     e.preventDefault()
-    const [next] = TABS[(to + TABS.length) % TABS.length]
+    const [next] = TABS[to]
     set('tab', next, 'present')
     document.getElementById(`tab-${next}`)?.focus()
   }
@@ -173,7 +173,7 @@ function Profile({ id }: { id: string }) {
 
       <div className="films-head">
         <div role="tablist" aria-label="Films" className="tabs">
-          {TABS.map(([t, label]) => (
+          {TABS.map(([t, label], i) => (
             <button
               key={t}
               id={`tab-${t}`}
@@ -184,7 +184,7 @@ function Profile({ id }: { id: string }) {
               tabIndex={tab === t ? 0 : -1}
               className="tab"
               onClick={() => set('tab', t, 'present')}
-              onKeyDown={onTabKey}
+              onKeyDown={(e) => onTabKey(e, i)}
             >
               {label} ({lists[t].length})
             </button>

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { createMemoryRouter, RouterProvider } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Person } from '../films/films'
@@ -98,8 +98,8 @@ describe('StatsPage', () => {
   })
 
   it('leaves out films screened after today, and malformed rows', async () => {
-    renderPage()
-    await screen.findByText('Films screened')
+    renderPage('/stats?tab=people')
+    await screen.findByRole('table', { name: 'Attendance' })
     expect(screen.queryByText(/Far Future/)).toBeNull()
     expect(screen.queryByText(/Broken/)).toBeNull()
     // Far Future's attendance isn't counted either: Bo was present once, not twice.
@@ -143,15 +143,22 @@ describe('StatsPage', () => {
     expect(options.map((o) => o.textContent)).toEqual(['All time', '2026', '2025'])
   })
 
-  it('changing the year updates the URL and every section, without loading again', async () => {
-    const router = renderPage()
-    await screen.findByText('Films screened')
+  it('changing the year updates the URL and every tab, without loading again', async () => {
+    const router = renderPage('/stats?tab=people')
+    await screen.findByRole('table', { name: 'Attendance' })
     fireEvent.change(screen.getByLabelText('Period'), { target: { value: '2026' } })
-    expect(router.state.location.search).toBe('?year=2026')
-    expect(fact('Films screened')).toBe('1')
+    // The tab stays; the year joins it.
+    expect(router.state.location.search).toBe('?tab=people&year=2026')
+    expect(screen.getByRole('tab', { name: 'People' })).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByText('Showing 2026: 1 film screened.')).toBeInTheDocument()
     expect(within(table('Attendance')).queryByText('Ada')).toBeInTheDocument()
+    // Changing the tab keeps the year.
+    fireEvent.click(screen.getByRole('tab', { name: 'Films' }))
+    expect(router.state.location.search).toBe('?tab=films&year=2026')
     expect(within(table('Most attended')).queryByText(/Night Bus/)).toBeNull()
+    fireEvent.click(screen.getByRole('tab', { name: 'Overview' }))
+    expect(router.state.location.search).toBe('?year=2026')
+    expect(fact('Films screened')).toBe('1')
     fireEvent.change(screen.getByLabelText('Period'), { target: { value: '' } })
     expect(router.state.location.search).toBe('')
     expect(fact('Films screened')).toBe('2')
@@ -159,8 +166,8 @@ describe('StatsPage', () => {
   })
 
   it('ranks films with at least 3 scores only, says so, and links each film', async () => {
-    renderPage()
-    await screen.findByText('Films screened')
+    renderPage('/stats?tab=films')
+    await screen.findByRole('table', { name: 'Highest average' })
     const top = table('Highest average')
     // Glass River has 3 scores; Night Bus only 2.
     expect(within(top).getByRole('link', { name: 'Glass River (2001)' })).toHaveAttribute(
@@ -178,8 +185,8 @@ describe('StatsPage', () => {
   })
 
   it('never ranks a system profile as a person', async () => {
-    renderPage()
-    await screen.findByText('Films screened')
+    renderPage('/stats?tab=people')
+    await screen.findByRole('table', { name: 'Attendance' })
     const attendance = table('Attendance')
     expect(within(attendance).getByRole('link', { name: 'Ada' })).toBeInTheDocument()
     expect(within(attendance).queryByText('Cinema')).toBeNull()
@@ -188,8 +195,8 @@ describe('StatsPage', () => {
   })
 
   it('says when a ranking has nobody in it', async () => {
-    renderPage()
-    await screen.findByText('Films screened')
+    renderPage('/stats?tab=people')
+    await screen.findByRole('table', { name: 'Best chooser' })
     expect(within(table('Best chooser')).getByText('None in this period.')).toBeInTheDocument()
   })
 
@@ -224,17 +231,19 @@ describe('StatsPage', () => {
     expect(screen.queryByRole('table', { name: 'By year' })).toBeNull()
   })
 
-  it('draws the over-time, genre and decade charts, hidden from screen readers and Tab', async () => {
+  it('draws the over-time chart on Overview and the genre and decade charts on Breakdowns, hidden from screen readers and Tab', async () => {
     renderPage()
     await screen.findByText('Films screened')
-    const charts = [...document.querySelectorAll('.stats-chart')]
-    expect(charts).toHaveLength(4)
-    for (const chart of charts) {
+    const charts = () => [...document.querySelectorAll<HTMLElement>('.stats-chart')]
+    const hidden = (chart: HTMLElement) => {
       expect(chart).toHaveAttribute('aria-hidden', 'true')
       expect(chart.querySelector('svg')).not.toBeNull()
       expect(chart.querySelector('[tabindex]:not([tabindex="-1"])')).toBeNull()
     }
-    const [films, average, genres, decades] = charts as HTMLElement[]
+    expect(charts()).toHaveLength(2)
+    charts().forEach(hidden)
+    const [films, average] = charts()
+    expect(films.closest('.stats-card')).toHaveTextContent(/^Over time/)
     // Two stacked charts, each with its title and the periods on its x-axis.
     expect(within(films).getByText('Films')).toBeInTheDocument()
     expect(within(average).getByText('Average score')).toBeInTheDocument()
@@ -244,6 +253,15 @@ describe('StatsPage', () => {
     for (const tick of ['0', '2', '4', '6', '8', '10']) {
       expect(within(average).getByText(tick)).toBeInTheDocument()
     }
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Breakdowns' }))
+    expect(charts()).toHaveLength(2)
+    charts().forEach(hidden)
+    const [genres, decades] = charts()
+    // Chart cards are titled like the table cards, hidden with their chart.
+    expect(genres.closest('.stats-card')).toHaveTextContent(/^Films by genre/)
+    expect(genres.closest('.stats-card')).toHaveAttribute('aria-hidden', 'true')
+    expect(decades.closest('.stats-card')).toHaveTextContent(/^Films by decade/)
     // Glass River is Drama and a long genre, shortened on the axis; Night Bus has no genres.
     expect(within(genres).getByText('Drama')).toBeInTheDocument()
     expect(within(genres).getByText('Psychological…')).toBeInTheDocument()
@@ -258,5 +276,224 @@ describe('StatsPage', () => {
     renderPage('/stats?year=2026')
     expect(await screen.findByText('No screenings yet.')).toBeInTheDocument()
     expect(screen.queryByRole('table')).toBeNull()
+    expect(screen.queryByRole('tablist')).toBeNull()
+  })
+
+  it('shows the overview as tiles: a term and its value each, in one list', async () => {
+    renderPage()
+    await screen.findByText('Films screened')
+    const list = document.querySelector('dl.stats-tiles')!
+    const tiles = [...list.children]
+    expect(tiles.every((t) => t.matches('.stats-tile') && t.children.length === 2)).toBe(true)
+    expect(tiles.map((t) => t.querySelector('dt')?.textContent)).toEqual([
+      'Films screened',
+      'Scores given',
+      'Club average',
+      'Average attendance',
+      // Every film kind, even with none in the period.
+      'Normal',
+      'Democrático',
+      'Cinema',
+      'Maratona',
+      'First screening',
+      'Last screening',
+    ])
+    expect(
+      screen.getByText('Averages leave out films with no scores; attendance is per screening.'),
+    ).toBeInTheDocument()
+    // Said once, under the tiles: not again on the By year card.
+    expect(screen.queryByText(/^Average leaves out/)).toBeNull()
+  })
+
+  it('shows one tab at a time: tabs, a panel labelled by the selected tab, and the cards', async () => {
+    renderPage()
+    await screen.findByText('Films screened')
+    const tabs = within(screen.getByRole('tablist', { name: 'Stats' })).getAllByRole('tab')
+    expect(tabs.map((t) => t.textContent)).toEqual(['Overview', 'Films', 'People', 'Breakdowns'])
+    expect(tabs.map((t) => t.getAttribute('aria-selected'))).toEqual([
+      'true',
+      'false',
+      'false',
+      'false',
+    ])
+    expect(tabs.map((t) => t.tabIndex)).toEqual([0, -1, -1, -1])
+    const panel = screen.getByRole('tabpanel', { name: 'Overview' })
+    expect(tabs[0]).toHaveAttribute('aria-controls', panel.id)
+    expect(within(panel).getByRole('table', { name: 'By year' })).toBeInTheDocument()
+    expect(screen.queryByRole('table', { name: 'Attendance' })).toBeNull()
+
+    fireEvent.click(tabs[2])
+    const people = screen.getByRole('tabpanel', { name: 'People' })
+    expect(
+      within(people)
+        .getAllByRole('table')
+        .map((t) => t.querySelector('caption')?.textContent),
+    ).toEqual([
+      'Attendance',
+      'Best chooser',
+      'Kindest to harshest scorer',
+      'Most alike',
+      'Least alike',
+    ])
+    // Each card's heading is its table's caption (sr-only, so it isn't shown twice).
+    expect(
+      within(people).getByRole('heading', { level: 2, name: 'Attendance' }),
+    ).toBeInTheDocument()
+    expect(table('Attendance').querySelector('caption')).toHaveClass('sr-only')
+    // The scroll box around it doesn't repeat the bare name a third time.
+    expect(table('Attendance').parentElement).toHaveAccessibleName('Attendance, scrolls sideways')
+    expect(screen.queryByText('Films screened')).toBeNull()
+  })
+
+  it.each([
+    ['films', 'Films'],
+    ['people', 'People'],
+    ['breakdowns', 'Breakdowns'],
+  ])('reads ?tab=%s from the URL', async (value, name) => {
+    renderPage(`/stats?tab=${value}&year=2026`)
+    expect(await screen.findByRole('tab', { name })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByLabelText('Period')).toHaveValue('2026')
+  })
+
+  it.each(['abc', 'Films', 'overview', 'people%E2%80%8B', '1e9', ''])(
+    'falls back to Overview for ?tab=%s',
+    async (value) => {
+      renderPage(`/stats?tab=${value}`)
+      await screen.findByText('Films screened')
+      expect(screen.getByRole('tab', { name: 'Overview' })).toHaveAttribute('aria-selected', 'true')
+      expect(screen.getByRole('tabpanel', { name: 'Overview' })).toBeInTheDocument()
+    },
+  )
+
+  it('moves between tabs with the arrow keys, Home and End, wrapping, focus on the new tab', async () => {
+    const router = renderPage('/stats?year=2026')
+    await screen.findByText('Films screened')
+    const key = (k: string) => fireEvent.keyDown(document.activeElement!, { key: k })
+    const selected = () => screen.getByRole('tab', { selected: true })
+    screen.getByRole('tab', { name: 'Overview' }).focus()
+    key('ArrowRight')
+    expect(selected()).toHaveTextContent('Films')
+    expect(selected()).toHaveFocus()
+    expect(selected()).toHaveAttribute('tabindex', '0')
+    expect(screen.getByRole('tab', { name: 'Overview' })).toHaveAttribute('tabindex', '-1')
+    expect(router.state.location.search).toBe('?tab=films&year=2026')
+    key('End')
+    expect(selected()).toHaveTextContent('Breakdowns')
+    key('ArrowRight')
+    expect(selected()).toHaveTextContent('Overview')
+    expect(selected()).toHaveFocus()
+    expect(router.state.location.search).toBe('?year=2026')
+    key('ArrowLeft')
+    expect(selected()).toHaveTextContent('Breakdowns')
+    key('Home')
+    expect(selected()).toHaveTextContent('Overview')
+    // Other keys do nothing.
+    key('ArrowDown')
+    expect(selected()).toHaveTextContent('Overview')
+    expect(fetchStatsData).toHaveBeenCalledTimes(1)
+  })
+
+  it('moves from the pressed tab when a second key comes before the re-render', async () => {
+    renderPage('/stats?tab=breakdowns')
+    const breakdowns = await screen.findByRole('tab', { name: 'Breakdowns' })
+    const overview = screen.getByRole('tab', { name: 'Overview' })
+    // Both keys in one batch: the second handler still has the old render's tab.
+    act(() => {
+      fireEvent.keyDown(breakdowns, { key: 'Home' })
+      fireEvent.keyDown(overview, { key: 'ArrowLeft' })
+    })
+    expect(screen.getByRole('tab', { selected: true })).toHaveTextContent('Breakdowns')
+  })
+
+  it('keeps a tab change when the year changes before the re-render, and the other way round', async () => {
+    const router = renderPage('/stats?tab=breakdowns')
+    await screen.findByRole('tab', { name: 'Breakdowns' })
+    // Both in one batch: the select's handler still has the old render's tab.
+    act(() => {
+      fireEvent.click(screen.getByRole('tab', { name: 'Overview' }))
+      fireEvent.change(screen.getByLabelText('Period'), { target: { value: '2026' } })
+    })
+    expect(router.state.location.search).toBe('?year=2026')
+    act(() => {
+      fireEvent.change(screen.getByLabelText('Period'), { target: { value: '2025' } })
+      fireEvent.click(screen.getByRole('tab', { name: 'People' }))
+    })
+    expect(router.state.location.search).toBe('?tab=people&year=2025')
+    // Back to what the URL says after a navigation from outside the page.
+    await act(() => router.navigate('/stats?tab=films'))
+    fireEvent.change(screen.getByLabelText('Period'), { target: { value: '2026' } })
+    expect(router.state.location.search).toBe('?tab=films&year=2026')
+  })
+
+  describe('Show all', () => {
+    // Six screenings, one a year 2001–2006: By year has 6 rows, each year's By month 1.
+    const SIX = {
+      films: [1, 2, 3, 4, 5, 6].map((i) => [
+        i,
+        `Film ${i}`,
+        1990,
+        `200${i}-06-01`,
+        'normal',
+        'p-ada',
+        [],
+        [],
+        null,
+      ]),
+      scores: [],
+      attendance: [],
+    }
+    const rows = (name: string) =>
+      within(table(name))
+        .getAllByRole('rowheader')
+        .map((c) => c.textContent)
+
+    it('shows the first 5 rows, then all of them and back, focus staying on the button', async () => {
+      fetchStatsData.mockImplementation(async () => SIX)
+      renderPage()
+      await screen.findByRole('table', { name: 'By year' })
+      expect(rows('By year')).toEqual(['2001', '2002', '2003', '2004', '2005'])
+      const button = screen.getByRole('button', { name: 'Show all (6) rows: By year' })
+      expect(button).toHaveTextContent('Show all (6)')
+      expect(button).toHaveAttribute('aria-expanded', 'false')
+      expect(button).toHaveAttribute('aria-controls', table('By year').id)
+      button.focus()
+      fireEvent.click(button)
+      expect(rows('By year')).toEqual(['2001', '2002', '2003', '2004', '2005', '2006'])
+      expect(button).toHaveAccessibleName('Show fewer rows: By year')
+      expect(button).toHaveTextContent('Show fewer')
+      expect(button).toHaveAttribute('aria-expanded', 'true')
+      expect(button).toHaveFocus()
+      fireEvent.click(button)
+      expect(rows('By year')).toHaveLength(5)
+      expect(button).toHaveAttribute('aria-expanded', 'false')
+      expect(button).toHaveFocus()
+    })
+
+    it('is not offered for 5 rows or fewer', async () => {
+      fetchStatsData.mockImplementation(async () => ({
+        ...SIX,
+        films: SIX.films.slice(0, 5),
+      }))
+      renderPage()
+      await screen.findByRole('table', { name: 'By year' })
+      expect(rows('By year')).toHaveLength(5)
+      expect(screen.queryByRole('button', { name: /^Show/ })).toBeNull()
+    })
+
+    it('starts collapsed again after the year changes', async () => {
+      fetchStatsData.mockImplementation(async () => SIX)
+      renderPage()
+      fireEvent.click(await screen.findByRole('button', { name: 'Show all (6) rows: By year' }))
+      expect(rows('By year')).toHaveLength(6)
+      fireEvent.change(screen.getByLabelText('Period'), { target: { value: '2003' } })
+      expect(rows('By month in 2003')).toEqual(['June'])
+      expect(screen.queryByRole('button', { name: /^Show/ })).toBeNull()
+      fireEvent.change(screen.getByLabelText('Period'), { target: { value: '' } })
+      expect(rows('By year')).toHaveLength(5)
+      expect(screen.getByRole('button', { name: 'Show all (6) rows: By year' })).toHaveAttribute(
+        'aria-expanded',
+        'false',
+      )
+    })
   })
 })
