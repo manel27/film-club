@@ -38,13 +38,29 @@ export function canDelete(
 export const savedLength = (text: string, multiline = false) =>
   reasonLength((multiline ? normaliseText : normaliseReason)(text))
 
+/** The list filter (?show= in the URL); anything unknown shows all. */
+export const FILTERS = { all: 'All', open: 'Open', closed: 'Closed' } as const
+export type Filter = keyof typeof FILTERS
+export const parseFilter = (value: string | null): Filter =>
+  value === 'open' || value === 'closed' ? value : 'all'
+
+/** Open suggestions first, then closed ones, each newest first (the order they come in); filtered. */
+export function arrange<T extends { closed_at: string | null }>(list: T[], filter: Filter): T[] {
+  return list
+    .filter((s) => filter === 'all' || (filter === 'closed') === (s.closed_at !== null))
+    .sort((a, b) => Number(a.closed_at !== null) - Number(b.closed_at !== null))
+}
+
 /**
  * Friendly text for a failed suggestion write. A refused reply means the suggestion is gone
  * (or no longer yours to see): RLS answers before the foreign key does.
  */
-export function supportError(error: unknown, write?: 'reply' | 'delete'): string {
+export function supportError(error: unknown, write?: 'reply' | 'delete' | 'state'): string {
   const { code, message } = (error ?? {}) as { code?: string; message?: string }
+  // Closed by staff meanwhile (the reply guard); checked before RLS's refusal below.
+  if (code === '42501' && message?.includes('is closed')) return 'This suggestion was closed.'
   if (write === 'reply' && code === '42501') return 'This suggestion was deleted.'
+  if (code === 'P0002') return 'This suggestion was deleted.'
   if (code === '42501' && message?.includes('has a reply')) {
     return 'Someone has replied, so this suggestion can no longer be deleted.'
   }

@@ -126,6 +126,63 @@ test('the author replies, and can no longer delete after the staff reply', async
   expect(error?.message).toBe('This suggestion has a reply, so it can no longer be deleted')
 })
 
+test('a moderator closes it: shown as closed, in the Closed filter, no more replies', async ({
+  page,
+}) => {
+  await logIn(page, SEED_MODERATOR, `/support/${await ideaId()}`)
+  await page.getByRole('button', { name: 'Close suggestion' }).click()
+  await expect(page.getByRole('status').filter({ hasText: 'Suggestion closed.' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Reopen suggestion' })).toBeFocused()
+  await expect(page.getByText(/^Closed by Tamsin/)).toBeVisible()
+  await expect(page.getByText('This suggestion is closed.')).toBeVisible()
+  await expect(page.getByLabel('Reply')).toHaveCount(0)
+
+  await page.goto('./#/support?show=closed')
+  await expect(page.getByLabel('Show')).toHaveValue('closed')
+  const item = page.getByRole('listitem').filter({ hasText: IDEA })
+  await expect(item.getByText('Closed', { exact: true })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Runtime on the poster list' })).toHaveCount(0)
+})
+
+test('the author sees it closed and can neither reply nor reopen it, even through PostgREST', async ({
+  page,
+}) => {
+  const id = await ideaId()
+  await logIn(page, SEED_MEMBER, `/support/${id}`)
+  await expect(page.getByText('This suggestion is closed.')).toBeVisible()
+  await expect(page.getByLabel('Reply')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: /Reopen|Close/ })).toHaveCount(0)
+
+  const client = userClient()
+  const { error: loginError } = await client.auth.signInWithPassword(SEED_MEMBER)
+  if (loginError) throw loginError
+  const reopen = await client.rpc('set_suggestion_closed', { target_id: id, closed: false })
+  expect(reopen.error?.message).toBe(
+    'Only moderators and the admin can close or reopen suggestions',
+  )
+  const update = await client.from('suggestions').update({ closed_at: null }).eq('id', id)
+  expect(update.error?.code).toBe('42501')
+  const reply = await client
+    .from('suggestion_replies')
+    .insert({ suggestion_id: id, body: 'Sneaky' })
+  expect(reply.error?.message).toBe('This suggestion is closed')
+})
+
+test('a moderator reopens it and the author can reply again', async ({ page, browser }) => {
+  const id = await ideaId()
+  await logIn(page, SEED_MODERATOR, `/support/${id}`)
+  await page.getByRole('button', { name: 'Reopen suggestion' }).click()
+  await expect(page.getByRole('status').filter({ hasText: 'Suggestion reopened.' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Close suggestion' })).toBeFocused()
+
+  const author = await (await browser.newContext()).newPage()
+  await logIn(author, SEED_MEMBER, `/support/${id}`)
+  await expect(author.getByText('Open', { exact: true })).toBeVisible()
+  await author.getByLabel('Reply').fill('E2E: glad it is open again.')
+  await author.getByRole('button', { name: 'Send reply' }).click()
+  await expect(author.getByText('E2E: glad it is open again.')).toBeVisible()
+})
+
 test('the admin deletes any suggestion, replies and all', async ({ page }) => {
   const id = await ideaId()
   await logIn(page, SEED_ADMIN, `/support/${id}`)

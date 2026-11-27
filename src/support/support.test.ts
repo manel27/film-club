@@ -1,7 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import { NO_ROWS } from '../films/filmDetail'
 import { fakeProfile } from '../test/fakeAuthBackend'
-import { canDelete, checkText, dateTime, isStaff, savedLength, supportError } from './support'
+import {
+  arrange,
+  canDelete,
+  checkText,
+  dateTime,
+  isStaff,
+  parseFilter,
+  savedLength,
+  supportError,
+} from './support'
 
 describe('checkText', () => {
   it('returns the text as stored: invisible characters gone, spaces collapsed, trimmed', () => {
@@ -106,6 +115,22 @@ describe('supportError', () => {
     )
   })
 
+  it('explains a reply refused because staff closed the suggestion meanwhile', () => {
+    // Checked before "deleted": the guard's message is specific.
+    expect(supportError({ code: '42501', message: 'This suggestion is closed' }, 'reply')).toBe(
+      'This suggestion was closed.',
+    )
+  })
+
+  it('explains closing a suggestion that is gone, and a refused close', () => {
+    expect(supportError({ code: 'P0002', message: 'No such suggestion' }, 'state')).toBe(
+      'This suggestion was deleted.',
+    )
+    expect(
+      supportError({ code: '42501', message: 'Only moderators and the admin can close' }, 'state'),
+    ).toBe("You can't change that.")
+  })
+
   it('falls back to the shared messages', () => {
     expect(supportError({ code: '42501', message: 'row-level security' })).toBe(
       "You can't change that.",
@@ -121,5 +146,35 @@ describe('dateTime', () => {
   it('shows the date and time in Lisbon', () => {
     // 23:30 UTC in summer is 00:30 the next day in Lisbon.
     expect(dateTime('2026-07-01T23:30:00Z')).toBe('2 Jul 2026, 00:30')
+  })
+})
+
+describe('parseFilter', () => {
+  it('reads open and closed, and falls back to all for anything else', () => {
+    expect(parseFilter('open')).toBe('open')
+    expect(parseFilter('closed')).toBe('closed')
+    for (const other of [null, '', 'all', 'OPEN', 'archived', 'closed ']) {
+      expect(parseFilter(other), String(other)).toBe('all')
+    }
+  })
+})
+
+describe('arrange', () => {
+  // Newest first, as the query returns them.
+  const list = [
+    { id: 4, closed_at: '2026-11-25T00:00:00Z' },
+    { id: 3, closed_at: null },
+    { id: 2, closed_at: '2026-11-21T00:00:00Z' },
+    { id: 1, closed_at: null },
+  ]
+  const ids = (xs: { id: number }[]) => xs.map((x) => x.id)
+
+  it('puts open suggestions first, then closed, each keeping newest first', () => {
+    expect(ids(arrange(list, 'all'))).toEqual([3, 1, 4, 2])
+  })
+
+  it('filters by state', () => {
+    expect(ids(arrange(list, 'open'))).toEqual([3, 1])
+    expect(ids(arrange(list, 'closed'))).toEqual([4, 2])
   })
 })

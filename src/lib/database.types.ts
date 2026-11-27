@@ -711,6 +711,8 @@ export type Database = {
         Row: {
           author_id: string
           body: string
+          closed_at: string | null
+          closed_by: string | null
           created_at: string
           id: number
           title: string
@@ -719,6 +721,8 @@ export type Database = {
         Insert: {
           author_id?: string
           body: string
+          closed_at?: string | null
+          closed_by?: string | null
           created_at?: string
           id?: never
           title: string
@@ -726,6 +730,8 @@ export type Database = {
         Update: {
           author_id?: string
           body?: string
+          closed_at?: string | null
+          closed_by?: string | null
           created_at?: string
           id?: never
           title?: string
@@ -741,6 +747,20 @@ export type Database = {
           {
             foreignKeyName: 'suggestions_author_id_fkey'
             columns: ['author_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'suggestions_closed_by_fkey'
+            columns: ['closed_by']
+            isOneToOne: false
+            referencedRelation: 'profile_directory'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'suggestions_closed_by_fkey'
+            columns: ['closed_by']
             isOneToOne: false
             referencedRelation: 'profiles'
             referencedColumns: ['id']
@@ -915,6 +935,7 @@ export type Database = {
         }
       }
       profile_remove_login: { Args: { p_admin_id: string; p_profile_id: string }; Returns: string }
+      set_suggestion_closed: { Args: { closed: boolean; target_id: number }; Returns: undefined }
       tmdb_search_hit: { Args: Record<PropertyKey, never>; Returns: boolean }
     }
     Enums: {

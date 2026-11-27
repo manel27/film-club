@@ -172,8 +172,8 @@ values (extensions.digest('local-dev-invite-viggo', 'sha256'), '00000000-0000-40
         '00000000-0000-4000-8000-0000000000a1');
 
 -- ---------------------------------------------------------------------------
--- Support suggestions: Kwame's has a staff reply (he can no longer delete it),
--- Petra's (a viewer) has none yet.
+-- Support suggestions: Kwame's has a staff reply (he can no longer delete it)
+-- and is closed; Petra's (a viewer) is open, with no reply yet.
 -- ---------------------------------------------------------------------------
 
 insert into public.suggestions (id, author_id, title, body, created_at) overriding system value values
@@ -185,5 +185,9 @@ insert into public.suggestions (id, author_id, title, body, created_at) overridi
 insert into public.suggestion_replies (suggestion_id, author_id, body, created_at) values
   (1, '00000000-0000-4000-8000-0000000000a2', 'Good idea, we will try it next Saturday.', '2026-11-21 09:00+00'),
   (1, '00000000-0000-4000-8000-0000000000a3', 'Thanks!', '2026-11-21 10:00+00');
+
+update public.suggestions
+set closed_at = '2026-11-23 10:00+00', closed_by = '00000000-0000-4000-8000-0000000000a2'
+where id = 1;
 
 select setval(pg_get_serial_sequence('public.suggestions', 'id'), 100);

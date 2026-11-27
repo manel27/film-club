@@ -175,6 +175,12 @@ a {
   color: var(--accent);
 }
 
+/* A closed suggestion: done with, so quieter than an open one. */
+.badge-muted {
+  border-color: var(--muted);
+  color: var(--muted);
+}
+
 /* ---------------------------------------------------------------- forms */
 
 .card {
@@ -343,7 +349,8 @@ a {
   font-size: 0.875rem;
 }
 
-.film-filters select {
+.film-filters select,
+.support-filter select {
   font: inherit;
   max-width: 12rem;
   padding: 0.25rem 0.5rem;
@@ -881,6 +888,12 @@ a {
 
 .comment-form h2 {
   margin: 0;
+}
+
+.support-filter {
+  align-items: flex-start;
+  margin-bottom: 0.5rem;
+  font-size: 0.875rem;
 }
 
 /* Titles are typed by people: a long word must not push the page sideways. */

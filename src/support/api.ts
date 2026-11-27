@@ -11,7 +11,7 @@ import { supabase } from '../lib/supabase'
 async function querySuggestions() {
   const { data, error } = await supabase
     .from('suggestions')
-    .select('id, author_id, title, created_at, suggestion_replies(count)')
+    .select('id, author_id, title, created_at, closed_at, suggestion_replies(count)')
     .order('created_at', { ascending: false })
     .order('id', { ascending: false })
   if (error) throw error
@@ -20,6 +20,7 @@ async function querySuggestions() {
     author_id: s.author_id,
     title: s.title,
     created_at: s.created_at,
+    closed_at: s.closed_at,
     replies: s.suggestion_replies[0]?.count ?? 0,
   }))
 }
@@ -38,7 +39,7 @@ function querySuggestion(id: number) {
   return supabase
     .from('suggestions')
     .select(
-      'id, author_id, title, body, created_at, suggestion_replies(id, author_id, body, created_at)',
+      'id, author_id, title, body, created_at, closed_at, closed_by, suggestion_replies(id, author_id, body, created_at)',
     )
     .eq('id', id)
     .order('created_at', { referencedTable: 'suggestion_replies' })
@@ -71,6 +72,11 @@ export const supportWrites = {
   },
   addReply: (suggestion_id: number, body: string) =>
     check(supabase.from('suggestion_replies').insert({ suggestion_id, body })),
+  /** Staff only (the function checks); a closed suggestion takes no replies. */
+  setClosed: async (target_id: number, closed: boolean) => {
+    const { error } = await supabase.rpc('set_suggestion_closed', { target_id, closed })
+    if (error) throw error
+  },
   // Its replies go with it (on delete cascade).
   deleteSuggestion: (id: number) =>
     check(supabase.from('suggestions').delete().eq('id', id).select('id'), true),

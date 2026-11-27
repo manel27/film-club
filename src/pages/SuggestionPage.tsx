@@ -5,7 +5,9 @@ import { RoleChip } from '../components/Chip'
 import { tipsOff } from '../components/tipsOff'
 import type { Person } from '../films/films'
 import { parseId } from '../lib/ids'
+import { dayLabel } from '../invites/links'
 import { fetchSuggestion, supportWrites, type Suggestion } from '../support/api'
+import StateBadge from '../support/StateBadge'
 import {
   canDelete,
   checkText,
@@ -15,6 +17,8 @@ import {
   supportError,
   TEXT_MAX,
 } from '../support/support'
+
+type Write = 'reply' | 'delete' | 'state'
 
 const BackLink = () => (
   <Link to="/support" className="back-link">
@@ -35,13 +39,17 @@ function SuggestionView({ id }: { id: string }) {
   // undefined = loading, null = not found (or not yours: the same message)
   const [data, setData] = useState<{ suggestion: Suggestion; people: Person[] } | null>()
   const [failed, setFailed] = useState(false)
-  const [error, setError] = useState<{ at: 'reply' | 'delete'; message: string }>()
+  // `focus`: a refusal from the server (the control that had focus may be gone after the reload).
+  const [error, setError] = useState<{ at: Write; message: string; focus?: boolean }>()
   const [status, setStatus] = useState('')
+  const [stateStatus, setStateStatus] = useState('')
   const [draft, setDraft] = useState('')
   const [busy, setBusy] = useState(false)
   const busyRef = useRef(false)
   const statusRef = useRef<HTMLParagraphElement>(null)
-  const deleteErrorRef = useRef<HTMLParagraphElement>(null)
+  const errorRef = useRef<HTMLParagraphElement>(null)
+  const toggleRef = useRef<HTMLButtonElement>(null)
+  const refocusToggle = useRef(false)
   const latest = useRef(0)
 
   // Only the newest load may land. A failed reload keeps what is shown.
@@ -60,23 +68,31 @@ function SuggestionView({ id }: { id: string }) {
   useEffect(() => {
     void load()
   }, [load])
-  // A refused delete reloads, which can remove the Delete button that had focus.
+  // A refused write reloads, which can remove the control that had focus (Delete, the reply
+  // form of a suggestion closed meanwhile): its error takes focus.
   useEffect(() => {
-    if (error?.at === 'delete') deleteErrorRef.current?.focus()
+    if (error?.focus) errorRef.current?.focus()
   }, [error])
+  // Close/Reopen is disabled while it runs, which drops focus: give it back.
+  useEffect(() => {
+    if (busy || !refocusToggle.current) return
+    refocusToggle.current = false
+    toggleRef.current?.focus()
+  }, [busy])
 
   /** Runs one write at a time; reloads afterwards (a reply may have arrived meanwhile). */
-  const run = async (at: 'reply' | 'delete', write: () => Promise<void>) => {
+  const run = async (at: Write, write: () => Promise<void>) => {
     if (busyRef.current) return false
     busyRef.current = true
     setBusy(true)
     setError(undefined)
     setStatus('')
+    setStateStatus('')
     try {
       await write()
       return true
     } catch (e) {
-      setError({ at, message: supportError(e, at) })
+      setError({ at, message: supportError(e, at), focus: true })
       await load()
       return false
     } finally {
@@ -131,7 +147,8 @@ function SuggestionView({ id }: { id: string }) {
 
   const { suggestion: s, people } = data
   const byId = new Map(people.map((p) => [p.id, p]))
-  const mayReply = isStaff(profile) || s.author_id === profile?.id
+  const staff = isStaff(profile)
+  const mayReply = staff || s.author_id === profile?.id
 
   const reply = async (e: FormEvent) => {
     e.preventDefault()
@@ -153,6 +170,17 @@ function SuggestionView({ id }: { id: string }) {
     }
   }
 
+  const toggle = async () => {
+    const closing = !s.closed_at
+    const ok = await run('state', async () => {
+      await supportWrites.setClosed(s.id, closing)
+      // Only on success: a failure's message takes focus instead.
+      refocusToggle.current = true
+      await load()
+    })
+    if (ok) setStateStatus(closing ? 'Suggestion closed.' : 'Suggestion reopened.')
+  }
+
   const remove = async () => {
     if (!confirm(`Delete "${s.title}"? Its replies go too.`)) return
     // Not reloaded on success: the page would flash "not found" before leaving.
@@ -169,12 +197,28 @@ function SuggestionView({ id }: { id: string }) {
       </p>
       <h1 className="suggestion-title">{s.title}</h1>
       <p className="comment-meta">
-        <RoleChip person={byId.get(s.author_id)} />{' '}
+        <StateBadge closedAt={s.closed_at} /> <RoleChip person={byId.get(s.author_id)} />{' '}
         <span className="muted">{dateTime(s.created_at)}</span>
       </p>
+      {s.closed_at && (
+        <p className="comment-meta">
+          Closed by <RoleChip person={byId.get(s.closed_by ?? '')} /> on {dayLabel(s.closed_at)}
+        </p>
+      )}
       <p className="comment-body">{s.body}</p>
-      {canDelete(profile, s) && (
-        <div className="comment-actions">
+      <div className="comment-actions">
+        {staff && (
+          <button
+            ref={toggleRef}
+            type="button"
+            className="button button-secondary button-small"
+            disabled={busy}
+            onClick={() => void toggle()}
+          >
+            {s.closed_at ? 'Reopen suggestion' : 'Close suggestion'}
+          </button>
+        )}
+        {canDelete(profile, s) && (
           <button
             type="button"
             className="button button-danger button-small"
@@ -183,10 +227,13 @@ function SuggestionView({ id }: { id: string }) {
           >
             Delete suggestion
           </button>
-        </div>
-      )}
-      {error?.at === 'delete' && (
-        <p ref={deleteErrorRef} role="alert" className="form-error" tabIndex={-1}>
+        )}
+      </div>
+      <p role="status" className={stateStatus ? 'form-notice' : 'sr-only'}>
+        {stateStatus}
+      </p>
+      {(error?.at === 'delete' || error?.at === 'state') && (
+        <p ref={errorRef} role="alert" className="form-error" tabIndex={-1}>
           {error.message}
         </p>
       )}
@@ -216,28 +263,34 @@ function SuggestionView({ id }: { id: string }) {
         >
           {status}
         </p>
-        {mayReply && (
-          <form onSubmit={reply} className="comment-form" noValidate>
-            <label htmlFor="reply-text">Reply</label>
-            <textarea
-              id="reply-text"
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              aria-invalid={error?.at === 'reply'}
-              aria-describedby={`reply-count ${error?.at === 'reply' ? 'reply-error' : ''}`.trim()}
-            />
-            <span id="reply-count" className="muted">
-              {savedLength(draft, true)}/{TEXT_MAX}
-            </span>
-            <button type="submit" className="button button-small" disabled={busy}>
-              {busy ? 'Sending…' : 'Send reply'}
-            </button>
-            {error?.at === 'reply' && (
-              <p id="reply-error" role="alert" className="form-error">
-                {error.message}
-              </p>
-            )}
-          </form>
+        {s.closed_at ? (
+          <p className="muted">This suggestion is closed.</p>
+        ) : (
+          mayReply && (
+            <form onSubmit={reply} className="comment-form" noValidate>
+              <label htmlFor="reply-text">Reply</label>
+              <textarea
+                id="reply-text"
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                aria-invalid={error?.at === 'reply'}
+                aria-describedby={`reply-count ${error?.at === 'reply' ? 'reply-error' : ''}`.trim()}
+              />
+              <span id="reply-count" className="muted">
+                {savedLength(draft, true)}/{TEXT_MAX}
+              </span>
+              <button type="submit" className="button button-small" disabled={busy}>
+                {busy ? 'Sending…' : 'Send reply'}
+              </button>
+            </form>
+          )
+        )}
+        {/* Outside the form: a reply refused because the suggestion was closed meanwhile
+            reloads, and the form is gone. */}
+        {error?.at === 'reply' && (
+          <p id="reply-error" ref={errorRef} role="alert" className="form-error" tabIndex={-1}>
+            {error.message}
+          </p>
         )}
       </section>
     </main>

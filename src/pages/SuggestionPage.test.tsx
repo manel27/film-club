@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { createMemoryRouter, RouterProvider, useLocation } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { AuthProvider } from '../auth/AuthProvider'
@@ -26,6 +26,8 @@ const suggestion = (over: Partial<Suggestion> = {}): Suggestion => ({
   title: 'More subtitles',
   body: 'For every film, please.',
   created_at: '2026-11-20T20:00:00Z',
+  closed_at: null,
+  closed_by: null,
   suggestion_replies: [],
   ...over,
 })
@@ -39,10 +41,15 @@ const api = vi.hoisted(() => ({
   fetchSuggestion: vi.fn<(id: number) => Promise<Data>>(),
   addReply: vi.fn<(id: number, body: string) => Promise<void>>(),
   deleteSuggestion: vi.fn<(id: number) => Promise<void>>(),
+  setClosed: vi.fn<(id: number, closed: boolean) => Promise<void>>(),
 }))
 vi.mock('../support/api', () => ({
   fetchSuggestion: (id: number) => api.fetchSuggestion(id),
-  supportWrites: { addReply: api.addReply, deleteSuggestion: api.deleteSuggestion },
+  supportWrites: {
+    addReply: api.addReply,
+    deleteSuggestion: api.deleteSuggestion,
+    setClosed: api.setClosed,
+  },
 }))
 
 function Notice() {
@@ -92,6 +99,7 @@ beforeEach(() => {
   api.fetchSuggestion.mockResolvedValue(data())
   api.addReply.mockResolvedValue()
   api.deleteSuggestion.mockResolvedValue()
+  api.setClosed.mockResolvedValue()
 })
 
 describe('suggestion page', () => {
@@ -293,5 +301,96 @@ describe('suggestion page', () => {
     await act(() => router.navigate('/support/9'))
     expect(await screen.findByRole('heading', { name: 'Third' })).toBeInTheDocument()
     expect(screen.getByLabelText('Reply')).toHaveValue('')
+  })
+
+  describe('open and closed', () => {
+    const CLOSED = { closed_at: '2026-11-23T10:00:00Z', closed_by: 'p-mod' }
+
+    it('shows an open suggestion as Open, with the reply form', async () => {
+      renderPage()
+      await screen.findByRole('heading', { name: 'More subtitles' })
+      expect(screen.getByText('Open')).toHaveClass('badge')
+      expect(screen.queryByText(/Closed by/)).not.toBeInTheDocument()
+      expect(screen.getByLabelText('Reply')).toBeInTheDocument()
+    })
+
+    it.each(['member', 'moderator', 'admin'] as const)(
+      'shows a closed suggestion to a %s: who closed it and when, and no reply form',
+      async (role) => {
+        api.fetchSuggestion.mockResolvedValue(data(CLOSED))
+        renderPage(role)
+        expect(await screen.findByText('Closed')).toHaveClass('badge-muted')
+        const closedBy = screen.getByText(/Closed by/)
+        expect(closedBy).toHaveTextContent(/^Closed by Tam.* on 23 Nov 2026$/)
+        expect(within(closedBy).getByRole('link', { name: 'Tam' })).toHaveAttribute(
+          'href',
+          '/people/p-mod',
+        )
+        expect(screen.getByText('This suggestion is closed.')).toBeInTheDocument()
+        expect(screen.queryByLabelText('Reply')).not.toBeInTheDocument()
+      },
+    )
+
+    it.each([
+      ['member', false],
+      ['viewer', false],
+      ['moderator', true],
+      ['admin', true],
+    ] as const)('shows Close suggestion to a %s: %s', async (role, shown) => {
+      renderPage(role)
+      await screen.findByRole('heading', { name: 'More subtitles' })
+      expect(screen.queryByRole('button', { name: 'Close suggestion' }) !== null).toBe(shown)
+    })
+
+    it('lets staff close, then reopen, in place: disabled meanwhile, announced, focus kept', async () => {
+      const closing = deferred<void>()
+      api.setClosed.mockReturnValueOnce(closing.promise)
+      renderPage('moderator')
+      const close = await screen.findByRole('button', { name: 'Close suggestion' })
+      close.focus()
+      fireEvent.click(close)
+      fireEvent.click(close)
+      expect(close).toBeDisabled()
+      api.fetchSuggestion.mockResolvedValue(data(CLOSED))
+      await act(async () => closing.resolve())
+      const reopen = await screen.findByRole('button', { name: 'Reopen suggestion' })
+      expect(api.setClosed).toHaveBeenCalledTimes(1)
+      expect(api.setClosed).toHaveBeenCalledWith(7, true)
+      expect(screen.getByText('Suggestion closed.')).toHaveAttribute('role', 'status')
+      expect(screen.getByText('This suggestion is closed.')).toBeInTheDocument()
+      await waitFor(() => expect(reopen).toHaveFocus())
+
+      api.fetchSuggestion.mockResolvedValue(data())
+      fireEvent.click(reopen)
+      expect(await screen.findByText('Suggestion reopened.')).toBeInTheDocument()
+      expect(api.setClosed).toHaveBeenLastCalledWith(7, false)
+      expect(screen.getByLabelText('Reply')).toBeInTheDocument()
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: 'Close suggestion' })).toHaveFocus(),
+      )
+    })
+
+    it('says why a close failed, with focus on the message', async () => {
+      api.setClosed.mockRejectedValueOnce({ code: 'P0002', message: 'No such suggestion' })
+      renderPage('admin')
+      fireEvent.click(await screen.findByRole('button', { name: 'Close suggestion' }))
+      const alert = await screen.findByRole('alert')
+      expect(alert).toHaveTextContent('This suggestion was deleted.')
+      await waitFor(() => expect(alert).toHaveFocus())
+    })
+
+    it('says so when the suggestion was closed before the reply landed, and reloads', async () => {
+      renderPage()
+      await screen.findByRole('heading', { name: 'More subtitles' })
+      api.addReply.mockRejectedValueOnce({ code: '42501', message: 'This suggestion is closed' })
+      api.fetchSuggestion.mockResolvedValue(data(CLOSED))
+      fireEvent.change(screen.getByLabelText('Reply'), { target: { value: 'Too late' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Send reply' }))
+      const alert = await screen.findByRole('alert')
+      expect(alert).toHaveTextContent('This suggestion was closed.')
+      expect(await screen.findByText('This suggestion is closed.')).toBeInTheDocument()
+      expect(screen.queryByLabelText('Reply')).not.toBeInTheDocument()
+      await waitFor(() => expect(alert).toHaveFocus())
+    })
   })
 })

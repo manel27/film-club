@@ -10,6 +10,8 @@
 -- * The author deletes their own suggestion only while nobody else (that is,
 --   staff) has replied; the admin deletes any. Replies go with it (cascade).
 --   Nobody edits a suggestion or a reply (no update grant).
+-- * Staff close and reopen suggestions (public.set_suggestion_closed); a
+--   closed suggestion takes no replies, from anyone, until it is reopened.
 
 -- One line of visible text, as the browser's normaliser leaves it: the same
 -- rules as films_democratico_reason (migration 20261126120000), with a length.
@@ -57,7 +59,11 @@ create table public.suggestions (
     references public.profiles (id) on delete restrict,
   title text not null constraint suggestions_title check (app.is_tidy_text(title, 100)),
   body text not null constraint suggestions_body check (app.is_tidy_multiline(body, 2000)),
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  -- Open (both null) or closed by staff (both set): public.set_suggestion_closed() only.
+  closed_at timestamptz,
+  closed_by uuid references public.profiles (id) on delete restrict,
+  constraint suggestions_closed_both check ((closed_at is null) = (closed_by is null))
 );
 
 comment on table public.suggestions is
@@ -81,8 +87,30 @@ create index suggestion_replies_suggestion_id_created_at_idx
   on public.suggestion_replies (suggestion_id, created_at);
 create index suggestion_replies_author_id_idx on public.suggestion_replies (author_id);
 
+-- Takes a share lock on a suggestion, for the reply guard below: it waits for
+-- a close (or reopen) in progress, and makes one that starts later wait for
+-- the reply. SECURITY DEFINER because a row lock needs UPDATE rights, which
+-- browsers don't have on suggestions; it reads and returns nothing.
+create function app.lock_suggestion(suggestion_id bigint)
+returns void
+language plpgsql
+volatile
+security definer
+set search_path = ''
+as $$
+begin
+  perform 1 from public.suggestions s where s.id = suggestion_id for share;
+end;
+$$;
+
 -- Both tables: system profiles never write (they have no login, but the import
--- and the secret key could still try), and browsers can't backdate.
+-- and the secret key could still try), and browsers can't backdate or create a
+-- closed suggestion. A reply to a closed suggestion is refused, for everyone:
+-- the lock waits for a close in progress, then the check takes a new snapshot
+-- (VOLATILE plpgsql, READ COMMITTED), so a reply racing a close either lands
+-- before it or is refused. The check reads with the caller's RLS: a suggestion
+-- they can't see isn't "closed" here, and the insert policy refuses it as usual
+-- (no leak). Keep it VOLATILE.
 -- SECURITY INVOKER on purpose (app.is_privileged()).
 create function app.support_insert_guard()
 returns trigger
@@ -92,6 +120,16 @@ as $$
 begin
   if exists (select 1 from public.profiles p where p.id = new.author_id and p.is_system) then
     raise exception 'System profiles cannot write suggestions or replies' using errcode = '42501';
+  end if;
+  if tg_table_name = 'suggestion_replies' then
+    perform app.lock_suggestion(new.suggestion_id);
+    if exists (select 1 from public.suggestions s
+        where s.id = new.suggestion_id and s.closed_at is not null) then
+      raise exception 'This suggestion is closed' using errcode = '42501';
+    end if;
+  elsif not app.is_privileged() then
+    new.closed_at := null;
+    new.closed_by := null;
   end if;
   if not app.is_privileged() then
     new.created_at := now();
@@ -176,12 +214,45 @@ revoke all on public.suggestions, public.suggestion_replies from anon, authentic
 grant select, insert, delete on public.suggestions to authenticated;
 grant select, insert on public.suggestion_replies to authenticated;
 
+-- Close or reopen a suggestion: staff only, and the only way to change one
+-- (browsers have no update grant). A function rather than a column update
+-- grant + policy + guard trigger: one narrow path, nothing else on the row can
+-- be touched, and the table keeps no UPDATE grant at all. Closing keeps the
+-- first close (time and who) if it is already closed; reopening clears both.
+-- The UPDATE locks the row, so it waits for a reply in progress (the reply
+-- guard's share lock) and a later reply waits for it.
+create function public.set_suggestion_closed(target_id bigint, closed boolean)
+returns void
+language plpgsql
+volatile
+security definer
+set search_path = ''
+as $$
+begin
+  if not app.is_staff() then
+    raise exception 'Only moderators and the admin can close or reopen suggestions'
+      using errcode = '42501';
+  end if;
+  update public.suggestions s
+  set closed_at = case when closed then coalesce(s.closed_at, now()) end,
+      closed_by = case when closed then coalesce(s.closed_by, app.current_profile_id()) end
+  where s.id = target_id;
+  if not found then
+    raise exception 'No such suggestion' using errcode = 'P0002';
+  end if;
+end;
+$$;
+
 -- Per function, never schema-wide: app.session_is_live() must stay revoked
 -- (migration 20261123120000).
 revoke execute on function app.is_tidy_text(text, integer), app.is_tidy_multiline(text, integer),
-  app.support_insert_guard(), app.suggestions_delete_guard() from public, anon;
+  app.lock_suggestion(bigint), app.support_insert_guard(), app.suggestions_delete_guard()
+  from public, anon;
 grant execute on function app.is_tidy_text(text, integer), app.is_tidy_multiline(text, integer),
-  app.support_insert_guard(), app.suggestions_delete_guard() to authenticated, service_role;
+  app.lock_suggestion(bigint), app.support_insert_guard(), app.suggestions_delete_guard()
+  to authenticated, service_role;
+revoke execute on function public.set_suggestion_closed(bigint, boolean) from public, anon;
+grant execute on function public.set_suggestion_closed(bigint, boolean) to authenticated;
 
 -- Same as migration 20261124180000, plus suggestions and suggestion_replies.
 create or replace function public.export_data()

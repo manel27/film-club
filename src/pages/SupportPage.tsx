@@ -1,14 +1,18 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
-import { Link } from 'react-router'
+import { Link, useSearchParams } from 'react-router'
 import { useAuth } from '../auth/authContext'
 import { RoleChip } from '../components/Chip'
 import { tipsOff } from '../components/tipsOff'
 import { dayLabel } from '../invites/links'
 import { fetchSuggestions, supportWrites, type SuggestionSummary } from '../support/api'
 import { useNotice } from '../components/useNotice'
+import StateBadge from '../support/StateBadge'
 import {
+  arrange,
   checkText,
+  FILTERS,
   isStaff,
+  parseFilter,
   savedLength,
   supportError,
   TEXT_MAX,
@@ -50,6 +54,10 @@ export default function SupportPage() {
   }
 
   const byId = new Map(data?.people.map((p) => [p.id, p]))
+  // ?show=open|closed; anything else (or nothing) shows all.
+  const [params, setParams] = useSearchParams()
+  const filter = parseFilter(params.get('show'))
+  const shown = data ? arrange(data.suggestions, filter) : []
   return (
     <main className="page support-page" ref={tipsOff}>
       <h1>Support</h1>
@@ -63,6 +71,21 @@ export default function SupportPage() {
       <NewSuggestion onSent={sent} onInvalid={() => setStatus('')} />
 
       <h2>{staff ? 'All suggestions' : 'Your suggestions'}</h2>
+      <label className="field support-filter">
+        Show
+        <select
+          value={filter}
+          onChange={(e) =>
+            setParams(e.target.value === 'all' ? {} : { show: e.target.value }, { replace: true })
+          }
+        >
+          {Object.entries(FILTERS).map(([value, label]) => (
+            <option key={value} value={value}>
+              {label}
+            </option>
+          ))}
+        </select>
+      </label>
       {/* Only the first load can fail the list; a failed reload keeps what is shown. */}
       {!data && failed ? (
         <>
@@ -88,14 +111,17 @@ export default function SupportPage() {
         <p className="muted">
           {staff ? 'No suggestions yet.' : "You haven't written any suggestions yet."}
         </p>
+      ) : shown.length === 0 ? (
+        <p className="muted">No {filter} suggestions.</p>
       ) : (
         <ul className="comments">
-          {data.suggestions.map((s) => (
+          {shown.map((s) => (
             <li key={s.id} className="comment">
               <Link to={`/support/${s.id}`} className="suggestion-title">
                 {s.title}
               </Link>
               <p className="comment-meta">
+                <StateBadge closedAt={s.closed_at} />{' '}
                 {staff && (
                   <>
                     <RoleChip person={byId.get(s.author_id)} />{' '}

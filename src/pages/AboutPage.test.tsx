@@ -37,6 +37,7 @@ describe('AboutPage roles', () => {
     expect(marks('Delete your own suggestion')).toEqual(['yes', 'yes', 'yes', 'yes'])
     expect(marks("See and reply to everyone's suggestions")).toEqual(['yes', 'yes', 'no', 'no'])
     expect(marks('Delete any suggestion')).toEqual(['yes', 'no', 'no', 'no'])
+    expect(marks('Close and reopen suggestions')).toEqual(['yes', 'yes', 'no', 'no'])
     // The visible marks are hidden from screen readers.
     const row = screen.getByRole('row', { name: /^Delete films/ })
     expect(within(row).getAllByText('✓')[0]).toHaveAttribute('aria-hidden', 'true')

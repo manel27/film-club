@@ -17,6 +17,7 @@ const summary = (over: Partial<SuggestionSummary> = {}): SuggestionSummary => ({
   author_id: 'p-ada',
   title: 'More subtitles',
   created_at: '2026-11-20T20:00:00Z',
+  closed_at: null,
   replies: 1,
   ...over,
 })
@@ -238,5 +239,56 @@ describe('Support page', () => {
     // Dropped from the history entry, so a reload or Back doesn't show it again.
     expect(replace).toHaveBeenCalledWith(expect.objectContaining({ usr: null }), '')
     replace.mockRestore()
+  })
+
+  it("shows each suggestion's state, open ones first, then closed, newest first within each", async () => {
+    api.fetchSuggestions.mockResolvedValue(
+      list(
+        summary({ id: 9, title: 'Newest, closed', closed_at: '2026-11-25T10:00:00Z' }),
+        summary({ id: 8, title: 'Newer, open' }),
+        summary({ id: 7, title: 'Oldest, open' }),
+      ),
+    )
+    await renderPage('moderator')
+    await screen.findByRole('link', { name: 'Newer, open' })
+    const items = screen.getAllByRole('listitem')
+    expect(items.map((i) => within(i).getAllByRole('link')[0].textContent)).toEqual([
+      'Newer, open',
+      'Oldest, open',
+      'Newest, closed',
+    ])
+    expect(within(items[0]).getByText('Open')).toHaveClass('badge')
+    expect(within(items[2]).getByText('Closed')).toHaveClass('badge', 'badge-muted')
+  })
+
+  it('filters by state, kept in the URL; an unknown value shows all', async () => {
+    api.fetchSuggestions.mockResolvedValue(
+      list(
+        summary({ id: 9, title: 'Done', closed_at: '2026-11-25T10:00:00Z' }),
+        summary({ id: 8, title: 'Todo' }),
+      ),
+    )
+    const router = await renderPage('member', '/support?show=closed')
+    expect(await screen.findByRole('link', { name: 'Done' })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Todo' })).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Show')).toHaveValue('closed')
+
+    fireEvent.change(screen.getByLabelText('Show'), { target: { value: 'open' } })
+    expect(router.state.location.search).toBe('?show=open')
+    expect(screen.getByRole('link', { name: 'Todo' })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Done' })).not.toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('Show'), { target: { value: 'all' } })
+    expect(router.state.location.search).toBe('')
+    expect(screen.getAllByRole('listitem')).toHaveLength(2)
+
+    await act(() => router.navigate('/support?show=%E2%80%8Bopen'))
+    expect(screen.getByLabelText('Show')).toHaveValue('all')
+    expect(screen.getAllByRole('listitem')).toHaveLength(2)
+  })
+
+  it('says when the filter leaves nothing to show', async () => {
+    await renderPage('member', '/support?show=closed')
+    expect(await screen.findByText('No closed suggestions.')).toBeInTheDocument()
   })
 })

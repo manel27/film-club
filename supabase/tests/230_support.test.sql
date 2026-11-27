@@ -6,6 +6,10 @@
 begin;
 select plan(91);
 
+-- The seed closes suggestion 1; this file is about everything else (closing:
+-- 240_support_closed), so it starts with both open.
+update public.suggestions set closed_at = null, closed_by = null where id = 1;
+
 -- ---------------------------------------------------------------- who sees what
 select tests.login_as('admin');
 select is(tests.row_count('select 1 from public.suggestions'), 2, 'admin sees every suggestion');
@@ -241,7 +245,7 @@ select is(
     'app.film_lock_state(bigint)', 'app.films_day_order()', 'app.films_delete_one_at_a_time()', 'app.films_guard()',
     'app.films_no_duplicate()', 'app.immutable_unaccent(text)', 'app.invites_guard()', 'app.is_admin()',
     'app.is_iso_date(text)', 'app.is_privileged()', 'app.is_staff()', 'app.is_tidy_multiline(text,integer)',
-    'app.is_tidy_text(text,integer)', 'app.is_viewer_profile(uuid)', 'app.normalize_title(text)',
+    'app.is_tidy_text(text,integer)', 'app.is_viewer_profile(uuid)', 'app.lock_suggestion(bigint)', 'app.normalize_title(text)',
     'app.other_admin_count(uuid)', 'app.profiles_guard()', 'app.rotation_coming_week()', 'app.rotation_guard()',
     'app.rotation_replay()', 'app.scores_guard()', 'app.set_updated_at()', 'app.suggestions_delete_guard()',
     'app.support_insert_guard()'],
@@ -273,11 +277,11 @@ select is((select (data->'row_counts'->>'suggestions')::int from export),
 select is((select (data->'row_counts'->>'suggestion_replies')::int from export),
   (select count(*)::int from public.suggestion_replies), 'export: every reply');
 select is((select array(select json_array_elements_text(data->'columns'->'suggestions')) from export),
-  array['id', 'author_id', 'title', 'body', 'created_at'], 'export: suggestions columns');
+  array['id', 'author_id', 'title', 'body', 'created_at', 'closed_at', 'closed_by'], 'export: suggestions columns');
 select is((select array(select json_array_elements_text(data->'columns'->'suggestion_replies')) from export),
   array['id', 'suggestion_id', 'author_id', 'body', 'created_at'], 'export: suggestion_replies columns');
 select is((select array(select json_object_keys(data->'tables'->'suggestions'->0)) from export),
-  array['id', 'author_id', 'title', 'body', 'created_at'], 'export: suggestion rows match the columns');
+  array['id', 'author_id', 'title', 'body', 'created_at', 'closed_at', 'closed_by'], 'export: suggestion rows match the columns');
 
 select * from finish();
 rollback;

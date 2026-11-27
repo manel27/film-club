@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { SEED_ADMIN } from './fixtures'
 
-// /films/1 is "The Quiet Orchard" and /support/1 Kwame's suggestion in supabase/seed.sql (fixed ids).
+// /films/1 is "The Quiet Orchard" and /support/1 Kwame's (closed) suggestion in supabase/seed.sql (fixed ids).
 // Every main page fits a 360px phone in every theme: no page-level sideways scroll.
 const PAGES = [
   '/',
@@ -10,6 +10,7 @@ const PAGES = [
   '/people',
   'profile',
   '/support',
+  '/support?show=closed',
   '/support/1',
   '/admin',
   '/about',
