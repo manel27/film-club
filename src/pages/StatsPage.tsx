@@ -12,6 +12,7 @@ import { Link, useSearchParams } from 'react-router'
 import { RoleChip } from '../components/Chip'
 import { Rating } from '../components/FilmViews'
 import Scroll from '../components/Scroll'
+import { tabKeyIndex } from '../components/tabKeys'
 import { tipsOff } from '../components/tipsOff'
 import { fetchPeopleList } from '../films/api'
 import { screeningDay, type Person } from '../films/films'
@@ -59,7 +60,8 @@ function Table(props: { caption: string; note?: string; head: string[]; rows: Re
     <div className="stats-card">
       <h2 className="stats-card-title">{props.caption}</h2>
       {props.note && <p className="muted stats-note">{props.note}</p>}
-      <Scroll label={props.caption}>
+      {/* Not the bare caption: the heading and the table already say it. */}
+      <Scroll label={`${props.caption}, scrolls sideways`}>
         <table id={id} className="rotation-table">
           <caption className="sr-only">{props.caption}</caption>
           <thead>
@@ -97,17 +99,27 @@ function Table(props: { caption: string; note?: string; head: string[]; rows: Re
           className="button button-secondary button-small stats-more"
           aria-expanded={all}
           aria-controls={id}
-          aria-label={
-            all ? `Show fewer rows: ${props.caption}` : `Show all ${n} rows: ${props.caption}`
-          }
           onClick={() => setAll(!all)}
         >
-          {all ? 'Show fewer' : `Show all (${n})`}
+          {/* The visible words start the name (WCAG 2.5.3); the rest says which table. */}
+          {all ? 'Show fewer' : `Show all (${n})`}{' '}
+          <span className="sr-only">rows: {props.caption}</span>
         </button>
       )}
     </div>
   )
 }
+
+/**
+ * A chart as a card beside its table, titled like the table cards. Hidden from screen
+ * readers as a whole (the table beside it has the same numbers), so the title is no heading.
+ */
+const ChartCard = ({ title, children }: { title: string; children: ReactNode }) => (
+  <div className="stats-card" aria-hidden="true">
+    <p className="stats-card-title">{title}</p>
+    {children}
+  </div>
+)
 
 /** One big-number tile of the overview: a term and its value, inside the <dl>. */
 const Tile = ({ label, children }: { label: string; children: ReactNode }) => (
@@ -181,13 +193,12 @@ export default function StatsPage() {
     [loaded, year],
   )
 
-  // ARIA tabs keyboard: arrows move (and wrap), Home and End jump to the first and last tab.
-  // From the pressed tab (i), not `tab`: a second key before the re-render would use a stale one.
+  // ARIA tabs keyboard, from the pressed tab (i).
   const onTabKey = (e: KeyboardEvent, i: number) => {
-    const to = { ArrowLeft: i - 1, ArrowRight: i + 1, Home: 0, End: TABS.length - 1 }[e.key]
+    const to = tabKeyIndex(e.key, i, TABS.length)
     if (to === undefined) return
     e.preventDefault()
-    const [next] = TABS[(to + TABS.length) % TABS.length]
+    const [next] = TABS[to]
     go({ tab: next })
     document.getElementById(`stats-tab-${next}`)?.focus()
   }
@@ -290,12 +301,11 @@ export default function StatsPage() {
                     Averages leave out films with no scores; attendance is per screening.
                   </p>
                   <div className="stats-grid">
-                    <div className="stats-card">
+                    <ChartCard title="Over time">
                       <OverTimeChart periods={stats.overTime} />
-                    </div>
+                    </ChartCard>
                     <Table
                       caption={year ? `By month in ${year}` : 'By year'}
-                      note="Average leaves out films with no scores; attendance is per screening"
                       head={[year ? 'Month' : 'Year', 'Films', 'Average', 'Attendance']}
                       rows={stats.overTime.map((p) => [
                         p.label,
@@ -395,22 +405,18 @@ export default function StatsPage() {
               )}
               {tab === 'breakdowns' && (
                 <div className="stats-grid">
-                  <div className="stats-card">
-                    <CountChart
-                      horizontal
-                      title="Films by genre"
-                      groups={chartGenres(stats.genres)}
-                    />
-                  </div>
+                  <ChartCard title="Films by genre">
+                    <CountChart horizontal groups={chartGenres(stats.genres)} />
+                  </ChartCard>
                   <Table
                     caption="By genre"
                     note="A film counts once in each of its genres"
                     head={['Genre', 'Films', 'Average']}
                     rows={groupRows(stats.genres)}
                   />
-                  <div className="stats-card">
-                    <CountChart title="Films by decade" groups={stats.decades} />
-                  </div>
+                  <ChartCard title="Films by decade">
+                    <CountChart groups={stats.decades} />
+                  </ChartCard>
                   <Table
                     caption="By release decade"
                     head={['Decade', 'Films', 'Average']}

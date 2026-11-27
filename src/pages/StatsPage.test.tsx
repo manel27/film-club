@@ -243,6 +243,7 @@ describe('StatsPage', () => {
     expect(charts()).toHaveLength(2)
     charts().forEach(hidden)
     const [films, average] = charts()
+    expect(films.closest('.stats-card')).toHaveTextContent(/^Over time/)
     // Two stacked charts, each with its title and the periods on its x-axis.
     expect(within(films).getByText('Films')).toBeInTheDocument()
     expect(within(average).getByText('Average score')).toBeInTheDocument()
@@ -257,8 +258,10 @@ describe('StatsPage', () => {
     expect(charts()).toHaveLength(2)
     charts().forEach(hidden)
     const [genres, decades] = charts()
-    expect(within(genres).getByText('Films by genre')).toBeInTheDocument()
-    expect(within(decades).getByText('Films by decade')).toBeInTheDocument()
+    // Chart cards are titled like the table cards, hidden with their chart.
+    expect(genres.closest('.stats-card')).toHaveTextContent(/^Films by genre/)
+    expect(genres.closest('.stats-card')).toHaveAttribute('aria-hidden', 'true')
+    expect(decades.closest('.stats-card')).toHaveTextContent(/^Films by decade/)
     // Glass River is Drama and a long genre, shortened on the axis; Night Bus has no genres.
     expect(within(genres).getByText('Drama')).toBeInTheDocument()
     expect(within(genres).getByText('Psychological…')).toBeInTheDocument()
@@ -298,6 +301,8 @@ describe('StatsPage', () => {
     expect(
       screen.getByText('Averages leave out films with no scores; attendance is per screening.'),
     ).toBeInTheDocument()
+    // Said once, under the tiles: not again on the By year card.
+    expect(screen.queryByText(/^Average leaves out/)).toBeNull()
   })
 
   it('shows one tab at a time: tabs, a panel labelled by the selected tab, and the cards', async () => {
@@ -335,6 +340,8 @@ describe('StatsPage', () => {
       within(people).getByRole('heading', { level: 2, name: 'Attendance' }),
     ).toBeInTheDocument()
     expect(table('Attendance').querySelector('caption')).toHaveClass('sr-only')
+    // The scroll box around it doesn't repeat the bare name a third time.
+    expect(table('Attendance').parentElement).toHaveAccessibleName('Attendance, scrolls sideways')
     expect(screen.queryByText('Films screened')).toBeNull()
   })
 
@@ -445,7 +452,7 @@ describe('StatsPage', () => {
       renderPage()
       await screen.findByRole('table', { name: 'By year' })
       expect(rows('By year')).toEqual(['2001', '2002', '2003', '2004', '2005'])
-      const button = screen.getByRole('button', { name: 'Show all 6 rows: By year' })
+      const button = screen.getByRole('button', { name: 'Show all (6) rows: By year' })
       expect(button).toHaveTextContent('Show all (6)')
       expect(button).toHaveAttribute('aria-expanded', 'false')
       expect(button).toHaveAttribute('aria-controls', table('By year').id)
@@ -476,14 +483,14 @@ describe('StatsPage', () => {
     it('starts collapsed again after the year changes', async () => {
       fetchStatsData.mockImplementation(async () => SIX)
       renderPage()
-      fireEvent.click(await screen.findByRole('button', { name: 'Show all 6 rows: By year' }))
+      fireEvent.click(await screen.findByRole('button', { name: 'Show all (6) rows: By year' }))
       expect(rows('By year')).toHaveLength(6)
       fireEvent.change(screen.getByLabelText('Period'), { target: { value: '2003' } })
       expect(rows('By month in 2003')).toEqual(['June'])
       expect(screen.queryByRole('button', { name: /^Show/ })).toBeNull()
       fireEvent.change(screen.getByLabelText('Period'), { target: { value: '' } })
       expect(rows('By year')).toHaveLength(5)
-      expect(screen.getByRole('button', { name: 'Show all 6 rows: By year' })).toHaveAttribute(
+      expect(screen.getByRole('button', { name: 'Show all (6) rows: By year' })).toHaveAttribute(
         'aria-expanded',
         'false',
       )

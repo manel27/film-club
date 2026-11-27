@@ -151,7 +151,12 @@ test('a member sees the club stats, filters them by year and opens a film', asyn
   await expect(page).toHaveURL(/#\/stats\?tab=breakdowns$/)
   await expect(page.getByRole('tabpanel', { name: 'Breakdowns' })).toBeVisible()
   await checkCharts()
-  await page.getByRole('tab', { name: 'Overview' }).click()
+  // Every tab renders without a CSP violation (watchCsp: inline styles, scripts, sources).
+  for (const tab of ['Films', 'People', 'Breakdowns', 'Overview']) {
+    await page.getByRole('tab', { name: tab }).click()
+    await expect(page.getByRole('tabpanel', { name: tab })).toBeVisible()
+    expect(await violations(), tab).toEqual([])
+  }
   await expect(page).toHaveURL(/#\/stats$/)
 
   await period.selectOption('2026')
@@ -180,12 +185,12 @@ test('a member sees the club stats, filters them by year and opens a film', asyn
     month('June', '1'),
     month('July', '1'),
   ])
-  const showAll = page.getByRole('button', { name: `Show all 6 rows: ${byMonth}` })
-  await expect(showAll).toHaveText('Show all (6)')
+  // The visible words start the accessible name; the rest is sr-only.
+  const showAll = page.getByRole('button', { name: `Show all (6) rows: ${byMonth}` })
+  await expect(showAll.locator('.sr-only')).toHaveText(`rows: ${byMonth}`)
   await expect(showAll).toHaveAttribute('aria-expanded', 'false')
   await showAll.click()
   const showFewer = page.getByRole('button', { name: `Show fewer rows: ${byMonth}` })
-  await expect(showFewer).toHaveText('Show fewer')
   await expect(showFewer).toHaveAttribute('aria-expanded', 'true')
   await expect(showFewer).toBeFocused()
   expect((await tableRows(page, byMonth)).map((r) => r[0])).toEqual([
@@ -268,6 +273,11 @@ test('a viewer can open the stats; at 360px, in every tab and theme, the cards f
         () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
       )
       expect(overflow, `${tab}, ${theme}`).toBe(0)
+      // The four tabs fit one line.
+      const tops = await page
+        .getByRole('tab')
+        .evaluateAll((tabs) => tabs.map((t) => t.getBoundingClientRect().top))
+      expect(new Set(tops).size, `${tab}, ${theme}: tab rows`).toBe(1)
       // Each card and chart fits the column, never wider than the screen.
       for (const right of await page
         .locator('.stats-card, .stats-tile, .stats-chart .recharts-wrapper > svg')
