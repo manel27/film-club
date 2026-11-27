@@ -336,12 +336,19 @@ test('the films page fits a 360px screen in every view and theme', async ({ page
     .getByRole('region', { name: 'Next film' })
     .screenshot({ path: `${SCREENSHOTS}/films-narrow-next-film.png` })
 
-  // A present name's role tip, shown by focus near the right edge, doesn't widen the page.
   await page.getByRole('button', { name: 'Compact', exact: true }).click()
   const orchard = page.getByRole('listitem').filter({ hasText: 'The Quiet Orchard' })
-  await orchard.getByRole('group', { name: 'Present' }).getByRole('link').last().focus()
-  await expect(orchard.getByRole('group', { name: 'Present' }).getByRole('tooltip')).toBeVisible()
-  expect(await overflow(page)).toBe(0)
+  // Shown by focus, each present name's tip stays inside the screen.
+  const present = orchard.getByRole('group', { name: 'Present' })
+  for (const link of await present.getByRole('link').all()) {
+    await link.focus()
+    const tip = present.getByRole('tooltip')
+    await expect(tip).toBeVisible()
+    const box = (await tip.boundingBox())!
+    expect(box.x).toBeGreaterThanOrEqual(0)
+    expect(box.x + box.width).toBeLessThanOrEqual(360)
+    expect(await overflow(page)).toBe(0)
+  }
 
   // The present panel opens inline.
   await page.getByText('Present', { exact: true }).click()
@@ -467,6 +474,8 @@ test.describe('on a touch screen', () => {
   }) => {
     await logIn(page, E2E_MEMBER.email, E2E_PASSWORD)
     expect(await page.evaluate(() => matchMedia('(hover: none)').matches)).toBe(true)
+    // A non-default theme, set on the page only (the picker would save it to the database).
+    await page.evaluate(() => (document.documentElement.dataset.theme = 'superman'))
     const orchard = page.getByRole('listitem').filter({ hasText: 'The Quiet Orchard' })
     const present = orchard.getByRole('group', { name: 'Present' })
     const url = page.url()

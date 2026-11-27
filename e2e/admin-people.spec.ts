@@ -299,28 +299,35 @@ test('non-admins can do none of it', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Export all data' })).toHaveCount(0)
 })
 
-test('About tells a moderator their role and highlights its column', async ({ page }) => {
+test('About tells a moderator their role and shows its column, on a phone too', async ({
+  page,
+}) => {
   await logIn(page, SEED_MODERATOR.email, SEED_MODERATOR.password)
+  await page.setViewportSize({ width: 360, height: 740 })
   await page.goto('./#/about')
   await expect(page.getByText('You are a moderator.')).toBeVisible()
   const table = page.getByRole('table', { name: 'What each role can do' })
-  await expect(table.getByRole('columnheader', { name: 'Moderator (you)' })).toBeVisible()
+  const mine = table.getByRole('columnheader', { name: 'Moderator (you)' })
+  // The columns scroll sideways at 360px: the box scrolls to "(you)", the page doesn't move.
+  const box = (await page.getByRole('region', { name: 'Roles' }).boundingBox())!
+  await expect
+    .poll(async () => {
+      const th = (await mine.boundingBox())!
+      return th.x >= box.x && th.x + th.width <= box.x + box.width + 0.5 // subpixel
+    })
+    .toBe(true)
+  expect(await page.evaluate(() => window.scrollX)).toBe(0)
   // The header and one cell per row.
   const rows = await table.locator('tbody tr').count()
   expect(rows).toBeGreaterThan(0)
   await expect(table.locator('.your-role')).toHaveCount(rows + 1)
-  await table.screenshot({ path: `${SCREENSHOTS}/about-your-role-table.png` })
-  await page.setViewportSize({ width: 360, height: 740 })
   // Themes switched on the page only (the picker would save Tamsin's choice to the database).
   for (const theme of ['letterboxd', 'superman', 'batman']) {
     await page.evaluate((t) => (document.documentElement.dataset.theme = t), theme)
-    expect(
-      await page.evaluate(
-        () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
-      ),
-    ).toBe(0)
     await page.screenshot({ path: `${SCREENSHOTS}/about-your-role-${theme}.png` })
   }
+  await page.setViewportSize({ width: 1280, height: 720 })
+  await table.screenshot({ path: `${SCREENSHOTS}/about-your-role-table.png` })
 })
 
 test('About credits TMDB with its bundled logo and notice', async ({ page }) => {

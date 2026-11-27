@@ -1,9 +1,11 @@
-import { useContext } from 'react'
+import { useContext, useEffect, useRef } from 'react'
 import tmdbLogo from '../assets/tmdb-logo.svg'
 import { AuthContext } from '../auth/authContext'
+import { ROLE_NAMES } from '../people/profile'
 
-const ROLES = ['Admin', 'Moderator', 'Member', 'Viewer']
-const ROLE_KEYS: readonly string[] = ['admin', 'moderator', 'member', 'viewer']
+// In ROLE_NAMES' order (admin, moderator, member, viewer), which the marks below follow.
+const ROLE_KEYS: readonly string[] = Object.keys(ROLE_NAMES)
+const ROLES = Object.values(ROLE_NAMES)
 
 // What each role can do, exactly as the database's row-level security allows.
 // Marks are [admin, moderator, member, viewer].
@@ -51,6 +53,15 @@ export default function AboutPage() {
   const profile = useContext(AuthContext)?.profile
   const mine = profile && !profile.is_system ? ROLE_KEYS.indexOf(profile.role) : -1
   const you = (i: number) => (i === mine ? 'your-role' : undefined)
+  // On a phone the columns scroll sideways: bring "(you)" into view, the page itself unmoved.
+  const scrollBox = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const box = scrollBox.current
+    const th = box?.querySelector('thead .your-role')
+    if (!box || !th) return
+    const over = th.getBoundingClientRect().right - box.getBoundingClientRect().right
+    if (over > 0) box.scrollLeft += Math.ceil(over) // scrollLeft rounds down
+  }, [mine])
   return (
     <main className="page about-page">
       <h1>About Film Club</h1>
@@ -67,10 +78,10 @@ export default function AboutPage() {
       </p>
       {mine >= 0 && (
         <p className="your-role-note">
-          You are {mine === 0 ? 'an' : 'a'} {ROLES[mine].toLowerCase()}.
+          You are {/^[AEIOU]/.test(ROLES[mine]) ? 'an' : 'a'} {ROLES[mine].toLowerCase()}.
         </p>
       )}
-      <div className="table-scroll" role="region" aria-label="Roles" tabIndex={0}>
+      <div ref={scrollBox} className="table-scroll" role="region" aria-label="Roles" tabIndex={0}>
         <table className="rotation-table roles-table">
           <caption className="sr-only">What each role can do</caption>
           <thead>
