@@ -398,6 +398,26 @@ describe('StatsPage', () => {
     expect(screen.getByRole('tab', { selected: true })).toHaveTextContent('Breakdowns')
   })
 
+  it('keeps a tab change when the year changes before the re-render, and the other way round', async () => {
+    const router = renderPage('/stats?tab=breakdowns')
+    await screen.findByRole('tab', { name: 'Breakdowns' })
+    // Both in one batch: the select's handler still has the old render's tab.
+    act(() => {
+      fireEvent.click(screen.getByRole('tab', { name: 'Overview' }))
+      fireEvent.change(screen.getByLabelText('Period'), { target: { value: '2026' } })
+    })
+    expect(router.state.location.search).toBe('?year=2026')
+    act(() => {
+      fireEvent.change(screen.getByLabelText('Period'), { target: { value: '2025' } })
+      fireEvent.click(screen.getByRole('tab', { name: 'People' }))
+    })
+    expect(router.state.location.search).toBe('?tab=people&year=2025')
+    // Back to what the URL says after a navigation from outside the page.
+    await act(() => router.navigate('/stats?tab=films'))
+    fireEvent.change(screen.getByLabelText('Period'), { target: { value: '2026' } })
+    expect(router.state.location.search).toBe('?tab=films&year=2026')
+  })
+
   describe('Show all', () => {
     // Six screenings, one a year 2001–2006: By year has 6 rows, each year's By month 1.
     const SIX = {

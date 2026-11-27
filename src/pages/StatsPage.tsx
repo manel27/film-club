@@ -1,6 +1,7 @@
 import {
   useEffect,
   useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -163,9 +164,18 @@ export default function StatsPage() {
   const years = useMemo(() => (loaded ? statsYears(loaded.data) : []), [loaded])
   const year = readYear(params.get('year'), years)
   const tab: Tab = TABS.find(([t]) => t === params.get('tab'))?.[0] ?? 'overview'
+  // The last tab and year written. React Router commits a navigation in a transition, so a
+  // second change can come from a render that still shows the old URL: it merges into these,
+  // not into that render's values. Synced to the URL on each commit (Back, a typed URL).
+  const latest = useRef({ tab, year })
+  useLayoutEffect(() => {
+    latest.current = { tab, year }
+  }, [tab, year])
   // Written from the validated values, so a bad tab or year in the URL is dropped.
-  const go = (t: Tab, y: string) =>
+  const go = (change: { tab: Tab } | { year: string }) => {
+    const { tab: t, year: y } = (latest.current = { ...latest.current, ...change })
     setParams({ ...(t !== 'overview' && { tab: t }), ...(y && { year: y }) }, { replace: true })
+  }
   const stats = useMemo(
     () => loaded && computeStats(loaded.data, loaded.people, year),
     [loaded, year],
@@ -178,7 +188,7 @@ export default function StatsPage() {
     if (to === undefined) return
     e.preventDefault()
     const [next] = TABS[(to + TABS.length) % TABS.length]
-    go(next, year)
+    go({ tab: next })
     document.getElementById(`stats-tab-${next}`)?.focus()
   }
 
@@ -216,7 +226,7 @@ export default function StatsPage() {
       <>
         <label className="field support-filter">
           Period
-          <select value={year} onChange={(e) => go(tab, e.target.value)}>
+          <select value={year} onChange={(e) => go({ year: e.target.value })}>
             <option value="">All time</option>
             {years.map((y) => (
               <option key={y} value={y}>
@@ -243,7 +253,7 @@ export default function StatsPage() {
                   aria-controls="stats-panel"
                   tabIndex={tab === t ? 0 : -1}
                   className="tab"
-                  onClick={() => go(t, year)}
+                  onClick={() => go({ tab: t })}
                   onKeyDown={(e) => onTabKey(e, i)}
                 >
                   {label}
