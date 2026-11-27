@@ -42,12 +42,30 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # A pull request that touches neither migration/ nor the workflows skips the
+      # rest of this job; it still reports success, so the required check passes.
+      # Pushes to main run everything.
+      - name: Is this job needed?
+        id: scope
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ -z "$BASE" ]; then echo "run=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          git fetch --no-tags --depth=1 origin "$BASE"
+          changed=$(git diff --name-only "$BASE" HEAD)
+          echo "$changed"
+          if echo "$changed" | grep -qE '^(migration/|\.github/workflows/)'; then run=true; else run=false; fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+          echo "### Job needed: $run" >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        if: steps.scope.outputs.run == 'true'
         with:
           python-version: '3.12'
       - name: Install dependencies
+        if: steps.scope.outputs.run == 'true'
         run: python -m pip install -r migration/requirements.txt
       - name: Unit tests (synthetic fixture only)
+        if: steps.scope.outputs.run == 'true'
         run: python -I -m unittest discover -s migration/tests -t . -v
 
   build:
@@ -133,35 +151,59 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # A pull request that touches none of supabase/, the generated types, the npm
+      # or Node versions or the workflows skips the rest of this job; it still
+      # reports success, so the required check passes. Pushes to main run everything.
+      - name: Is this job needed?
+        id: scope
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ -z "$BASE" ]; then echo "run=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          git fetch --no-tags --depth=1 origin "$BASE"
+          changed=$(git diff --name-only "$BASE" HEAD)
+          echo "$changed"
+          if echo "$changed" | grep -qE '^(supabase/|src/lib/database\.types\.ts$|package(-lock)?\.json$|\.nvmrc$|\.github/workflows/)'; then run=true; else run=false; fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+          echo "### Job needed: $run" >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: steps.scope.outputs.run == 'true'
         with:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
+        if: steps.scope.outputs.run == 'true'
       # Applies every migration, then seed.sql + test_helpers.sql (synthetic
       # data only). Services the tests don't need are skipped. Output is
       # discarded: it only lists local, throwaway URLs and demo keys.
       - name: Start local Supabase
+        if: steps.scope.outputs.run == 'true'
         run: >-
           npx supabase start
           -x realtime,storage-api,imgproxy,mailpit,studio,edge-runtime,logflare,vector,supavisor
           > /dev/null
       - name: Lint database functions
+        if: steps.scope.outputs.run == 'true'
         run: npx supabase db lint -s public,app --level warning --fail-on warning
       - name: pgTAP tests (RLS, permissions, duplicates, score lock)
+        if: steps.scope.outputs.run == 'true'
         run: npx supabase test db
       # Edge Functions: run in-process against this stack, TMDB replaced by a
       # stub server inside the test (supabase/functions/tests).
       - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+        if: steps.scope.outputs.run == 'true'
         with:
           deno-version: v2.5.6
       - name: Edge Functions format and type check (Deno)
+        if: steps.scope.outputs.run == 'true'
         run: npm run functions:check
       - name: Edge Functions tests with coverage (Deno, fake TMDB)
+        if: steps.scope.outputs.run == 'true'
         run: npm run functions:coverage
       # Function source only (_shared + each function; tests/ excluded).
       # deno coverage has no threshold flag: check the "All files" line % here.
       - name: Edge Functions coverage (lines >= 75%)
+        if: steps.scope.outputs.run == 'true'
         env:
           NO_COLOR: '1'
         run: |
@@ -172,7 +214,7 @@ jobs:
           awk -v l="$lines" 'BEGIN { exit !(l >= 75) }' ||
             { echo "::error::Deno line coverage ${lines:-?}% is below 75%"; exit 1; }
       - name: Upload coverage report (Deno)
-        if: always()
+        if: always() && steps.scope.outputs.run == 'true'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: coverage-deno
@@ -180,9 +222,10 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
       - name: Generated types are up to date
+        if: steps.scope.outputs.run == 'true'
         run: |
           npm run db:types
           git diff --exit-code -- src/lib/database.types.ts
       - name: Stop local Supabase
-        if: always()
+        if: always() && steps.scope.outputs.run == 'true'
         run: npx supabase stop --no-backup
