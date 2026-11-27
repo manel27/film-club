@@ -20,7 +20,7 @@ test.beforeAll(async () => {
   const db = adminClient()
   const { data, error } = await db
     .from('films')
-    .insert({ title: TITLE, release_year: 1999, screened_on: '2026-12-05', assigned_id: KWAME })
+    .insert({ title: TITLE, release_year: 1999, screened_on: '2099-12-05', assigned_id: KWAME })
     .select('id')
     .single()
   if (error) throw error

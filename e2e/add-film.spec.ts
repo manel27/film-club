@@ -1,5 +1,12 @@
 import { expect, test, type Page } from '@playwright/test'
-import { adminClient, SEED_MEMBER, SEED_MODERATOR, userClient } from './fixtures'
+import {
+  adminClient,
+  SEED_MEMBER,
+  SEED_MODERATOR,
+  saturdayNextYear,
+  slashed,
+  userClient,
+} from './fixtures'
 import { tmdbStubRequests } from './tmdbStub'
 
 // Adds films to the shared local database, so this file runs on its own after
@@ -7,6 +14,9 @@ import { tmdbStubRequests } from './tmdbStub'
 // stub in tmdbStub.ts.
 const SCREENSHOTS = 'test-results/screenshots'
 const STUB_TITLE = 'E2E Lighthouse Keeper'
+// Future Saturdays the form accepts (within two years).
+const DAY = saturdayNextYear()
+const LATER_DAY = saturdayNextYear(1)
 
 async function logIn(page: Page, login: { email: string; password: string }) {
   await page.goto('./#/login')
@@ -38,7 +48,7 @@ test('a moderator adds a film from TMDB; watched films cannot be picked', async 
 
   await search.fill('lighthouse')
   await page.getByRole('button', { name: /E2E Lighthouse Keeper \(2014\)/ }).click()
-  await page.getByLabel('Screening date').fill('2026-12-19')
+  await page.getByLabel('Screening date').fill(DAY)
   await page.getByLabel('Chosen by').selectOption({ label: 'Kwame' })
   await page.screenshot({ path: `${SCREENSHOTS}/add-film.png`, fullPage: true })
   await page.getByRole('button', { name: 'Save' }).click()
@@ -46,16 +56,16 @@ test('a moderator adds a film from TMDB; watched films cannot be picked', async 
   await expect(page.getByRole('heading', { name: STUB_TITLE })).toBeVisible()
   await expect(page.getByText('O Faroleiro')).toBeVisible()
   await expect(page.getByText('Stub Director')).toBeVisible()
-  await expect(page.getByText('2026/12/19')).toBeVisible()
+  await expect(page.getByText(slashed(DAY))).toBeVisible()
   // Search and details came from the stub: a run against real TMDB fails here.
   expect(await tmdbStubRequests()).toBeGreaterThan(stubRequestsBefore + 2)
 
   // Edit: change the date.
   await page.getByRole('link', { name: 'Edit' }).click()
   await expect(page.getByRole('heading', { name: 'Edit film' })).toBeVisible()
-  await page.getByLabel('Screening date').fill('2026-12-26')
+  await page.getByLabel('Screening date').fill(LATER_DAY)
   await page.getByRole('button', { name: 'Save' }).click()
-  await expect(page.getByText('2026/12/26')).toBeVisible()
+  await expect(page.getByText(slashed(LATER_DAY))).toBeVisible()
 })
 
 test('a duplicate saved without TMDB is blocked', async ({ page }) => {
@@ -88,7 +98,7 @@ test('a member gets no Add film or Edit, and the server refuses them', async ({ 
       tmdb_id: null,
       title: 'Member Sneaks In',
       release_year: 2000,
-      screened_on: '2026-12-19',
+      screened_on: DAY,
       kind: 'normal',
       assigned_id: '00000000-0000-4000-8000-0000000000a3',
     },

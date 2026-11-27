@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { adminClient, SEED_MODERATOR } from './fixtures'
+import { adminClient, saturdayNextYear, SEED_MODERATOR } from './fixtures'
 
 // Adds a film to the shared local database, so it runs after the read-only tests
 // (playwright.config.ts: matches add-film) and removes it. Its own file:
@@ -29,7 +29,7 @@ test("a Democrático's reason is saved, edited, and cleared when the kind change
   await page.getByRole('button', { name: 'Not on TMDB? Save without TMDB' }).click()
   await page.getByLabel('Title').fill(VOTE_TITLE)
   await page.getByLabel('Release year').fill('2002')
-  await page.getByLabel('Screening date').fill('2026-12-19')
+  await page.getByLabel('Screening date').fill(saturdayNextYear())
   await page.getByLabel('Chosen by').selectOption({ label: 'Kwame' })
   const reason = page.getByLabel(/Why was it chosen/)
   await expect(reason).toHaveCount(0)

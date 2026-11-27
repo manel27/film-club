@@ -13,6 +13,7 @@ import PeoplePage from './pages/PeoplePage'
 import ProfilePage from './pages/ProfilePage'
 import ResetPage from './pages/ResetPage'
 import RotationPage from './pages/RotationPage'
+import StatsPage from './pages/StatsPage'
 import SuggestionPage from './pages/SuggestionPage'
 import SupportPage from './pages/SupportPage'
 
@@ -35,6 +36,7 @@ export const routes: RouteObject[] = [
       { path: '/rotation', element: <RotationPage /> },
       { path: '/people', element: <PeoplePage /> },
       { path: '/people/:id', element: <ProfilePage /> },
+      { path: '/stats', element: <StatsPage /> },
       { path: '/support', element: <SupportPage /> },
       { path: '/support/:id', element: <SuggestionPage /> },
       { path: '/admin', element: <AdminPage /> },

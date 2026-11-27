@@ -120,6 +120,9 @@ const collator = new Intl.Collator(undefined, { sensitivity: 'base', numeric: tr
 // Ignores leading punctuation and an English article, so '"The Thing"' sorts under T.
 const sortTitle = (title: string) => title.replace(/^[\p{P}\s]+/u, '').replace(/^(the|an?)\s+/i, '')
 
+/** Compares titles as the films page sorts them ("The Thing" under T, "2" before "10"). */
+export const compareTitles = (a: string, b: string) => collator.compare(sortTitle(a), sortTitle(b))
+
 /** Compares possibly missing numbers in `dir` (1 = ascending); missing values always go last. */
 function byValue(a: number | null, b: number | null, dir: number): number {
   if (a == null || b == null) return (a == null ? 1 : 0) - (b == null ? 1 : 0)
@@ -134,8 +137,7 @@ function byValue(a: number | null, b: number | null, dir: number): number {
 export function sortFilms(films: FilmItem[], sort: Sort): FilmItem[] {
   const date = (a: FilmItem, b: FilmItem) =>
     b.screenedOn.localeCompare(a.screenedOn) || a.dayOrder - b.dayOrder
-  const title = (a: FilmItem, b: FilmItem) =>
-    collator.compare(sortTitle(a.title), sortTitle(b.title))
+  const title = (a: FilmItem, b: FilmItem) => compareTitles(a.title, b.title)
   const key: Record<Sort, (a: FilmItem, b: FilmItem) => number> = {
     newest: date,
     oldest: (a, b) => a.screenedOn.localeCompare(b.screenedOn) || a.dayOrder - b.dayOrder,

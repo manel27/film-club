@@ -15,6 +15,10 @@ import {
 vi.mock('./films/api', () => ({
   fetchFilmsData: async () => ({ films: [], people: [], scored: new Set() }),
   fetchFilm: async () => null,
+  fetchPeopleList: async () => [],
+}))
+vi.mock('./stats/api', () => ({
+  fetchStatsData: async () => ({ films: [], scores: [], attendance: [] }),
 }))
 // The admin page's data comes from Supabase too (tested in pages/InvitePages.test.tsx).
 vi.mock('./invites/api', () => ({ fetchLastExport: vi.fn(async () => null) }))
@@ -244,19 +248,31 @@ describe('app shell', () => {
   })
 
   it.each([
-    ['viewer', ['Films', 'Rotation', 'People', 'Support', 'About']],
-    ['admin', ['Films', 'Rotation', 'People', 'Support', 'Admin', 'About']],
-  ] as const)('links Support after People for a %s, opening #/support', async (role, links) => {
-    const { router } = renderApp('/', signedIn(fakeProfile({ role })))
+    ['viewer', ['Films', 'Rotation', 'People', 'Stats', 'Support', 'About']],
+    ['admin', ['Films', 'Rotation', 'People', 'Stats', 'Support', 'Admin', 'About']],
+  ] as const)(
+    'links Stats and Support after People for a %s, opening #/support',
+    async (role, links) => {
+      const { router } = renderApp('/', signedIn(fakeProfile({ role })))
+      const nav = await screen.findByRole('navigation', { name: 'Main' })
+      expect(
+        within(nav)
+          .getAllByRole('link')
+          .map((a) => a.textContent),
+      ).toEqual(links)
+      fireEvent.click(within(nav).getByRole('link', { name: 'Support' }))
+      expect(await screen.findByRole('heading', { name: 'Support', level: 1 })).toBeInTheDocument()
+      expect(router.state.location.pathname).toBe('/support')
+    },
+  )
+
+  it('opens the stats at #/stats from the nav, for a viewer too', async () => {
+    const { router } = renderApp('/', signedIn(fakeProfile({ role: 'viewer' })))
     const nav = await screen.findByRole('navigation', { name: 'Main' })
-    expect(
-      within(nav)
-        .getAllByRole('link')
-        .map((a) => a.textContent),
-    ).toEqual(links)
-    fireEvent.click(within(nav).getByRole('link', { name: 'Support' }))
-    expect(await screen.findByRole('heading', { name: 'Support', level: 1 })).toBeInTheDocument()
-    expect(router.state.location.pathname).toBe('/support')
+    fireEvent.click(within(nav).getByRole('link', { name: 'Stats' }))
+    expect(await screen.findByText('No screenings yet.')).toBeInTheDocument()
+    expect(router.state.location.pathname).toBe('/stats')
+    expect(within(nav).getByRole('link', { name: 'Stats' })).toHaveAttribute('aria-current', 'page')
   })
 
   it('opens a suggestion at #/support/:id', async () => {

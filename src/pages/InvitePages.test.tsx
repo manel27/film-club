@@ -15,6 +15,7 @@ import {
 vi.mock('../films/api', () => ({
   fetchFilmsData: async () => ({ films: [], people: [], scored: new Set() }),
 }))
+vi.mock('../stats/api', () => ({}))
 vi.mock('../rotation/api', () => ({}))
 vi.mock('../invites/api', () => ({
   previewInvite: vi.fn(),

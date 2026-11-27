@@ -14,7 +14,7 @@ const MEMBERS = [true, true, true, false]
 const STAFF = [true, true, false, false]
 const ADMIN = [true, false, false, false]
 const PERMISSIONS: [string, boolean[]][] = [
-  ['See films, scores, comments, people and the rotation', EVERYONE],
+  ['See films, scores, comments, people, the rotation and stats', EVERYONE],
   ['Mark your own attendance', MEMBERS],
   ['Pick a theme (viewers: saved in this browser only)', EVERYONE],
   ['Enter, edit and delete your own score', MEMBERS],

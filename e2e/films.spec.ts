@@ -4,7 +4,7 @@ import { E2E_MEMBER, E2E_PASSWORD, SEED_VIEWER } from './fixtures'
 // Uses the synthetic films in supabase/seed.sql.
 const SCREENSHOTS = 'test-results/screenshots'
 const THEMES = ['letterboxd', 'superman', 'batman']
-// Before the seed's next film (Tomorrow's Feature, 2026-12-05), and in the past, so the session stays valid.
+// Before the seed's next film (Tomorrow's Feature, 2099-12-05), and in the past, so the session stays valid.
 const BEFORE_NEXT_FILM = new Date('2026-11-20T12:00:00Z')
 
 async function logIn(page: Page, email: string, password: string) {
@@ -238,12 +238,12 @@ test('the next film card shows the film added for the next screening', async ({ 
   await logIn(page, E2E_MEMBER.email, E2E_PASSWORD)
   const card = page.getByRole('region', { name: 'Next film' })
   await expect(card).toContainText("Tomorrow's Feature (2024)")
-  await expect(card).toContainText('Sat 5 Dec 2026')
+  await expect(card).toContainText('Sat 5 Dec 2099')
   await expect(card).toContainText('Chosen by Yusuf')
   await expect(page.getByRole('region', { name: 'Next up' })).toHaveCount(0)
   await expect(card.getByRole('link', { name: 'Yusuf' })).toHaveAccessibleDescription('Member')
   await expect(card.getByRole('link', { name: "Tomorrow's Feature" })).toHaveAccessibleDescription(
-    'Sat 5 Dec 2026',
+    'Sat 5 Dec 2099',
   )
   // Here the chip is a Tab stop, so its role also shows on focus.
   await card.getByRole('link', { name: 'Yusuf' }).focus()
